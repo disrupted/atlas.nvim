@@ -35,7 +35,7 @@ local function append_search_text(lines, spans, text)
 		return
 	end
 
-	local line = string.format(" %s %s", icons.general("search"), text)
+	local line = string.format(" %s %s", icons.get("search"), vim.trim(text:gsub("%s+", " ")))
 	table.insert(lines, line)
 	table.insert(spans, { line = #lines - 1, start_col = 0, end_col = #line, hl_group = "AtlasTextMuted" })
 	table.insert(lines, "")
@@ -45,7 +45,7 @@ end
 ---@return string[], table[], table<integer, table>
 function M.render(opts)
 	local provider = state.provider
-	local provider_icon = provider and provider.icon or icons.fallback()
+	local provider_icon = provider and provider.icon or icons.get("fallback")
 	local provider_name = provider and provider.name or "Issues"
 	local provider_hl = provider and provider.hl_group or "Title"
 	local issue_count = #state.issues
@@ -78,7 +78,7 @@ function M.render(opts)
 	end
 	statusline.set_items(statusline_items)
 
-	local views = state.views
+	local views = bookmarks.views(state.views, state.bookmarks, state.starred_items)
 	local view = state.view
 	local active_id = view_id(view)
 
@@ -106,12 +106,12 @@ function M.render(opts)
 	local actions = {}
 
 	if provider and provider.capabilities.notifications then
-		local count = notif_state.unread_count or 0
+		local count = notif_state.unread_count
 		local bell_icon, bell_hl
 		if count > 0 then
-			bell_icon, bell_hl = icons.general("bell_unread")
+			bell_icon, bell_hl = icons.get("bell_unread")
 		else
-			bell_icon, bell_hl = icons.general("bell")
+			bell_icon, bell_hl = icons.get("bell")
 		end
 		local bell_label = count > 0 and string.format("%s %d", bell_icon, count) or bell_icon
 		table.insert(actions, { label = bell_label, hl_group = bell_hl })
@@ -177,17 +177,14 @@ function M.render(opts)
 		})
 	else
 		local issue_groups = state.issue_tree
-		local layout = search_view and tostring(search_view.layout or "plain") or "compact"
-		if layout ~= "compact" then
-			layout = "plain"
-		end
+		local compact = search_view == nil or search_view.layout == "compact"
 		local issues = state.issues
 		if search_view ~= nil then
 			append_search_text(lines, spans, state.query)
 		end
 
 		local has_rows = #issue_groups > 0
-		if layout == "compact" then
+		if compact then
 			has_rows = #issues > 0
 		end
 		if state.is_loading ~= true and not has_rows then
@@ -202,7 +199,7 @@ function M.render(opts)
 				collapsed = state.collapsed_issue_keys,
 			}
 			local tbl_lines, tbl_spans, tbl_map
-			if layout == "compact" then
+			if compact then
 				tbl_lines, tbl_map, tbl_spans = issue_list.render_compact(list_opts, issues)
 			else
 				tbl_lines, tbl_map, tbl_spans = issue_list.render_plain(list_opts, issue_groups)

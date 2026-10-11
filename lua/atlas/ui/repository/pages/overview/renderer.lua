@@ -1,4 +1,5 @@
 local chips = require("atlas.ui.components.chips")
+local markdown = require("atlas.formats.markdown")
 local icons = require("atlas.ui.shared.icons")
 local utils = require("atlas.ui.shared.utils")
 
@@ -14,7 +15,7 @@ local function render_header(repo, width)
 
 	local metadata = { repo.is_private and "Private" or "Public" }
 	if repo.default_branch then
-		table.insert(metadata, icons.pulls("branch") .. " " .. repo.default_branch)
+		table.insert(metadata, icons.get("branch") .. " " .. repo.default_branch)
 	end
 	local created = utils.format_date(repo.created_on)
 	if created ~= "" then
@@ -25,9 +26,9 @@ local function render_header(repo, width)
 
 	local stats = ""
 	for _, stat in ipairs({
-		{ label = "stars", count = repo.stars, icon = { icons.general("star") } },
-		{ label = "forks", count = repo.forks, icon = { icons.pulls("fork") } },
-		{ label = "watchers", count = repo.watchers, icon = { icons.general("watching") } },
+		{ label = "stars", count = repo.stars, icon = { icons.get("star") } },
+		{ label = "forks", count = repo.forks, icon = { icons.get("fork") } },
+		{ label = "watchers", count = repo.watchers, icon = { icons.get("watching") } },
 	}) do
 		if stat.count ~= nil then
 			stats = stats .. (stats ~= "" and "   " or "")
@@ -68,16 +69,15 @@ local function render_description(repo, width)
 	end
 
 	utils.push(lines, spans, "Description", "AtlasColumnHeader")
-	for _, line in ipairs(utils.sanitize_lines(repo.description)) do
-		vim.list_extend(lines, utils.wrap_line(line, width))
-	end
+	utils.append_block(lines, spans, markdown.parse(repo.description, { width = width }))
 	table.insert(lines, "")
 	return lines, spans
 end
 
 ---@param repo AtlasRepositoryDetails
+---@param width integer
 ---@return string[], table[]
-local function render_readme(repo)
+local function render_readme(repo, width)
 	local lines, spans = {}, {}
 	if not repo.readme or repo.readme == "" then
 		return lines, spans
@@ -85,7 +85,7 @@ local function render_readme(repo)
 
 	utils.push(lines, spans, "README", "AtlasColumnHeader")
 	table.insert(lines, "")
-	vim.list_extend(lines, utils.sanitize_lines(repo.readme))
+	utils.append_block(lines, spans, markdown.parse(repo.readme, { width = width }))
 	table.insert(lines, "")
 	return lines, spans
 end

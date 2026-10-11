@@ -23,6 +23,8 @@ local utils = require("atlas.ui.shared.utils")
 ---@field cursors table<integer, string>
 ---@field next_cursor string|nil
 ---@field root string|nil
+---@field root_loading boolean
+---@field root_request AtlasRequestScope
 ---@field expanded string|nil
 ---@field commits RepositoryBranchCommit[]|"loading"|string|nil
 ---@field commit_request AtlasRequestScope|nil
@@ -43,7 +45,7 @@ local states = {}
 local M = {
 	key = "branches",
 	label = "Branches",
-	icon = icons.pulls("branch"),
+	icon = icons.get("branch"),
 }
 local namespace = vim.api.nvim_create_namespace("atlas.repository.branches")
 
@@ -122,7 +124,10 @@ end
 ---@param branch AtlasRepositoryBranch
 local function load_history(state, branch)
 	if not state.root then
-		notify.warn("Configure this repository under pulls.repo_config.paths to browse its commits")
+		notify.warn(
+			state.root_loading and "Resolving local repository..."
+				or "Configure this repository under pulls.repo_config.paths to browse its commits"
+		)
 		return
 	end
 	clear_commits(state)
@@ -146,11 +151,6 @@ local function load(state, page)
 		return
 	end
 	local repository = state.provider.capabilities.repository
-	if not repository then
-		state.branches = "Branches are not available for this provider"
-		render(state)
-		return
-	end
 	local expanded = state.expanded
 	clear_commits(state)
 	state.requests.cancel()
@@ -195,7 +195,7 @@ end
 ---@param state RepositoryBranches
 local function search(state)
 	local repository = state.provider.capabilities.repository
-	if not repository or state.busy then
+	if state.busy then
 		return
 	end
 	local branches = state.branches
@@ -267,16 +267,15 @@ local function open_diff(state)
 	end
 	local root = state.root
 	if not root then
-		notify.warn("Configure this repository under pulls.repo_config.paths to open diffs")
+		notify.warn(
+			state.root_loading and "Resolving local repository..."
+				or "Configure this repository under pulls.repo_config.paths to open diffs"
+		)
 		return
 	end
 	local commit = selection.commit
 	if commit then
-		if not commit.parent then
-			notify.warn("This commit has no local parent to compare")
-			return
-		end
-		diff.open_range({ root = root, base = commit.parent, head = commit.hash }, function(err)
+		diff.open_commit({ root = root, commit = commit.hash }, function(err)
 			if err then
 				notify.error(err)
 			end
@@ -285,9 +284,6 @@ local function open_diff(state)
 	end
 
 	local repository = state.provider.capabilities.repository
-	if not repository then
-		return
-	end
 	local branch = selection.branch
 	local branches = state.branches
 	---@cast branches AtlasRepositoryBranch[]
@@ -362,7 +358,10 @@ local function checkout_branch(state, branch)
 	end
 	local root = state.root
 	if not root then
-		notify.warn("Configure this repository under pulls.repo_config.paths to check out branches")
+		notify.warn(
+			state.root_loading and "Resolving local repository..."
+				or "Configure this repository under pulls.repo_config.paths to check out branches"
+		)
 		return
 	end
 	state.busy = true
@@ -392,7 +391,7 @@ local function delete_branch(state)
 		return
 	end
 	local repository = state.provider.capabilities.repository
-	if not repository or not repository.delete_branch then
+	if not repository.delete_branch then
 		return
 	end
 	vim.ui.input({
@@ -432,7 +431,8 @@ function M.open(opts)
 		branches = "loading",
 		page = 1,
 		cursors = {},
-		root = git.resolve(opts.repo),
+		root_request = requests.new(),
+		root_loading = true,
 		busy = false,
 		line_map = {},
 		requests = requests.new(),
@@ -523,13 +523,27 @@ function M.open(opts)
 		end,
 	})
 	load(state)
+	state.root_request.run(function(done)
+		return git.resolve(opts.repo, done)
+	end, function(root)
+		if states[state.buf] ~= state or not utils.window.has_buffer(state.win, state.buf) then
+			return
+		end
+		state.root = root
+		state.root_loading = false
+		render(state)
+	end)
 end
 
 ---@param buf integer
 function M.close(buf)
 	local state = states[buf]
+	if not state then
+		return
+	end
 	info.close(state.win)
 	states[buf] = nil
+	state.root_request.cancel()
 	clear_commits(state)
 	state.requests.cancel()
 	state.spinner:stop()

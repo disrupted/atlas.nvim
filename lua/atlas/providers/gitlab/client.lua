@@ -51,15 +51,15 @@ local function gitlab_config()
 	return config.provider_options("gitlab") or {}
 end
 
----@return string base_url, string|nil err
-local function get_auth()
+---@return string|nil
+local function auth_error()
 	local cfg = gitlab_config()
 	local base_url = cfg.base_url
 	local token = cfg.token
 	if not base_url or base_url == "" or not token or token == "" then
-		return "", "Missing GitLab credentials in config"
+		return "Missing GitLab credentials in config"
 	end
-	return base_url, nil
+	return nil
 end
 
 ---@return string
@@ -110,6 +110,11 @@ function M.delete_memory_cache(key)
 	memory_cache.delete(key)
 end
 
+---@param prefix string
+function M.clear_memory_cache(prefix)
+	memory_cache.clear_prefix(prefix)
+end
+
 ---@param key string
 ---@return any|nil, boolean
 function M.get_cache(key)
@@ -147,7 +152,7 @@ M.url_encode = utils.url_encode
 ---@param ctx? table
 ---@return { job_id: integer, cancel: fun() }|nil
 function M.request(method, endpoint, data, on_done, ctx)
-	local _, auth_err = get_auth()
+	local auth_err = auth_error()
 	if auth_err then
 		logger.logerror("GitLab auth missing", { error = auth_err })
 		on_done(nil, auth_err)
@@ -205,7 +210,7 @@ end
 ---@param ctx? table
 ---@return { job_id: integer, cancel: fun() }|nil
 function M.request_text(method, endpoint, on_done, ctx)
-	local _, auth_err = get_auth()
+	local auth_err = auth_error()
 	if auth_err then
 		logger.logerror("GitLab auth missing", { error = auth_err })
 		on_done(nil, auth_err)
@@ -235,7 +240,7 @@ end
 ---@param ctx? table
 ---@return { job_id: integer, cancel: fun() }|nil
 function M.graphql(query, variables, on_done, ctx)
-	local _, auth_err = get_auth()
+	local auth_err = auth_error()
 	if auth_err then
 		logger.logerror("GitLab auth missing", { error = auth_err })
 		on_done(nil, auth_err)
@@ -260,7 +265,7 @@ function M.graphql(query, variables, on_done, ctx)
 	end)
 end
 
----@param endpoint string
+---@param endpoint string Endpoint without pagination parameters.
 ---@param on_done fun(result: table[]|nil, err: string|nil)
 ---@param ctx? table
 ---@return { cancel: fun() }
@@ -269,17 +274,14 @@ function M.fetch_all_pages(endpoint, on_done, ctx)
 	local current
 	local cancelled = false
 	local page = 1
-	if not endpoint:find("[?&]per_page=") then
-		local separator = endpoint:find("?", 1, true) and "&" or "?"
-		endpoint = endpoint .. separator .. "per_page=100"
-	end
 	local separator = endpoint:find("?", 1, true) and "&" or "?"
+	endpoint = endpoint .. separator .. "per_page=100"
 
 	local function fetch_page()
 		if cancelled then
 			return
 		end
-		current = M.request("GET", string.format("%s%spage=%d", endpoint, separator, page), nil, function(result, err)
+		current = M.request("GET", string.format("%s&page=%d", endpoint, page), nil, function(result, err)
 			if cancelled then
 				return
 			end

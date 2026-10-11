@@ -14,9 +14,8 @@ local function item(action_id, map_item)
 	if keys == nil then
 		return nil
 	end
-	local out = vim.tbl_deep_extend("force", {}, map_item)
-	out.key = #keys == 1 and keys[1] or keys
-	return out
+	map_item.key = #keys == 1 and keys[1] or keys
+	return map_item
 end
 
 ---@param action_id AtlasKeymapActionId|string
@@ -31,7 +30,7 @@ end
 
 ---@param commit PullsCommit
 ---@return string[]
-function M.format_commit_lines(commit)
+local function format_commit_lines(commit)
 	local message = tostring(commit.message or ""):gsub("\r\n", "\n")
 	local lines = vim.split(message, "\n", { plain = true })
 	while #lines > 0 and vim.trim(lines[#lines]) == "" do
@@ -54,6 +53,7 @@ function M.setup(buf, _refresh)
 		items,
 		item("ui.show_details", {
 			desc = "Show full commit message (stays open while navigating)",
+			index = 1,
 			opts = { nowait = true, silent = true },
 			callback = function()
 				if not detail.win then
@@ -66,7 +66,7 @@ function M.setup(buf, _refresh)
 						if entry and entry.commit then
 							return {
 								title = " Commit " .. (entry.commit.short_hash or entry.commit.hash):sub(1, 8) .. " ",
-								lines = M.format_commit_lines(entry.commit),
+								lines = format_commit_lines(entry.commit),
 								filetype = "markdown",
 							}
 						end
@@ -75,7 +75,7 @@ function M.setup(buf, _refresh)
 			end,
 		})
 	)
-	help.register("Detail", items, { index = 212, buffer = buf })
+	help.register("Detail", items, { index = 2, buffer = buf })
 end
 
 ---@param buf integer

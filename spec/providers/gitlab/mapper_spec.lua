@@ -2,30 +2,46 @@ local issue_mapper = require("atlas.issues.providers.gitlab.api.mapper")
 local mapper = require("atlas.pulls.providers.gitlab.api.mapper")
 
 describe("GitLab issue mapper", function()
-	it("maps provider fields directly onto issues", function()
-		local issue = issue_mapper.to_issue({
+	it("maps REST and GraphQL issues to the same fields", function()
+		---@type table<string, any>
+		local raw = {
 			iid = 42,
 			references = { full = "group/project#42" },
 			title = "Provider types",
 			state = "opened",
-		})
+			issue_type = "issue",
+			assignees = { { id = 8, name = "Assignee", username = "assignee" } },
+			author = { id = 9, name = "Reporter", username = "reporter" },
+		}
+		local rest = issue_mapper.to_issue(raw)
 
-		assert.are.equal("group/project", issue.project_path)
-		assert.are.equal(42, issue.iid)
+		raw.iid = "42"
+		raw.issue_type = "ISSUE"
+		raw.reference = raw.references.full
+		raw.references = nil
+		raw.assignees[1].id = "gid://gitlab/User/8"
+		raw.assignees = { nodes = raw.assignees }
+		raw.author.id = "gid://gitlab/User/9"
+		local graphql = assert(issue_mapper.to_issue(raw))
+
+		assert.same(rest, graphql)
 	end)
 
-	it("maps only supplemental issue details", function()
+	it("maps issue details and editable milestone IDs", function()
 		local details = issue_mapper.to_issue_details({
 			iid = 7,
 			references = { full = "group/project#7" },
 			title = "Details",
 			description = "Hydrated description",
 			state = "opened",
+			milestone = { id = "gid://gitlab/Milestone/15", title = "Next" },
 		})
 
 		assert.is_nil(details.project_path)
 		assert.is_nil(details.iid)
 		assert.are.equal("Hydrated description", details.description)
+		assert.are.equal("Details", details.title)
+		assert.same({ id = 15, title = "Next" }, details.milestone)
 	end)
 end)
 

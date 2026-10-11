@@ -8,6 +8,7 @@
 
 ---@class Issue : IssueRef
 ---@field title string
+---@field icon AtlasIconStyle|nil
 ---@field status string|nil
 ---@field status_id string|nil
 ---@field type IssueType|nil
@@ -25,6 +26,7 @@
 ---@field is_subscribed boolean|nil
 
 ---@class IssueDetails
+---@field title string|nil
 ---@field description string
 ---@field assignees AtlasUser[]
 ---@field labels IssueLabel[]
@@ -43,6 +45,7 @@
 --------------------------------------------------------------------------------
 
 ---@class IssueMilestone
+---@field id integer|nil
 ---@field title string
 
 --------------------------------------------------------------------------------
@@ -60,6 +63,7 @@
 ---@class IssueType
 ---@field id string
 ---@field name string
+---@field icon AtlasIconStyle|nil
 ---@field description string|nil
 ---@field subtask boolean
 
@@ -70,6 +74,7 @@
 ---@class IssueTransition
 ---@field id string
 ---@field name string
+---@field icon AtlasIconStyle|nil
 ---@field to_status_id string|nil
 ---@field to_status_name string|nil
 ---@field to_status_category string|nil
@@ -92,10 +97,6 @@
 ---@field reactions table<string, number>|nil
 ---@field deleted boolean|nil
 ---@field _raw table|nil
-
---------------------------------------------------------------------------------
--- History
---------------------------------------------------------------------------------
 
 --------------------------------------------------------------------------------
 -- Activity / reactions

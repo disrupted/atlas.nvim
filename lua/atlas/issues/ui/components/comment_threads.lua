@@ -1,35 +1,17 @@
 local M = {}
 
-local threadsv2 = require("atlas.ui.components.threadsv2")
+local threads = require("atlas.ui.components.threads")
 local emojis = require("atlas.ui.shared.emojis")
 local helper = require("atlas.issues.ui.presentation")
 local icons = require("atlas.ui.shared.icons")
 local utils = require("atlas.ui.shared.utils")
 
----@param author AtlasUser|nil
----@return string
-local function author_name(author)
-	if author == nil then
-		return "Unknown"
-	end
-	if author.name and author.name ~= "" then
-		return author.name
-	end
-	if author.username and author.username ~= "" then
-		return author.username
-	end
-	if author.id and author.id ~= "" then
-		return author.id
-	end
-	return "Unknown"
-end
-
 ---@param comment IssueComment
 ---@param reaction_options IssueReactionOption[]|nil
----@return AtlasThreadV2Item
+---@return AtlasThreadItem
 local function comment_item(comment, reaction_options)
 	local deleted = comment.deleted == true
-	local content = deleted and "(deleted comment)" or utils.strip_markup(comment.body or "")
+	local content = deleted and "(deleted comment)" or (comment.body or "")
 	if content == "" then
 		content = "(empty comment)"
 	end
@@ -40,25 +22,29 @@ local function comment_item(comment, reaction_options)
 		table.insert(footer_items, { text = reactions, highlights = reaction_highlights })
 	end
 
-	local author = author_name(comment.author)
-	local user_icon = icons.general("user")
+	local author = helper.person_name(comment.author)
+	local author_hl = helper.person_hl(author)
+	local user_icon = icons.get("user")
 	return {
 		icon = user_icon,
+		icon_hl = author_hl,
 		author = author,
-		additional = utils.relative_time(comment.created),
+		author_hl = author_hl,
+		additional = { { utils.relative_time(comment.created), "AtlasTextMuted" } },
 		content = content,
+		markdown = not deleted,
 		footer_items = footer_items,
 		children = {},
 		line_map = { comment = comment, entity_kind = "comment" },
-		meta = { author = author, deleted = deleted },
+		meta = { deleted = deleted },
 	}
 end
 
 ---@param padding_x integer
----@param opts IssuesCommentThreadRenderOptions
----@return AtlasThreadV2RenderOpts
-local function render_options(padding_x, opts)
-	local max_lines = opts.content_max_lines
+---@param max_lines integer|fun(comment: IssueComment): integer|nil
+---@param truncated_key string|nil
+---@return AtlasThreadRenderOpts
+local function render_options(padding_x, max_lines, truncated_key)
 	if type(max_lines) == "function" then
 		local callback = max_lines
 		max_lines = function(item)
@@ -70,16 +56,7 @@ local function render_options(padding_x, opts)
 	return {
 		padding_x = padding_x,
 		content_max_lines = max_lines,
-		content_truncated_key = opts.content_truncated_key,
-		author_hl = function(item)
-			return helper.person_hl(item.meta.author)
-		end,
-		icon_hl_fn = function(item)
-			return helper.person_hl(item.meta.author)
-		end,
-		additional_hl = function()
-			return "AtlasTextMuted"
-		end,
+		content_truncated_key = truncated_key,
 		content_hl = function(item, row)
 			if item.meta.deleted then
 				return { { start_col = 0, end_col = #row, hl_group = "AtlasTextMuted" } }
@@ -144,7 +121,7 @@ end
 ---@param node IssuesCommentThreadNode
 ---@param opts IssuesCommentThreadRenderOptions
 ---@param root IssueComment|nil
----@return AtlasThreadV2Item
+---@return AtlasThreadItem
 local function build_item(node, opts, root)
 	root = root or node.comment
 	local item = comment_item(node.comment, opts.reaction_options)
@@ -182,18 +159,18 @@ function M.render(nodes, width, opts)
 	for _, node in ipairs(nodes) do
 		table.insert(items, build_item(node, opts, nil))
 	end
-	return threadsv2.render(items, width, render_options(opts.padding_x or 1, opts))
+	return threads.render_comments(
+		items,
+		width,
+		render_options(opts.padding_x or 1, opts.content_max_lines, opts.content_truncated_key)
+	)
 end
 
 ---@param comment IssueComment
 ---@param width integer
----@return AtlasMarkdownEditorPreview
+---@return AtlasEditorPreview
 function M.render_comment(comment, width)
-	local lines, highlights = M.render({ { comment = comment, children = {} } }, width, {
-		expanded = function()
-			return true
-		end,
-	})
+	local lines, highlights = threads.render({ comment_item(comment, nil) }, width, render_options(1, nil, nil))
 	return { lines = lines, highlights = highlights }
 end
 

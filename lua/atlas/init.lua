@@ -3,24 +3,30 @@ local M = {}
 local config = require("atlas.config")
 local logger = require("atlas.core.logger")
 local notify = require("atlas.core.notify")
-local issues_highlights = require("atlas.issues.ui.highlights")
-local pulls_highlights = require("atlas.pulls.ui.highlights")
+local highlights = require("atlas.ui.highlights")
 local picker = require("atlas.ui.picker")
 local providers = require("atlas.providers")
+local request_scope = require("atlas.core.requests")
 
-local function setup_highlights()
-	pulls_highlights.setup()
-	issues_highlights.setup()
-end
+local requests = request_scope.new()
+
+vim.api.nvim_create_autocmd("User", {
+	group = vim.api.nvim_create_augroup("AtlasPendingOpen", { clear = true }),
+	pattern = "AtlasUIClosed",
+	callback = function()
+		requests.cancel()
+		requests = request_scope.new()
+	end,
+})
 
 ---@param opts AtlasConfig|nil
 function M.setup(opts)
 	config.setup(opts)
-	setup_highlights()
+	highlights.setup()
 
 	vim.api.nvim_create_autocmd("ColorScheme", {
 		group = vim.api.nvim_create_augroup("AtlasHighlights", { clear = true }),
-		callback = setup_highlights,
+		callback = highlights.setup,
 	})
 
 	require("atlas.commands").setup()
@@ -52,7 +58,7 @@ end
 
 ---@param domain "pulls"|"issues"
 ---@param id string
----@param opts? { initial_view?: table }
+---@param opts { initial_view: table|nil }|nil
 local function open_with_provider(domain, id, opts)
 	local provider = load_provider(domain, id)
 	if provider == nil then
@@ -71,8 +77,10 @@ end
 
 ---@param domain "pulls"|"issues"
 ---@param provider_id string|nil
----@param opts? { initial_view?: table }
+---@param opts { initial_view: table|nil }|nil
 function M.open(domain, provider_id, opts)
+	requests.cancel()
+	requests = request_scope.new()
 	logger.loginfo("Atlas open requested", { domain = domain, provider_id = provider_id })
 
 	if provider_id ~= nil and provider_id ~= "" then
@@ -90,20 +98,21 @@ function M.open(domain, provider_id, opts)
 		return
 	end
 
-	picker.select({
-		title = "Select provider:",
-		items = ids,
-		format_item = function(id)
-			local provider = providers[id]
-			return provider and provider.name or id
-		end,
-		on_select = function(choice)
-			if choice == nil then
-				return
-			end
+	requests.run(function(done)
+		picker.select({
+			title = "Select provider:",
+			items = ids,
+			format_item = function(id)
+				local provider = providers[id]
+				return provider and provider.name or id
+			end,
+			on_select = done,
+		})
+	end, function(choice)
+		if choice then
 			open_with_provider(domain, choice, opts)
-		end,
-	})
+		end
+	end)
 end
 
 return M

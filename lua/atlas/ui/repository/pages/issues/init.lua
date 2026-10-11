@@ -30,9 +30,9 @@ local utils = require("atlas.ui.shared.utils")
 ---@field summary_requests AtlasRequestScope
 ---@field spinner SpinnerInstance
 ---@field group integer
----@field keymaps table<integer, AtlasHelpKeyItem[]>
+---@field keymaps table<integer, table<string, AtlasHelpKeyItem[]>>
 
-local M = { key = "issues", label = "Issues", icon = icons.issues("issue") }
+local M = { key = "issues", label = "Issues", icon = icons.get("issue") }
 local namespace = vim.api.nvim_create_namespace("atlas.repository.issues")
 ---@type table<integer, RepositoryIssues>
 local states = {}
@@ -260,20 +260,23 @@ end
 ---@param buf integer
 ---@param actions table[]
 local function register(state, buf, actions)
-	local items = {}
+	local groups = { General = {}, Filters = {} }
 	for _, action in ipairs(actions) do
-		local keys = action[1]
+		local keys = action.key
 		if keys and #keys > 0 then
+			local items = groups[action.group or "General"]
 			items[#items + 1] = {
 				key = keys,
-				desc = action[2],
-				callback = action[3],
+				desc = action.desc,
+				index = action.index,
+				callback = action.callback,
 				opts = { silent = true, nowait = true },
 			}
 		end
 	end
-	state.keymaps[buf] = items
-	help.register("Issues", items, { buffer = buf })
+	state.keymaps[buf] = groups
+	help.register("General", groups.General, { buffer = buf, index = 1 })
+	help.register("Filters", groups.Filters, { buffer = buf, index = 2 })
 end
 
 ---@param opts { buf: integer, win: integer, sidebar_buf: integer, repo: AtlasRepositoryDetails, provider: PullsProvider|IssuesProvider, statusline: AtlasStatusline }
@@ -310,33 +313,38 @@ function M.open(opts)
 	vim.wo[state.win].wrap = false
 	local actions = {
 		{
-			resolver.resolve("ui.refresh"),
-			"Refresh issues",
-			function()
+			key = resolver.resolve("ui.refresh"),
+			desc = "Refresh issues",
+			callback = function()
 				state.page, state.cursors = 1, {}
 				load(state, true)
 			end,
+			index = 80,
 		},
 		{
-			resolver.resolve("ui.search"),
-			"Search this page",
-			function()
+			key = resolver.resolve("ui.search"),
+			desc = "Search this page",
+			group = "Filters",
+			callback = function()
 				search(state)
 			end,
+			index = 1,
 		},
 		{
-			resolver.resolve("pulls.toggle_repo_issue_state"),
-			"Toggle open/closed issues",
-			function()
+			key = { "t" },
+			desc = "Toggle open/closed issues",
+			group = "Filters",
+			callback = function()
 				state.filter = state.filter == "open" and "closed" or "open"
 				state.page, state.cursors = 1, {}
 				load(state)
 			end,
+			index = 10,
 		},
 		{
-			resolver.resolve("ui.next_page"),
-			"Next issues",
-			function()
+			key = resolver.resolve("ui.next_page"),
+			desc = "Next issues",
+			callback = function()
 				if state.issues == "loading" or not state.next_cursor then
 					return
 				end
@@ -344,16 +352,18 @@ function M.open(opts)
 				state.cursors[state.page] = state.next_cursor
 				load(state)
 			end,
+			index = 16,
 		},
 		{
-			resolver.resolve("ui.previous_page"),
-			"Previous issues",
-			function()
+			key = resolver.resolve("ui.previous_page"),
+			desc = "Previous issues",
+			callback = function()
 				if state.issues ~= "loading" and state.page > 1 then
 					state.page = state.page - 1
 					load(state)
 				end
 			end,
+			index = 15,
 		},
 	}
 	register(state, state.sidebar_buf, actions)
@@ -363,21 +373,23 @@ function M.open(opts)
 	end
 	vim.list_extend(actions, {
 		{
-			panel_keys,
-			"Open issue panel",
-			function()
+			key = panel_keys,
+			desc = "Open issue panel",
+			callback = function()
 				open_panel(state)
 			end,
+			index = 1,
 		},
 		{
-			resolver.resolve("ui.open_in_browser"),
-			"Open issue in browser",
-			function()
+			key = resolver.resolve("ui.open_in_browser"),
+			desc = "Open issue in browser",
+			callback = function()
 				local issue = current(state)
 				if issue and issue.url and issue.url ~= "" then
 					vim.ui.open(issue.url)
 				end
 			end,
+			index = 4,
 		},
 	})
 	register(state, state.buf, actions)
@@ -414,8 +426,10 @@ function M.close(buf)
 	state.spinner:stop()
 	state.statusline:clear_notice()
 	vim.api.nvim_del_augroup_by_id(state.group)
-	for buffer, items in pairs(state.keymaps) do
-		help.remove("Issues", items, { buffer = buffer })
+	for buffer, groups in pairs(state.keymaps) do
+		for group, items in pairs(groups) do
+			help.remove(group, items, { buffer = buffer })
+		end
 	end
 	if utils.window.valid(state.win) then
 		vim.wo[state.win].cursorline = false

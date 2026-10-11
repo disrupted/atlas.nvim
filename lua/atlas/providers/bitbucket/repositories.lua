@@ -1,4 +1,8 @@
-local M = {}
+local M = {
+	-- fetch_releases = nil,
+	-- fetch_release = nil,
+	-- fetch_issue_summary = nil,
+}
 
 local service = require("atlas.providers.bitbucket.client")
 local config = require("atlas.config")
@@ -100,9 +104,14 @@ local function fetch_readme(owner, repo_name, ref, readme_path, on_done)
 		path = "README.md"
 	end
 
-	local encoded_ref = ref:gsub(" ", "%%20")
-	local encoded_path = path:gsub(" ", "%%20")
-	local endpoint = string.format("/repositories/%s/%s/src/%s/%s", owner, repo_name, encoded_ref, encoded_path)
+	local encoded_path = path:gsub("[^/]+", url_encode)
+	local endpoint = string.format(
+		"/repositories/%s/%s/src/%s/%s",
+		url_encode(owner),
+		url_encode(repo_name),
+		url_encode(ref),
+		encoded_path
+	)
 
 	return service.request_text("GET", endpoint, { Accept = "text/plain" }, nil, function(result, err)
 		if err ~= nil then
@@ -131,13 +140,11 @@ function M.fetch_workspace_repositories(workspace, search, on_done)
 	end
 	local query_prefix = ""
 	if search ~= "" then
-		local escaped_term = search:gsub('"', '\\"')
-		local q_expression = string.format('name~"%s"', escaped_term)
-		local encoded_q = q_expression:gsub('"', "%%22"):gsub(" ", "%%20")
-		query_prefix = string.format("q=%s&", encoded_q)
+		query_prefix = "q=" .. url_encode("name~" .. vim.json.encode(search)) .. "&"
 	end
 
-	local endpoint = string.format("/repositories/%s?%ssort=-updated_on&pagelen=50", workspace, query_prefix)
+	local endpoint =
+		string.format("/repositories/%s?%ssort=-updated_on&pagelen=50", url_encode(workspace), query_prefix)
 
 	return service.request("GET", endpoint, nil, nil, function(result, err)
 		if err then
@@ -145,7 +152,7 @@ function M.fetch_workspace_repositories(workspace, search, on_done)
 			return
 		end
 
-		local values = (result or {}).values or {}
+		local values = result.values or {}
 		---@type AtlasRepositoryDetails[]
 		local repositories = {}
 		for _, raw in ipairs(values) do
@@ -164,7 +171,7 @@ end
 ---@param opts PullsFetchOpts
 ---@param on_done fun(repositories: BitbucketRepoTarget[]|nil, err: string|nil)
 ---@return { cancel: fun() }|nil
-function M.fetch_project_repositories(project, opts, on_done)
+local function fetch_project_repositories(project, opts, on_done)
 	local workspace = project.workspace
 	local project_key = project.project
 
@@ -191,7 +198,7 @@ function M.fetch_project_repositories(project, opts, on_done)
 			table.insert(repositories, { workspace = workspace, repo = raw.slug })
 		end
 
-		service.set_cache(cache_key, repositories, service.cache_ttl())
+		service.set_cache(cache_key, repositories)
 		on_done(repositories, nil)
 	end, {
 		action = "Fetch project repositories",
@@ -215,7 +222,7 @@ function M.resolve_targets(targets, opts, on_done)
 				return nil
 			end
 			---@cast target BitbucketProjectTarget
-			return M.fetch_project_repositories(target, opts, done)
+			return fetch_project_repositories(target, opts, done)
 		end
 	end
 
@@ -251,7 +258,8 @@ function M.fetch_details(repo, on_done)
 		return nil
 	end
 
-	local endpoint = string.format("/repositories/%s/%s", owner, repo_name)
+	local endpoint =
+		string.format("/repositories/%s/%s?fields=%%2Bmainbranch.target.hash", url_encode(owner), url_encode(repo_name))
 	local requests = request_scope.new()
 	requests.run(function(done)
 		return service.request("GET", endpoint, nil, nil, done, {
@@ -267,7 +275,8 @@ function M.fetch_details(repo, on_done)
 
 		local detail = to_repo_details(result, owner)
 		local readme_path = configured_readme_path(repo)
-		local ref = detail.default_branch or ""
+		local mainbranch = json.safe_table(result.mainbranch)
+		local ref = json.safe_str(json.safe_table(mainbranch.target).hash) or ""
 
 		requests.run(function(done)
 			return fetch_readme(owner, repo_name, ref, readme_path, done)
@@ -281,6 +290,22 @@ function M.fetch_details(repo, on_done)
 	return requests
 end
 
+---@param base string
+---@param opts { cursor?: string, search?: string }
+---@return string
+local function refs_url(base, opts)
+	local sep = base:find("?") and "&" or "?"
+	local url = string.format("%s%spagelen=100", base, sep)
+	if opts.search and opts.search ~= "" then
+		url = url .. "&q=" .. url_encode("name~" .. vim.json.encode(opts.search))
+	end
+	local cursor = opts.cursor
+	if cursor and cursor ~= "" then
+		url = cursor
+	end
+	return url
+end
+
 ---@param repo AtlasRepository
 ---@param opts { cursor?: string, search?: string }
 ---@param on_done fun(branches: AtlasRepositoryBranch[]|nil, err: string|nil, next_cursor: string|nil)
@@ -290,19 +315,11 @@ function M.fetch_branches(repo, opts, on_done)
 	local branches_url = repo.branches_url
 		or string.format("/repositories/%s/%s/refs/branches", url_encode(repo.owner), url_encode(repo.repo_name))
 
-	local sep = branches_url:find("?") and "&" or "?"
-	local url = string.format("%s%spagelen=100", branches_url, sep)
-	if opts.search and opts.search ~= "" then
-		url = url .. "&q=" .. url_encode("name~" .. vim.json.encode(opts.search))
-	end
-	local cursor = opts.cursor
-	if cursor and cursor ~= "" then
-		url = cursor
-	end
+	local url = refs_url(branches_url, opts)
 
 	return service.request("GET", url, nil, nil, function(result, err)
-		if err ~= nil or type(result) ~= "table" then
-			on_done(nil, err or "Invalid paginated response")
+		if err then
+			on_done(nil, err)
 			return
 		end
 
@@ -342,19 +359,11 @@ function M.fetch_tags(repo, opts, on_done)
 	local tags_url = repo.tags_url
 		or string.format("/repositories/%s/%s/refs/tags", url_encode(repo.owner), url_encode(repo.repo_name))
 
-	local sep = tags_url:find("?") and "&" or "?"
-	local url = string.format("%s%spagelen=100", tags_url, sep)
-	if opts.search and opts.search ~= "" then
-		url = url .. "&q=" .. url_encode("name~" .. vim.json.encode(opts.search))
-	end
-	local cursor = opts.cursor
-	if cursor and cursor ~= "" then
-		url = cursor
-	end
+	local url = refs_url(tags_url, opts)
 
 	return service.request("GET", url, nil, nil, function(result, err)
-		if err ~= nil or type(result) ~= "table" then
-			on_done(nil, err or "Invalid paginated response")
+		if err then
+			on_done(nil, err)
 			return
 		end
 

@@ -25,9 +25,9 @@ local utils = require("atlas.ui.shared.utils")
 ---@field requests AtlasRequestScope
 ---@field spinner SpinnerInstance
 ---@field group integer
----@field keymaps table<integer, AtlasHelpKeyItem[]>
+---@field keymaps table<integer, table<string, AtlasHelpKeyItem[]>>
 
-local M = { key = "builds", label = "Builds", icon = icons.pulls("pipeline") }
+local M = { key = "builds", label = "Builds", icon = icons.get("pipeline") }
 local namespace = vim.api.nvim_create_namespace("atlas.repository.builds")
 ---@type table<integer, RepositoryBuilds>
 local states = {}
@@ -176,19 +176,22 @@ end
 ---@param buf integer
 ---@param actions table[]
 local function register(state, buf, actions)
-	local items = {}
+	local groups = { General = {}, Filters = {} }
 	for _, action in ipairs(actions) do
-		if action[1] and #action[1] > 0 then
+		if action.key and #action.key > 0 then
+			local items = groups[action.group or "General"]
 			items[#items + 1] = {
-				key = action[1],
-				desc = action[2],
-				callback = action[3],
+				key = action.key,
+				desc = action.desc,
+				index = action.index,
+				callback = action.callback,
 				opts = { silent = true, nowait = true },
 			}
 		end
 	end
-	state.keymaps[buf] = items
-	help.register("Builds", items, { buffer = buf })
+	state.keymaps[buf] = groups
+	help.register("General", groups.General, { buffer = buf, index = 1 })
+	help.register("Filters", groups.Filters, { buffer = buf, index = 2 })
 end
 
 ---@param opts { buf: integer, win: integer, sidebar_buf: integer, repo: AtlasRepositoryDetails, provider: PullsProvider|IssuesProvider, statusline: AtlasStatusline }
@@ -221,26 +224,29 @@ function M.open(opts)
 	end
 	local actions = {
 		{
-			resolver.resolve("ui.refresh"),
-			"Refresh builds",
-			function()
+			key = resolver.resolve("ui.refresh"),
+			desc = "Refresh builds",
+			callback = function()
 				load(state)
 			end,
+			index = 80,
 		},
 		{
-			"b",
-			"Change build branch",
-			function()
+			key = "b",
+			desc = "Change build branch",
+			group = "Filters",
+			callback = function()
 				change_branch(state)
 			end,
+			index = 1,
 		},
 	}
 	register(state, state.sidebar_buf, actions)
 	vim.list_extend(actions, {
 		{
-			resolver.resolve("ui.select"),
-			"Open build and logs",
-			function()
+			key = resolver.resolve("ui.select"),
+			desc = "Open build and logs",
+			callback = function()
 				local run = current(state)
 				if run then
 					pipelines.open({
@@ -250,11 +256,12 @@ function M.open(opts)
 					}, state.provider)
 				end
 			end,
+			index = 1,
 		},
 		{
-			resolver.resolve("ui.open_in_browser"),
-			"Open build in browser",
-			function()
+			key = resolver.resolve("ui.open_in_browser"),
+			desc = "Open build in browser",
+			callback = function()
 				local run = current(state)
 				if run and run.url then
 					vim.ui.open(run.url)
@@ -262,6 +269,7 @@ function M.open(opts)
 					notify.info("This build has no browser URL")
 				end
 			end,
+			index = 4,
 		},
 	})
 	register(state, state.buf, actions)
@@ -286,8 +294,10 @@ function M.close(buf)
 	state.spinner:stop()
 	state.statusline:clear_notice()
 	vim.api.nvim_del_augroup_by_id(state.group)
-	for buffer, items in pairs(state.keymaps) do
-		help.remove("Builds", items, { buffer = buffer })
+	for buffer, groups in pairs(state.keymaps) do
+		for group, items in pairs(groups) do
+			help.remove(group, items, { buffer = buffer })
+		end
 	end
 	if utils.buffer.valid(state.buf) then
 		vim.api.nvim_buf_clear_namespace(state.buf, namespace, 0, -1)

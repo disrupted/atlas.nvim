@@ -11,17 +11,9 @@
 
 ---@class PullsPage
 ---@field items PullRequest[]
+---@field query string|nil
 ---@field next_cursor table<string, string>|nil
 ---@field total_pages integer|nil
-
----@class AtlasPullsCommentCompletionContext
----@field pr PullRequest
----@field details PullRequestDetails|nil
----@field comments PullsComment[]
----@field tasks PullsComment[]|nil
----@field reviewers PullsReviewer[]|nil
----@field conversation PullsComment[]|nil
----@field review_context PullsReviewContext|nil
 
 ---@class PullsProvider
 ---@field id string
@@ -35,30 +27,38 @@
 
 ---@class PullsProviderCapabilities : AtlasProviderCapabilities
 ---@field core PullsCoreCapability
+---@field write PullsWriteCapability|nil
 ---@field comments PullsCommentsCapability|nil
 ---@field reviews PullsReviewsCapability|nil
 ---@field tasks PullsTasksCapability|nil
 ---@field pipelines PullsPipelineBackend|nil
----@field actions PullsActionsCapability|nil
 ---@field ui PullsUICapability|nil
+
+---@class PullsMergeOpts
+---@field method "merge"|"squash"
+---@field delete_source_branch boolean
+---@field subject string|nil
+---@field body string|nil
 
 ---@class PullsCoreCapability
 ---@field fetch_pullrequests fun(view: AtlasPullsViewConfig, opts: PullsFetchOpts, on_done: fun(page: PullsPage, err: string[]|nil)): { cancel: fun() }|nil Fetch the view, including when its states have not been initialized by the dashboard.
 ---@field fetch_by_refs fun(refs: PullRequestRef[], opts: PullsFetchOpts, on_done: fun(pulls: PullRequest[], err: string|nil)): { cancel: fun() }|nil
 ---@field fetch_pullrequest fun(ref: PullRequestRef, opts: PullsFetchOpts, on_done: fun(details: PullRequestDetails|nil, err: string|nil)): { cancel: fun() }|nil
 ---@field fetch_links (fun(pr: PullRequest, opts: { force_refresh: boolean|nil }|nil, on_done: fun(links: AtlasRelatedItem[]|nil, err: string|nil)): { cancel: fun() }|nil)|nil
----@field create_pr fun(opts: PullsCreatePROpts, on_done: fun(result: PullsCreatePRResult|nil, err: string|nil)): { cancel: fun() }|nil
----@field update_title fun(pr: PullRequest, title: string, on_done: fun(ok: boolean, err: string|nil)): { cancel: fun() }|nil
----@field update_description (fun(pr: PullRequest, description: string, on_done: fun(ok: boolean, err: string|nil)): { cancel: fun() }|nil)|nil
----@field set_draft fun(pr: PullRequest, draft: boolean, on_done: fun(ok: boolean, err: string|nil)): { cancel: fun() }|nil
 ---@field decline fun(pr: PullRequest, on_done: fun(ok: boolean, err: string|nil)): { cancel: fun() }|nil
----@field fetch_default_reviewers fun(opts: { repo_slug: string, repo_root: string|nil, head: string, base: string, pr: PullRequest|nil }, on_done: fun(reviewers: PullsCreatePRReviewer[]|nil, err: string|nil)): { cancel: fun() }|nil
+---@field merge fun(pr: PullRequest, opts: PullsMergeOpts, on_done: fun(ok: boolean, err: string|nil)): { cancel: fun() }|nil
 ---@field fetch_description fun(pr: PullRequest, opts: { force_refresh: boolean|nil }|nil, on_done: fun(description: string|nil, err: string|nil)): { cancel: fun() }|nil
----@field fetch_reviewers (fun(pr: PullRequest, opts: { force_refresh: boolean|nil }|nil, on_done: fun(reviewers: PullsReviewer[]|nil, err: string|nil)): { cancel: fun() }|nil)|nil
----@field update_reviewers fun(pr: PullRequest, reviewers: PullsCreatePRReviewer[], original: PullsCreatePRReviewer[], on_done: fun(ok: boolean, err: string|nil)): { cancel: fun() }|nil
+---@field fetch_reviewers fun(pr: PullRequest, opts: { force_refresh: boolean|nil }|nil, on_done: fun(reviewers: PullsReviewer[]|nil, err: string|nil)): { cancel: fun() }|nil
 ---@field fetch_merge_checks (fun(pr: PullRequest, opts: { force_refresh: boolean|nil }|nil, on_done: fun(checks: PullsMergeCheck[]|nil, err: string|nil)): { cancel: fun() }|nil)|nil
 ---@field fetch_diffstat (fun(pr: PullRequest, opts: { force_refresh: boolean|nil }|nil, on_done: fun(entries: PullsDiffstatEntry[]|nil, err: string|nil)): { cancel: fun() }|nil)|nil
 ---@field fetch_commits (fun(pr: PullRequest, opts: { force_refresh: boolean|nil }|nil, on_done: fun(commits: PullsCommit[]|nil, err: string|nil)): { cancel: fun() }|nil)|nil
+
+---@class PullsWriteCapability
+---@field create (fun(opts: PullsCreatePROpts, on_done: fun(result: PullsCreatePRResult|nil, err: string|nil)): { cancel: fun() }|nil)|nil
+---@field update (fun(pr: PullRequest, opts: PullsUpdatePROpts, on_done: fun(ok: boolean, err: string|nil)): { cancel: fun() }|nil)|nil
+---@field fetch_reviewer_candidates (fun(opts: { repo_slug: string, pr: PullRequest|nil }, on_done: fun(reviewers: PullsReviewerCandidate[]|nil, err: string|nil)): { cancel: fun() }|nil)|nil
+---@field fetch_labels (fun(repo_slug: string, on_done: fun(labels: PullsLabel[]|nil, err: string|nil)): { cancel: fun() }|nil)|nil
+---@field fetch_assignees (fun(repo_slug: string, on_done: fun(users: AtlasUser[]|nil, err: string|nil)): { cancel: fun() }|nil)|nil
 
 ---@class PullsAddCommentOpts
 ---@field parent PullsComment|nil          -- reply to this comment
@@ -69,7 +69,6 @@
 
 ---@class PullsCommentsCapability
 ---@field reaction_options PullsReactionOption[]|nil
----@field comment_completion (fun(context: AtlasPullsCommentCompletionContext): AtlasMarkdownCompletionProvider|nil)|nil
 ---@field fetch_conversation (fun(pr: PullRequest, opts: { force_refresh: boolean|nil }|nil, on_done: fun(items: PullsConversationItem[]|nil, err: string|nil)): { cancel: fun() }|nil)|nil
 ---@field add_comment (fun(pr: PullRequest, content: string, opts: PullsAddCommentOpts|nil, on_done: fun(comment: PullsComment|nil, err: string|nil)): { cancel: fun() }|nil)|nil
 ---@field edit_comment (fun(pr: PullRequest, comment: PullsComment, on_done: fun(comment: PullsComment|nil, err: string|nil)): { cancel: fun() }|nil)|nil
@@ -93,11 +92,6 @@
 ---@field add_task (fun(pr: PullRequest, content: string, parent: PullsComment|nil, on_done: fun(comment: PullsComment|nil, err: string|nil)): { cancel: fun() }|nil)|nil
 ---@field edit_task (fun(task: PullsComment, on_done: fun(task: PullsComment|nil, err: string|nil)): { cancel: fun() }|nil)|nil
 ---@field delete_task (fun(task: PullsComment, on_done: fun(ok: boolean, err: string|nil)): { cancel: fun() }|nil)|nil
-
----@class PullsActionsCapability
----@field items AtlasPullAction[]
----@field is_available fun(action_id: string, ctx: AtlasPullActionContext): boolean
----@field run fun(action_id: string, ctx: AtlasPullActionContext, on_done: fun(result: PullsActionResult|nil, err: string|nil)): boolean
 
 ---@class PullsUICapability
 ---@field detail PullsProviderDetail|nil

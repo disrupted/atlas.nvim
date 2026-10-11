@@ -1,25 +1,40 @@
+---@alias AtlasGitHubActionId
+---| AtlasPullActionId
+---| "reopen"
+---| "edit_assignees"
+---| "create_issue"
+---| "labels"
+---| "open_repo"
+---| "toggle_subscription"
+
 local M = {}
 
 local actions = require("atlas.pulls.actions")
 local action_utils = require("atlas.pulls.actions.utils")
 local icons = require("atlas.ui.shared.icons")
 local cli = require("atlas.providers.github.client")
-local notes = require("atlas.pulls.notes")
 local picker = require("atlas.ui.picker")
 local pullrequests = require("atlas.pulls.providers.github.api.pullrequests")
-local core_notify = require("atlas.core.notify")
 local users_api = require("atlas.providers.github.users")
 
----@param ctx AtlasPullActionContext
----@param level "loading"|"success"|"warn"|"error"|"info"
----@param message string
----@param duration integer|nil
-local function notify(ctx, level, message, duration)
-	if ctx.notify then
-		ctx.notify(level, message, duration)
-		return
+local notify = action_utils.notify
+
+---@param original table<string, boolean>
+---@param selected table<string, boolean>
+---@return string[] adds, string[] removes
+local function selection_diff(original, selected)
+	local adds, removes = {}, {}
+	for value in pairs(selected) do
+		if not original[value] then
+			table.insert(adds, value)
+		end
 	end
-	core_notify.show(level, message, { timeout = duration })
+	for value in pairs(original) do
+		if not selected[value] then
+			table.insert(removes, value)
+		end
+	end
+	return adds, removes
 end
 
 ---@type AtlasPullAction[]
@@ -33,12 +48,22 @@ end
 
 ---@param ctx AtlasPullActionContext
 ---@return boolean, string|nil
-local function review_available(ctx)
+local function repository_available(ctx)
 	if ctx.pr == nil then
 		return false, "No PR selected"
 	end
 	if ctx.pr.repo_full_name == "" then
 		return false, "Missing repository info"
+	end
+	return true, nil
+end
+
+---@param ctx AtlasPullActionContext
+---@return boolean, string|nil
+local function review_available(ctx)
+	local ok, err = repository_available(ctx)
+	if not ok then
+		return ok, err
 	end
 	if ctx.pr.state ~= "open" and ctx.pr.state ~= "draft" then
 		return false, "PR is not open"
@@ -49,11 +74,9 @@ end
 ---@param ctx AtlasPullActionContext
 ---@return boolean, string|nil
 local function merge_available(ctx)
-	if ctx.pr == nil then
-		return false, "No PR selected"
-	end
-	if ctx.pr.repo_full_name == "" then
-		return false, "Missing repository info"
+	local ok, err = repository_available(ctx)
+	if not ok then
+		return ok, err
 	end
 	if ctx.pr.state ~= "open" then
 		return false, "PR is not open"
@@ -62,55 +85,11 @@ local function merge_available(ctx)
 end
 
 ---@param ctx AtlasPullActionContext
----@param done fun(result: PullsActionResult|nil, err: string|nil)
-local function merge(ctx, done)
-	local pr = ctx.pr
-	if pr == nil then
-		done(nil, "No PR selected")
-		return
-	end
-
-	local slug = pr.repo_full_name
-	local options = action_utils.merge_options()
-	local label = options.method == "squash" and "squash merge" or "merge"
-	vim.ui.input({
-		prompt = string.format("Confirm %s of PR #%s? [y/N]: ", label, tostring(pr.id or "")),
-	}, function(input)
-		if not input or not vim.trim(input):lower():match("^y") then
-			done({ changed_pr = false, message = "Merge cancelled" }, nil)
-			return
-		end
-		local args = { "pr", "merge", tostring(pr.id), "--repo", slug, "--" .. options.method }
-		if options.delete_branch then
-			table.insert(args, "--delete-branch")
-		end
-		notify(ctx, "loading", "Merging PR...")
-		cli.gh(args, function(_, err)
-			if err then
-				notify(ctx, "error", string.format("Merge failed: %s", tostring(err)))
-				done(nil, tostring(err))
-				return
-			end
-			notify(ctx, "success", "Merge succeeded", 1200)
-			notes.clear_for_pull_request(pr)
-			done({ changed_pr = true, message = "Merged" }, nil)
-		end, {
-			action = "Merge PR",
-			repo = slug,
-			number = pr.id,
-			method = options.method,
-		})
-	end)
-end
-
----@param ctx AtlasPullActionContext
 ---@return boolean, string|nil
 local function reopen_available(ctx)
-	if ctx.pr == nil then
-		return false, "No PR selected"
-	end
-	if ctx.pr.repo_full_name == "" then
-		return false, "Missing repository info"
+	local ok, err = repository_available(ctx)
+	if not ok then
+		return ok, err
 	end
 	if tostring(ctx.pr.state or ""):lower() ~= "declined" then
 		return false, "PR is not closed"
@@ -121,21 +100,9 @@ end
 ---@param ctx AtlasPullActionContext
 ---@param done fun(result: PullsActionResult|nil, err: string|nil)
 local function reopen(ctx, done)
-	local pr = ctx.pr
-	if pr == nil then
-		done(nil, "No PR selected")
-		return
-	end
-	local slug = pr.repo_full_name
-
+	local pr = assert(ctx.pr)
 	notify(ctx, "loading", "Reopening PR...")
-	cli.gh({
-		"pr",
-		"reopen",
-		tostring(pr.id),
-		"--repo",
-		slug,
-	}, function(_, err)
+	pullrequests.reopen(pr, function(_, err)
 		if err then
 			notify(ctx, "error", string.format("Reopen failed: %s", tostring(err)))
 			done(nil, tostring(err))
@@ -144,33 +111,13 @@ local function reopen(ctx, done)
 
 		notify(ctx, "success", "PR reopened", 1200)
 		done({ changed_pr = true, message = "Reopened" }, nil)
-	end, {
-		action = "Reopen PR",
-		repo = slug,
-		number = pr.id,
-	})
-end
-
----@param ctx AtlasPullActionContext
----@return boolean, string|nil
-local function edit_assignees_available(ctx)
-	if ctx.pr == nil then
-		return false, "No PR selected"
-	end
-	if ctx.pr.repo_full_name == "" then
-		return false, "Missing repository info"
-	end
-	return true, nil
+	end)
 end
 
 ---@param ctx AtlasPullActionContext
 ---@param done fun(result: PullsActionResult|nil, err: string|nil)
 local function edit_assignees(ctx, done)
-	local pr = ctx.pr
-	if pr == nil then
-		done(nil, "No PR selected")
-		return
-	end
+	local pr = assert(ctx.pr)
 
 	local slug = pr.repo_full_name
 	---@param assignees PullsAuthor[]
@@ -202,7 +149,7 @@ local function edit_assignees(ctx, done)
 
 			picker.multi_select({
 				items = items,
-				selected = vim.deepcopy(original),
+				selected = original,
 				key = function(item)
 					return item.username
 				end,
@@ -210,7 +157,7 @@ local function edit_assignees(ctx, done)
 					return string.format(
 						"@%s%s",
 						item.username,
-						item.name ~= "" and item.name ~= item.username and (" — " .. item.name) or ""
+						item.name ~= "" and item.name ~= item.username and (" - " .. item.name) or ""
 					)
 				end,
 				title = string.format("Assignees for PR #%s", tostring(pr.id or "")),
@@ -220,51 +167,24 @@ local function edit_assignees(ctx, done)
 						selected_set[item.username] = true
 					end
 
-					local adds, removes = {}, {}
-					for login in pairs(selected_set) do
-						if not original_set[login] then
-							table.insert(adds, login)
-						end
-					end
-					for login in pairs(original_set) do
-						if not selected_set[login] then
-							table.insert(removes, login)
-						end
-					end
+					local adds, removes = selection_diff(original_set, selected_set)
 
 					if #adds == 0 and #removes == 0 then
 						done({ changed_pr = false, message = "No changes" }, nil)
 						return
 					end
 
-					local args = { "pr", "edit", tostring(pr.id), "--repo", slug }
-					for _, login in ipairs(adds) do
-						table.insert(args, "--add-assignee")
-						table.insert(args, login)
-					end
-					for _, login in ipairs(removes) do
-						table.insert(args, "--remove-assignee")
-						table.insert(args, login)
-					end
-
 					notify(ctx, "loading", string.format("Updating assignees on PR #%s...", tostring(pr.id or "")))
-					cli.gh(args, function(_, edit_err)
+					pullrequests.update_assignees(pr, adds, removes, function(_, edit_err)
 						if edit_err then
 							notify(ctx, "error", string.format("Update assignees failed: %s", tostring(edit_err)))
 							done(nil, tostring(edit_err))
 							return
 						end
-						cli.delete_mem(string.format("github:pr:%s:%s", slug, tostring(pr.id)))
 						local message = string.format("+%d / -%d assignee(s)", #adds, #removes)
 						notify(ctx, "success", message, 1200)
 						done({ changed_pr = true, message = message }, nil)
-					end, {
-						action = "Update PR assignees",
-						repo = slug,
-						number = pr.id,
-						added = #adds,
-						removed = #removes,
-					})
+					end)
 				end,
 			})
 		end)
@@ -272,8 +192,9 @@ local function edit_assignees(ctx, done)
 
 	notify(ctx, "loading", "Loading assignees...")
 	if ctx.details then
-		---@cast ctx.details GitHubPullRequestDetails
-		open_picker(ctx.details.assignees)
+		local details = ctx.details
+		---@cast details GitHubPullRequestDetails
+		open_picker(details.assignees)
 		return
 	end
 	pullrequests.get_pr(pr.repo.owner, pr.repo.repo_name, pr.id, function(details, err)
@@ -287,26 +208,11 @@ local function edit_assignees(ctx, done)
 		open_picker(details.assignees)
 	end)
 end
----@param ctx AtlasPullActionContext
----@return boolean, string|nil
-local function edit_labels_available(ctx)
-	if ctx.pr == nil then
-		return false, "No PR selected"
-	end
-	if ctx.pr.repo_full_name == "" then
-		return false, "Missing repository info"
-	end
-	return true, nil
-end
 
 ---@param ctx AtlasPullActionContext
 ---@param done fun(result: PullsActionResult|nil, err: string|nil)
 local function edit_labels(ctx, done)
-	local pr = ctx.pr
-	if pr == nil then
-		done(nil, "No PR selected")
-		return
-	end
+	local pr = assert(ctx.pr)
 	local slug = pr.repo_full_name
 
 	notify(ctx, "loading", "Loading labels...")
@@ -325,12 +231,7 @@ local function edit_labels(ctx, done)
 				return
 			end
 
-			local items = {}
-			for _, label in ipairs(labels) do
-				table.insert(items, { name = label.name, color = label.color })
-			end
-
-			if #items == 0 then
+			if #labels == 0 then
 				notify(ctx, "warn", "No labels available")
 				done({ changed_pr = false, message = "No labels available" }, nil)
 				return
@@ -339,17 +240,14 @@ local function edit_labels(ctx, done)
 			local original = {}
 			local original_set = {}
 			for _, label in ipairs(current.labels) do
-				local name = tostring(label.name or "")
-				if name ~= "" then
-					table.insert(original, { name = name, color = label.color })
-					original_set[name] = true
-				end
+				table.insert(original, label)
+				original_set[label.name] = true
 			end
 			notify(ctx, "success", "Labels loaded", 1200)
 
 			picker.multi_select({
-				items = items,
-				selected = vim.deepcopy(original),
+				items = labels,
+				selected = original,
 				key = function(item)
 					return item.name
 				end,
@@ -363,17 +261,7 @@ local function edit_labels(ctx, done)
 						selected_set[item.name] = true
 					end
 
-					local adds, removes = {}, {}
-					for name in pairs(selected_set) do
-						if not original_set[name] then
-							table.insert(adds, name)
-						end
-					end
-					for name in pairs(original_set) do
-						if not selected_set[name] then
-							table.insert(removes, name)
-						end
-					end
+					local adds, removes = selection_diff(original_set, selected_set)
 
 					if #adds == 0 and #removes == 0 then
 						done({ changed_pr = false, message = "No changes" }, nil)
@@ -396,34 +284,14 @@ local function edit_labels(ctx, done)
 		end)
 	end)
 end
----@param ctx AtlasPullActionContext
----@return boolean, string|nil
-local function create_issue_available(ctx)
-	if ctx.pr == nil then
-		return false, "No PR selected"
-	end
-	if ctx.pr.repo_full_name == "" then
-		return false, "Missing repository info"
-	end
-	return true, nil
-end
 
 ---@param ctx AtlasPullActionContext
 ---@param done fun(result: PullsActionResult|nil, err: string|nil)
 local function create_issue(ctx, done)
-	local pr = ctx.pr
-	if pr == nil then
-		done(nil, "No PR selected")
-		return
-	end
+	local pr = assert(ctx.pr)
 	local slug = pr.repo_full_name
-	if slug == "" then
-		done(nil, "Missing repository info")
-		return
-	end
 
-	local create_issue_ui = require("atlas.issues.create.github.issue")
-	create_issue_ui.open({ repo_slug = slug })
+	require("atlas.issues.providers.github.ui.editor").open(slug)
 	done({ changed_pr = false, message = "Opened issue editor" }, nil)
 end
 
@@ -472,6 +340,33 @@ local function select_repository(opts)
 	})
 end
 
+---@param pr PullRequest
+---@param details GitHubPullRequestDetails
+---@return string[]
+local function search_preview(pr, details)
+	local assignees = vim.tbl_map(function(user)
+		return "@" .. user.username
+	end, details.assignees)
+	local labels = vim.tbl_map(function(label)
+		return label.name
+	end, details.labels)
+	local lines = {
+		"**Status:** " .. pr.state,
+		"**Author:** @" .. pr.author.username,
+		string.format("**Branches:** %s -> %s", pr.source.branch, pr.destination.branch),
+	}
+	if #assignees > 0 then
+		table.insert(lines, "**Assignees:** " .. table.concat(assignees, ", "))
+	end
+	if #labels > 0 then
+		table.insert(lines, "**Labels:** " .. table.concat(labels, ", "))
+	end
+	vim.list_extend(lines, { "", "## Description", "" })
+	local description = vim.trim(details.description)
+	vim.list_extend(lines, vim.split(description ~= "" and description or "No description", "\n", { plain = true }))
+	return lines
+end
+
 ---@param repo string
 ---@param ctx AtlasPullActionContext
 ---@param done fun(result: PullsActionResult|nil, err: string|nil)
@@ -491,30 +386,7 @@ local function search_results(repo, ctx, done)
 				end
 				---@cast details GitHubPullRequestDetails
 
-				local assignees = vim.tbl_map(function(user)
-					return "@" .. user.username
-				end, details.assignees)
-				local labels = vim.tbl_map(function(label)
-					return label.name
-				end, details.labels)
-				local lines = {
-					"**Status:** " .. pr.state,
-					"**Author:** @" .. pr.author.username,
-					string.format("**Branches:** %s -> %s", pr.source.branch, pr.destination.branch),
-				}
-				if #assignees > 0 then
-					table.insert(lines, "**Assignees:** " .. table.concat(assignees, ", "))
-				end
-				if #labels > 0 then
-					table.insert(lines, "**Labels:** " .. table.concat(labels, ", "))
-				end
-				vim.list_extend(lines, { "", "## Description", "" })
-				local description = vim.trim(details.description)
-				vim.list_extend(
-					lines,
-					vim.split(description ~= "" and description or "No description", "\n", { plain = true })
-				)
-				preview_done({ title = item.label, lines = lines })
+				preview_done({ title = item.label, lines = search_preview(pr, details) })
 			end)
 		end,
 		fetch = function(query, fetch_done)
@@ -604,40 +476,24 @@ end
 ---@param ctx AtlasPullActionContext
 ---@param done fun(result: PullsActionResult|nil, err: string|nil)
 local function toggle_subscription(ctx, done)
-	local pr = ctx.pr
-	if pr == nil then
-		done(nil, "No PR selected")
-		return
-	end
+	local pr = assert(ctx.pr)
 	---@cast pr GitHubPullRequest
 	---@param details PullRequestDetails
 	local function update(details)
-		local node_id = pr.node_id or ""
-		local next_state = details.is_subscribed == true and "UNSUBSCRIBED" or "SUBSCRIBED"
-		local gql =
-			"mutation($id: ID!, $state: SubscriptionState!) { updateSubscription(input: { subscribableId: $id, state: $state }) { subscribable { ... on PullRequest { viewerSubscription } } } }"
 		notify(ctx, "loading", details.is_subscribed and "Unsubscribing..." or "Subscribing...")
-		cli.gh(
-			{ "api", "graphql", "-F", "id=" .. node_id, "-f", "state=" .. next_state, "-f", "query=" .. gql },
-			function(_, err)
-				if err then
-					notify(ctx, "error", tostring(err))
-					done(nil, tostring(err))
-					return
-				end
-				details.is_subscribed = (next_state == "SUBSCRIBED")
-				notify(ctx, "success", details.is_subscribed and "Subscribed" or "Unsubscribed", 1200)
-				done({
-					changed_pr = true,
-					message = details.is_subscribed and "Subscribed" or "Unsubscribed",
-				}, nil)
-			end,
-			{
-				action = details.is_subscribed and "Unsubscribe from PR" or "Subscribe to PR",
-				repo = pr.repo_full_name,
-				number = pr.id,
-			}
-		)
+		pullrequests.set_subscription(pr, details.is_subscribed ~= true, function(subscribed, err)
+			if err then
+				notify(ctx, "error", tostring(err))
+				done(nil, tostring(err))
+				return
+			end
+			details.is_subscribed = subscribed
+			notify(ctx, "success", details.is_subscribed and "Subscribed" or "Unsubscribed", 1200)
+			done({
+				changed_pr = true,
+				message = details.is_subscribed and "Subscribed" or "Unsubscribed",
+			}, nil)
+		end)
 	end
 
 	if ctx.details then
@@ -674,9 +530,9 @@ register({
 register({
 	id = "merge",
 	label = "Merge",
-	icon = icons.action("merge"),
+	icon = icons.get("merge", "actions"),
 	is_available = merge_available,
-	run = merge,
+	run = actions.merge.run,
 })
 
 register(actions.decline)
@@ -686,42 +542,41 @@ register(actions.ready_for_review)
 register({
 	id = "reopen",
 	label = "Reopen PR",
-	icon = icons.action("reopen"),
+	icon = icons.get("reopen", "actions"),
 	is_available = reopen_available,
 	run = reopen,
 })
 
-register(actions.edit_title)
-register(actions.edit_description)
+register(actions.edit_pr)
 register(actions.edit_reviewers)
 
 register({
 	id = "edit_assignees",
 	label = "Edit assignees",
-	icon = icons.action("user"),
-	is_available = edit_assignees_available,
+	icon = icons.get("user", "actions"),
+	is_available = repository_available,
 	run = edit_assignees,
 })
 
 register({
 	id = "labels",
 	label = "Edit labels",
-	icon = icons.action("label"),
-	is_available = edit_labels_available,
+	icon = icons.get("label", "actions"),
+	is_available = repository_available,
 	run = edit_labels,
 })
 
 register({
 	id = "search",
 	label = "Search Pull Requests",
-	icon = icons.action("search"),
+	icon = icons.get("search", "actions"),
 	run = search,
 })
 
 register({
 	id = "open_repo",
 	label = "Open Repository",
-	icon = icons.action("search"),
+	icon = icons.get("search", "actions"),
 	run = open_repo,
 })
 
@@ -729,7 +584,7 @@ register(actions.browse_repository)
 register({
 	id = "browse_repositories",
 	label = "Browse Repository",
-	icon = icons.general("overview"),
+	icon = icons.get("overview"),
 	run = function(ctx, done)
 		select_repository({
 			title = "Browse Repository",
@@ -748,7 +603,7 @@ register({
 register({
 	id = "search_pull_requests",
 	label = "New Search",
-	icon = icons.action("search"),
+	icon = icons.get("search", "actions"),
 	run = function(_, done)
 		local query = require("atlas.pulls.state").query
 		require("atlas.providers.github.completion.search").open(query .. " ")
@@ -759,7 +614,7 @@ register({
 register({
 	id = "edit_search",
 	label = "Edit Current Search",
-	icon = icons.action("search"),
+	icon = icons.get("search", "actions"),
 	run = function(_, done)
 		local state = require("atlas.pulls.state")
 		require("atlas.providers.github.completion.search").edit(state.query .. " ", function(query)
@@ -777,7 +632,7 @@ register({
 register({
 	id = "toggle_subscription",
 	label = "Toggle subscription",
-	icon = icons.action("notification"),
+	icon = icons.get("notification", "actions"),
 	is_available = toggle_subscription_available,
 	run = toggle_subscription,
 })
@@ -789,8 +644,8 @@ register(actions.checkout)
 register({
 	id = "create_issue",
 	label = "Create issue",
-	icon = icons.action("create"),
-	is_available = create_issue_available,
+	icon = icons.get("create", "actions"),
+	is_available = repository_available,
 	run = create_issue,
 })
 

@@ -1,11 +1,13 @@
 local resolver = require("atlas.core.keymaps")
 local notify = require("atlas.core.notify")
 local actions = require("atlas.pulls.pipelines.ui.actions")
+local action_runner = require("atlas.core.actions")
 local config = require("atlas.pulls.pipelines.ui.config")
 local explorer = require("atlas.pulls.pipelines.ui.explorer")
 local keymaps = require("atlas.pulls.pipelines.ui.keymaps")
 local logs = require("atlas.pulls.pipelines.ui.logs")
 local icons = require("atlas.ui.shared.icons")
+local pipeline_utils = require("atlas.pulls.pipelines.utils")
 local statusline = require("atlas.ui.statusline")
 local utils = require("atlas.ui.shared.utils")
 
@@ -74,10 +76,9 @@ local function update_statusline(session)
 	local job = session.logs.selection and session.logs.selection.job
 	if job then
 		if job.duration then
-			local duration = job.duration < 60 and string.format("%ds", math.floor(job.duration))
-				or utils.human_duration(job.duration)
+			local duration = pipeline_utils.format_duration(job.duration)
 			items[#items + 1] = {
-				text = icons.general("updated") .. " " .. duration,
+				text = icons.get("updated") .. " " .. duration,
 				hl_group = "AtlasFooterText",
 				align = "right",
 				priority = 0,
@@ -86,7 +87,7 @@ local function update_statusline(session)
 		local started = utils.relative_time(job.started_at)
 		if started ~= "-" then
 			items[#items + 1] = {
-				text = icons.general("created") .. " " .. (started == "now" and "just now" or started .. " ago"),
+				text = icons.get("created") .. " " .. (started == "now" and "just now" or started .. " ago"),
 				hl_group = "AtlasFooterText",
 				align = "right",
 				priority = 0,
@@ -133,7 +134,7 @@ local function open_actions(session, selection)
 		end
 		session.action = action
 		update_statusline(session)
-		action.run(ctx, function(err)
+		action_runner.run(action, ctx, function(_, err)
 			if session.closed then
 				return
 			end
@@ -156,8 +157,8 @@ end
 ---@param session PullsPipelinesSession
 local function setup_buffers(session)
 	local prefix = string.format("atlas://pipelines/%d", session.tab)
-	session.explorer.buf = utils.buffer.create(prefix .. "/pipelines", "atlas.pipelines")
-	session.logs.buf = utils.buffer.create(prefix .. "/logs", "atlas.pipeline-log")
+	session.explorer.buf = utils.buffer.create(prefix .. "/pipelines", "atlas-ui.pipelines")
+	session.logs.buf = utils.buffer.create(prefix .. "/logs", "atlas-ui.pipeline-log")
 	session.config.buf = utils.buffer.create(prefix .. "/config", "")
 	vim.bo[session.config.buf].readonly = true
 	vim.bo[session.explorer.buf].bufhidden = "wipe"

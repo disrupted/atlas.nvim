@@ -1,5 +1,7 @@
 ---@type PullsProviderDetail
-local M = {}
+local M = {
+	-- chips = nil,
+}
 
 local icons = require("atlas.ui.shared.icons")
 
@@ -14,9 +16,9 @@ function M.header_fields(_pr, details, _loading)
 	if details and details.close_source_branch ~= nil then
 		local state_icon, state_icon_hl
 		if details.close_source_branch then
-			state_icon, state_icon_hl = icons.general("success")
+			state_icon, state_icon_hl = icons.get("success")
 		else
-			state_icon, state_icon_hl = icons.general("error")
+			state_icon, state_icon_hl = icons.get("error")
 		end
 		table.insert(fields, {
 			label = "Close source",
@@ -30,36 +32,7 @@ end
 
 ---@return PullsDetailTab[]
 function M.tabs()
-	local overview_icon = icons.general("overview")
-	local conversation_icon = icons.general("conversation")
-	local review_icon = icons.pulls("review")
-	local commit_icon = icons.pulls("commit")
-	return {
-		{
-			key = "overview",
-			label = "Overview",
-			icon = { icon = overview_icon },
-			mod = require("atlas.pulls.ui.detail.tabs.overview"),
-		},
-		{
-			key = "conversation",
-			label = "Conversation",
-			icon = { icon = conversation_icon },
-			mod = require("atlas.pulls.ui.detail.tabs.conversation"),
-		},
-		{
-			key = "review",
-			label = "Review",
-			icon = { icon = review_icon },
-			mod = require("atlas.pulls.ui.detail.tabs.review"),
-		},
-		{
-			key = "commits",
-			label = "Commits",
-			icon = { icon = commit_icon },
-			mod = require("atlas.pulls.ui.detail.tabs.commits"),
-		},
-	}
+	return require("atlas.pulls.ui.detail").default_tabs()
 end
 
 return M

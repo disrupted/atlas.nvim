@@ -1,4 +1,7 @@
-local M = {}
+local M = {
+	-- list_members = nil,
+	-- get_assignable_users = nil,
+}
 
 local service = require("atlas.providers.bitbucket.client")
 local logger = require("atlas.core.logger")
@@ -21,17 +24,16 @@ function M.fetch_user(on_done)
 	end
 
 	return service.request("GET", "/user", nil, nil, function(result, err)
-		if err or not result then
-			on_done(nil, err or "No response from Bitbucket API")
+		if err then
+			on_done(nil, err)
 			return
 		end
 
-		local raw = result
 		---@type AtlasUser
 		local current_user = {
-			name = tostring(raw.display_name or raw.name or ""),
-			id = tostring(raw.account_id or raw.uuid or ""),
-			username = tostring(raw.nickname or raw.username or ""),
+			name = tostring(result.display_name or result.name or ""),
+			id = tostring(result.account_id or result.uuid or ""),
+			username = tostring(result.nickname or result.username or ""),
 		}
 
 		service.set_persistent_cache(cachekey, current_user, 86400)
@@ -56,15 +58,14 @@ function M.fetch_workspaces(on_done)
 	end
 
 	return service.request("GET", "/user/workspaces", nil, nil, function(result, err)
-		if err or not result then
-			on_done(nil, err or "No response from Bitbucket API")
+		if err then
+			on_done(nil, err)
 			return
 		end
 
-		local payload = result
 		---@type BitbucketWorkspace[]
 		local workspaces = {}
-		for _, entry in ipairs(payload.values or {}) do
+		for _, entry in ipairs(result.values or {}) do
 			local workspace = entry.workspace
 
 			table.insert(workspaces, {

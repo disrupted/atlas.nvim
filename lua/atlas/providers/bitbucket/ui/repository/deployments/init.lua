@@ -22,7 +22,7 @@ local utils = require("atlas.ui.shared.utils")
 ---@field group integer
 ---@field keymaps table<integer, AtlasHelpKeyItem[]>
 
-local M = { key = "deployments", label = "Deployments", icon = icons.general("deployment") }
+local M = { key = "deployments", label = "Deployments", icon = icons.get("deployment") }
 local namespace = vim.api.nvim_create_namespace("atlas.repository.deployments")
 ---@type table<integer, RepositoryDeployments>
 local states = {}
@@ -45,7 +45,7 @@ end
 
 ---@param state RepositoryDeployments
 local function render(state)
-	if not utils.buffer.valid(state.buf) or not utils.window.valid(state.win) then
+	if states[state.buf] ~= state or not utils.buffer.valid(state.buf) or not utils.window.valid(state.win) then
 		return
 	end
 	state.line_map = {}
@@ -150,7 +150,7 @@ local function open_actions(state, row, action)
 		items = available,
 		format_item = function(item)
 			local label = type(item.label) == "function" and item.label(ctx) or item.label
-			return icons.format_action({ label = label, icon = item.icon })
+			return item.icon .. "  " .. label
 		end,
 		on_select = run,
 	})
@@ -162,18 +162,19 @@ end
 local function register(state, buf, mappings)
 	local items = {}
 	for _, action in ipairs(mappings) do
-		local keys = action[1]
+		local keys = action.key
 		if keys and #keys > 0 then
 			items[#items + 1] = {
 				key = keys,
-				desc = action[2],
-				callback = action[3],
+				desc = action.desc,
+				index = action.index,
+				callback = action.callback,
 				opts = { silent = true, nowait = true },
 			}
 		end
 	end
 	state.keymaps[buf] = items
-	help.register("Deployments", items, { buffer = buf })
+	help.register("General", items, { buffer = buf, index = 1 })
 end
 
 ---@param opts { buf: integer, win: integer, sidebar_buf: integer, repo: AtlasRepositoryDetails, provider: PullsProvider|IssuesProvider, statusline: AtlasStatusline }
@@ -195,13 +196,16 @@ function M.open(opts)
 	states[state.buf] = state
 	vim.wo[state.win].cursorline = true
 	state.spinner.on_tick = function()
-		render(state)
+		if state.spinner:is_running() then
+			render(state)
+		end
 	end
 	local mappings = {
 		{
-			resolver.resolve("ui.refresh"),
-			"Refresh deployments",
-			function()
+			key = resolver.resolve("ui.refresh"),
+			desc = "Refresh deployments",
+			index = 80,
+			callback = function()
 				load(state)
 			end,
 		},
@@ -209,9 +213,10 @@ function M.open(opts)
 	register(state, opts.sidebar_buf, mappings)
 	vim.list_extend(mappings, {
 		{
-			resolver.resolve("ui.toggle_fold"),
-			"Toggle environment history",
-			function()
+			key = resolver.resolve("ui.toggle_fold"),
+			desc = "Toggle environment history",
+			index = 5,
+			callback = function()
 				local row = state.line_map[vim.api.nvim_win_get_cursor(state.win)[1]]
 				if not row or #row.environment.deployments <= 3 then
 					return
@@ -222,25 +227,28 @@ function M.open(opts)
 			end,
 		},
 		{
-			vim.list_extend(resolver.resolve("ui.select") or {}, resolver.resolve("ui.show_details") or {}),
-			"Open build",
-			function()
+			key = vim.list_extend(resolver.resolve("ui.select") or {}, resolver.resolve("ui.show_details") or {}),
+			desc = "Open build",
+			index = 1,
+			callback = function()
 				local row = state.line_map[vim.api.nvim_win_get_cursor(state.win)[1]]
 				open_actions(state, row, actions.open_build)
 			end,
 		},
 		{
-			resolver.resolve("ui.open_actions"),
-			"Deployment actions",
-			function()
+			key = resolver.resolve("ui.open_actions"),
+			desc = "Deployment actions",
+			index = 11,
+			callback = function()
 				local row = state.line_map[vim.api.nvim_win_get_cursor(state.win)[1]]
 				open_actions(state, row)
 			end,
 		},
 		{
-			resolver.resolve("ui.open_in_browser"),
-			"Open deployment in browser",
-			function()
+			key = resolver.resolve("ui.open_in_browser"),
+			desc = "Open deployment in browser",
+			index = 4,
+			callback = function()
 				local row = state.line_map[vim.api.nvim_win_get_cursor(state.win)[1]]
 				open_actions(state, row, actions.open_in_browser)
 			end,
@@ -268,7 +276,10 @@ function M.close(buf)
 	state.statusline:clear_notice()
 	vim.api.nvim_del_augroup_by_id(state.group)
 	for buffer, items in pairs(state.keymaps) do
-		help.remove("Deployments", items, { buffer = buffer })
+		help.remove("General", items, { buffer = buffer })
+	end
+	if utils.buffer.valid(state.buf) then
+		vim.api.nvim_buf_clear_namespace(state.buf, namespace, 0, -1)
 	end
 end
 

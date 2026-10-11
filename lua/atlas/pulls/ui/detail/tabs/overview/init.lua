@@ -1,6 +1,7 @@
 local M = {}
 
 local utils = require("atlas.ui.shared.utils")
+local markdown = require("atlas.formats.markdown")
 local icons = require("atlas.ui.shared.icons")
 local spinner = require("atlas.ui.components.spinner")
 local box = require("atlas.ui.components.box")
@@ -13,8 +14,7 @@ local pipeline_utils = require("atlas.pulls.pipelines.utils")
 local request_scope = require("atlas.core.requests")
 
 local PADDING_X = 1
-local PADDING = string.rep(" ", PADDING_X)
-local MAX_DESCRIPTION_LINES = 10
+local MAX_DESCRIPTION_LINES = 15
 
 ---@param pr PullRequest
 ---@return boolean
@@ -69,16 +69,34 @@ function M.on_select(pr, refresh, opts)
 	end
 end
 
+---@param title string
+---@param message string
+---@param width integer
+---@param lines string[]
+---@param spans table[]
+local function render_error(title, message, width, lines, spans)
+	utils.push(lines, spans, title, "AtlasColumnHeader", PADDING_X)
+	local content = { lines = {}, spans = {} }
+	local content_width = math.max(1, width - PADDING_X * 2 - 4)
+	for _, line in ipairs(utils.sanitize_lines(message)) do
+		for _, wrapped in ipairs(utils.wrap_line(line, content_width)) do
+			utils.push(content.lines, content.spans, wrapped, "AtlasLogError")
+		end
+	end
+	utils.append_block(lines, spans, box.render({ content }, { width = width, padding_x = PADDING_X }))
+	table.insert(lines, "")
+end
+
 -- Reviewers
 
 local DECISION_GROUPS = { "approved", "changes_requested", "reviewed", "pending" }
 local OTHER_DECISION_GROUPS = { "approved", "changes_requested" }
 
 local DECISION_ICONS = {
-	approved = { icon = icons.pulls_status("successful"), hl = "AtlasTextPositive" },
-	changes_requested = { icon = icons.pulls_status("failed"), hl = "AtlasLogError" },
-	reviewed = { icon = icons.pulls("review"), hl = "AtlasTextMuted" },
-	pending = { icon = icons.pulls_status("inprogress"), hl = "AtlasTextMuted" },
+	approved = { icon = icons.get("successful", "status"), hl = "AtlasTextPositive" },
+	changes_requested = { icon = icons.get("failed", "status"), hl = "AtlasLogError" },
+	reviewed = { icon = icons.get("review"), hl = "AtlasTextMuted" },
+	pending = { icon = icons.get("inprogress", "status"), hl = "AtlasTextMuted" },
 }
 
 ---@param decisions PullsReviewer[]
@@ -137,19 +155,7 @@ local function render_reviewers(width, lines, spans)
 	end
 
 	if type(state.reviewers) == "string" then
-		utils.push(lines, spans, "Reviewers", "AtlasColumnHeader", PADDING_X)
-		local err_text = state.reviewers
-		utils.append_block(
-			lines,
-			spans,
-			box.render({
-				{
-					lines = { err_text },
-					spans = { { line = 0, start_col = 0, end_col = #err_text, hl_group = "AtlasLogError" } },
-				},
-			}, { width = width, padding_x = PADDING_X })
-		)
-		table.insert(lines, "")
+		render_error("Reviewers", state.reviewers, width, lines, spans)
 		return
 	end
 
@@ -198,18 +204,11 @@ local function render_reviewers(width, lines, spans)
 		})
 
 		local other_content = decision_content(others, OTHER_DECISION_GROUPS, width)
-		local line_offset = #content.lines
-		for _, line in ipairs(other_content.lines) do
-			table.insert(content.lines, line)
-		end
-		for _, span in ipairs(other_content.spans) do
-			table.insert(content.spans, {
-				line = line_offset + span.line,
-				start_col = span.start_col,
-				end_col = span.end_col,
-				hl_group = span.hl_group,
-			})
-		end
+		utils.append_block(
+			content.lines,
+			content.spans,
+			{ lines = other_content.lines, highlights = other_content.spans }
+		)
 	end
 
 	utils.append_block(lines, spans, box.render({ content }, { width = width, padding_x = PADDING_X }))
@@ -231,19 +230,7 @@ local function render_pipelines(_pr, width, lines, spans, line_map)
 	end
 
 	if type(detail.pipelines) == "string" then
-		utils.push(lines, spans, "Pipelines", "AtlasColumnHeader", PADDING_X)
-		local err_text = detail.pipelines
-		utils.append_block(
-			lines,
-			spans,
-			box.render({
-				{
-					lines = { err_text },
-					spans = { { line = 0, start_col = 0, end_col = #err_text, hl_group = "AtlasLogError" } },
-				},
-			}, { width = width, padding_x = PADDING_X })
-		)
-		table.insert(lines, "")
+		render_error("Pipelines", detail.pipelines, width, lines, spans)
 		return
 	end
 
@@ -261,7 +248,7 @@ local function render_pipelines(_pr, width, lines, spans, line_map)
 			table.insert(rows, { kind = "separator" })
 		end
 		local state_value = tostring(pipeline.state or "UNKNOWN"):upper()
-		local icon, status_hl = icons.pulls_status(state_value:lower())
+		local icon, status_hl = icons.get(state_value, "status")
 		local label = pipeline.name
 		local job_count = tonumber(pipeline.job_count)
 		if job_count ~= nil then
@@ -290,7 +277,7 @@ local function render_pipelines(_pr, width, lines, spans, line_map)
 		for _, pipeline_stage in ipairs(pipeline_utils.sort_by_state(pipeline.stages)) do
 			if pipeline_stage.name ~= nil then
 				local stage_state = tostring(pipeline_stage.state or "UNKNOWN"):upper()
-				local stage_icon, stage_hl = icons.pulls_status(stage_state:lower())
+				local stage_icon, stage_hl = icons.get(stage_state, "status")
 				table.insert(row.children, {
 					label = string.format("%s %s", stage_icon, pipeline_stage.name),
 					status = "",
@@ -308,7 +295,7 @@ local function render_pipelines(_pr, width, lines, spans, line_map)
 			local entry = sorted_jobs[index]
 			local job = entry.job
 			local job_state = tostring(job.state or "UNKNOWN"):upper()
-			local job_icon, job_hl = icons.pulls_status(job_state:lower())
+			local job_icon, job_hl = icons.get(job_state, "status")
 			table.insert(row.children, {
 				label = string.format("%s %s", job_icon, job.name),
 				status = "",
@@ -349,9 +336,7 @@ local function render_pipelines(_pr, width, lines, spans, line_map)
 			column_key = "label",
 			leaf_prefix = "",
 			show_indicator = false,
-			is_expanded = function(row)
-				return state.is_pipeline_expanded(row.pipeline)
-			end,
+			default_expanded = true,
 		},
 		cell_hl = function(row, column, context)
 			if row.kind == "separator" then
@@ -394,43 +379,38 @@ end
 
 -- Description
 
+local function description_block(text, width)
+	if state.view_mode == "raw" then
+		local content = {
+			lines = vim.split(utils.normalize_newlines(text), "\n", { plain = true }),
+		}
+		return utils.wrap_content(content, math.max(1, width - PADDING_X * 2), string.rep(" ", PADDING_X))
+	end
+
+	return markdown.render(text, { width = width, padding = PADDING_X })
+end
+
 ---@param details PullRequestDetails
 ---@param width integer
 ---@param lines string[]
 ---@param spans table[]
----@param line_map table<integer, table>
-local function render_description(details, width, lines, spans, line_map)
-	local start_line = #lines + 1
-	local function map_lines()
-		for lnum = start_line, #lines do
-			line_map[lnum] = { kind = "description" }
-		end
-	end
-
-	utils.push(lines, spans, "Description", "AtlasColumnHeader", PADDING_X)
-
-	local desc_text = utils.strip_markup(details.description)
-	if desc_text == "" then
+local function render_description(details, width, lines, spans)
+	local desc_text = details.description or ""
+	if vim.trim(desc_text) == "" then
 		utils.push(lines, spans, "No description provided.", "AtlasTextMuted", PADDING_X)
 		table.insert(lines, "")
-		map_lines()
 		return
 	end
 
-	local desc_lines = utils.sanitize_lines(desc_text)
-	while #desc_lines > 0 and vim.trim(desc_lines[#desc_lines]) == "" do
-		table.remove(desc_lines)
+	local block = description_block(desc_text, width)
+	local truncated = not state.description_expanded and #block.lines > MAX_DESCRIPTION_LINES
+	if truncated then
+		block.lines = vim.list_slice(block.lines, 1, MAX_DESCRIPTION_LINES)
+		block.highlights = vim.tbl_filter(function(span)
+			return span.line < MAX_DESCRIPTION_LINES
+		end, block.highlights)
 	end
-
-	local truncated = false
-	if not state.description_expanded and #desc_lines > MAX_DESCRIPTION_LINES then
-		desc_lines = vim.list_slice(desc_lines, 1, MAX_DESCRIPTION_LINES)
-		truncated = true
-	end
-
-	for _, line in ipairs(desc_lines) do
-		table.insert(lines, PADDING .. line)
-	end
+	utils.append_block(lines, spans, block)
 
 	if truncated then
 		local keys = require("atlas.core.keymaps").resolve("ui.toggle_fold") or {}
@@ -459,17 +439,16 @@ local function render_description(details, width, lines, spans, line_map)
 	end
 
 	table.insert(lines, "")
-	map_lines()
 end
 
 -- Merge checks
 
 local MERGE_CHECK_STATE = {
-	successful = { icon = icons.pulls_status("successful"), hl = "AtlasTextPositive" },
-	failed = { icon = icons.pulls_status("failed"), hl = "AtlasLogError" },
-	inprogress = { icon = icons.pulls_status("inprogress"), hl = "AtlasTextMuted" },
-	warning = { icon = icons.pulls_status("inprogress"), hl = "AtlasTextWarning" },
-	muted = { icon = icons.pulls_status("inprogress"), hl = "AtlasTextMuted" },
+	successful = { icon = icons.get("successful", "status"), hl = "AtlasTextPositive" },
+	failed = { icon = icons.get("failed", "status"), hl = "AtlasLogError" },
+	inprogress = { icon = icons.get("inprogress", "status"), hl = "AtlasTextMuted" },
+	warning = { icon = icons.get("inprogress", "status"), hl = "AtlasTextWarning" },
+	muted = { icon = icons.get("inprogress", "status"), hl = "AtlasTextMuted" },
 }
 
 local MERGE_CHECK_PRIORITY = {
@@ -518,17 +497,21 @@ end
 ---@param lines string[]
 ---@param spans table[]
 local function render_merge_checks(width, lines, spans)
-	if detail.merge_checks == "loading" then
+	local checks = detail.merge_checks
+	if checks == nil or checks == "loading" then
 		return
 	end
-
-	local checks = detail.get_merge_checks()
+	if type(checks) == "string" then
+		render_error("Merge Checks", checks, width, lines, spans)
+		return
+	end
 	if #checks == 0 then
 		return
 	end
 
 	utils.push(lines, spans, "Merge Checks", "AtlasColumnHeader", PADDING_X)
 
+	checks = vim.list_slice(checks)
 	table.sort(checks, function(a, b)
 		if a.key == "pipelines" then
 			return false
@@ -558,7 +541,7 @@ function M.render(pr, details, width)
 	local line_map = {}
 
 	if details then
-		render_description(details, width, lines, spans, line_map)
+		render_description(details, width, lines, spans)
 	elseif not detail.details_loading then
 		utils.push(lines, spans, "Pull request details unavailable.", "AtlasTextMuted", PADDING_X)
 		table.insert(lines, "")
@@ -606,11 +589,7 @@ function M.activate(buf, refresh)
 	if not (buf and vim.api.nvim_buf_is_valid(buf)) then
 		return
 	end
-	vim.api.nvim_set_option_value("filetype", "markdown", { buf = buf })
-	vim.api.nvim_set_option_value("syntax", "markdown", { buf = buf })
-	if refresh ~= nil then
-		keymaps.setup(buf, refresh)
-	end
+	keymaps.setup(buf, refresh)
 end
 
 function M.deactivate(buf)
@@ -618,9 +597,6 @@ function M.deactivate(buf)
 		return
 	end
 	keymaps.teardown(buf)
-	vim.api.nvim_set_option_value("filetype", "atlas.detail", { buf = buf })
-	vim.api.nvim_set_option_value("syntax", "OFF", { buf = buf })
-	pcall(vim.treesitter.stop, buf)
 	reset_requests()
 end
 

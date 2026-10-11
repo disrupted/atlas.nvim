@@ -82,15 +82,15 @@ end
 ---@param mr table
 ---@return "open"|"merged"|"declined"|"draft"
 local function normalize_state(mr)
-	if mr.draft == true or mr.work_in_progress == true then
-		return "draft"
-	end
 	local s = tostring(mr.state or ""):lower()
 	if s == "merged" then
 		return "merged"
 	end
 	if s == "closed" then
 		return "declined"
+	end
+	if mr.draft == true or mr.work_in_progress == true then
+		return "draft"
 	end
 	return "open"
 end
@@ -331,7 +331,7 @@ function M.to_draft_comment(draft, discussion_first_id)
 	if draft.author_id ~= nil and draft.author_id ~= vim.NIL then
 		comment.author = { name = "You", nickname = nil, username = "", id = tostring(draft.author_id) }
 	end
-	comment.state = "PENDING"
+	comment.pending = true
 	comment._raw = vim.tbl_extend("force", comment._raw or {}, { draft_note_id = draft.id })
 	return comment
 end

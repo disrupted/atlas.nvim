@@ -23,6 +23,7 @@ return {
 		},
 	},
 	capabilities = {
+		completion = require("atlas.providers.github.completion"),
 		repository = repositories,
 		notifications = notifications,
 		users = users,

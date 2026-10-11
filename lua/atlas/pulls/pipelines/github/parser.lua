@@ -16,7 +16,7 @@ local ESCAPES = { ["%3B"] = ";", ["%5D"] = "]", ["%0D"] = "\r", ["%0A"] = "\n", 
 ---@param colon_groups boolean
 ---@return string|nil, string|nil
 local function marker(line, colon_groups)
-	local offset = line.timestamp and line.text:sub(1, #line.timestamp) == line.timestamp and #line.timestamp + 1 or 0
+	local offset = line.timestamp and #line.timestamp + 1 or 0
 	local body = line.text:sub(offset + 1)
 	local command, properties, message = body:match("^##%[([%a%-]+)([^%]]*)%](.*)$")
 	if command == "group" then

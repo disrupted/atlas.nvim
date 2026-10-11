@@ -26,6 +26,7 @@ return {
 		},
 	},
 	capabilities = {
+		completion = require("atlas.providers.gitlab.completion"),
 		repository = repositories,
 		notifications = notifications,
 		users = users,

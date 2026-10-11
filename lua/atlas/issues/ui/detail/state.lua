@@ -33,6 +33,16 @@ local M = {
 	spinner_timer = nil,
 }
 
+---@param key string|nil
+---@return IssuesDetailTabModule|nil
+function M.tab_module(key)
+	for _, tab in ipairs(M.tabs) do
+		if tab.key == key then
+			return tab.mod
+		end
+	end
+end
+
 function M.reset()
 	M.win = nil
 	M.buf = nil

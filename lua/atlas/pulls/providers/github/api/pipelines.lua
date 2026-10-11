@@ -320,8 +320,8 @@ end
 local function map_steps(steps)
 	local mapped = {}
 	for _, step in ipairs(json.safe_table(steps)) do
-		local started_at = json.safe_str(step.startedAt or step.started_at)
-		local completed_at = json.safe_str(step.completedAt or step.completed_at)
+		local started_at = json.safe_str(step.started_at)
+		local completed_at = json.safe_str(step.completed_at)
 		mapped[#mapped + 1] = {
 			name = step.name,
 			state = check_state(step.status, step.conclusion),

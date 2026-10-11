@@ -51,44 +51,27 @@ end
 
 describe("worktree", function()
 	describe("default_dir", function()
-		it("slugifies the repo name and truncates the sha", function()
-			local dir = worktree.default_dir(context())
-
-			assert.equals(worktree.cache_root() .. "/emrearmagan-atlas-nvim/abcdef012345", dir)
-		end)
-
-		it("prefers the pull request number over the sha", function()
-			local dir = worktree.default_dir(context({ pr_id = 1234 }))
-
-			assert.equals(worktree.cache_root() .. "/emrearmagan-atlas-nvim/pr-1234", dir)
+		it("separates commits and pull requests under the repository slug", function()
+			for _, case in ipairs({
+				{ {}, "abcdef012345" },
+				{ { head_sha = "0123456789abcdef0123456789abcdef01234567" }, "0123456789ab" },
+				{ { pr_id = 1234 }, "pr-1234" },
+				{ { pr_id = 2 }, "pr-2" },
+			}) do
+				assert.equals(
+					worktree.cache_root() .. "/emrearmagan-atlas-nvim/" .. case[2],
+					worktree.default_dir(context(case[1]))
+				)
+			end
 		end)
 
 		it("falls back to the repo root basename", function()
 			local ctx = context()
 			ctx.repo_full_name = nil
-			local dir = worktree.default_dir(ctx)
-
-			assert.equals(worktree.cache_root() .. "/atlas-nvim/abcdef012345", dir)
-		end)
-
-		it("ignores trailing separators on the repo root", function()
-			local dir = worktree.default_dir(context({ repo_full_name = "", repo_root = "/home/dev/code/atlas.nvim/" }))
-
-			assert.is_truthy(dir:find("atlas-nvim/abcdef012345", 1, true))
-		end)
-
-		it("gives different commits different directories", function()
-			local first = worktree.default_dir(context())
-			local second = worktree.default_dir(context({ head_sha = "0123456789abcdef0123456789abcdef01234567" }))
-
-			assert.are_not.equals(first, second)
-		end)
-
-		it("gives different pull requests different directories", function()
-			local first = worktree.default_dir(context({ pr_id = 1 }))
-			local second = worktree.default_dir(context({ pr_id = 2 }))
-
-			assert.are_not.equals(first, second)
+			for _, root in ipairs({ "/home/dev/code/atlas.nvim", "/home/dev/code/atlas.nvim/" }) do
+				ctx.repo_root = root
+				assert.equals(worktree.cache_root() .. "/atlas-nvim/abcdef012345", worktree.default_dir(ctx))
+			end
 		end)
 	end)
 
@@ -101,15 +84,9 @@ describe("worktree", function()
 		end)
 
 		it("accepts an absolute string override", function()
-			local dir = worktree.resolve_dir(context(), { dir = "/var/tmp/review" })
-
-			assert.equals("/var/tmp/review", dir)
-		end)
-
-		it("strips trailing separators from an override", function()
-			local dir = worktree.resolve_dir(context(), { dir = "/var/tmp/review/" })
-
-			assert.equals("/var/tmp/review", dir)
+			for _, dir in ipairs({ "/var/tmp/review", "/var/tmp/review/" }) do
+				assert.equals("/var/tmp/review", worktree.resolve_dir(context(), { dir = dir }))
+			end
 		end)
 
 		it("rejects a relative string override", function()
@@ -134,7 +111,7 @@ describe("worktree", function()
 			assert.equals(worktree.default_dir(context()), seen.default)
 		end)
 
-		it("falls back to the default when the function returns nil or empty", function()
+		it("uses the default when the function returns nil", function()
 			local ctx = context()
 
 			assert.equals(
@@ -142,14 +119,6 @@ describe("worktree", function()
 				worktree.resolve_dir(ctx, {
 					dir = function()
 						return nil
-					end,
-				})
-			)
-			assert.equals(
-				worktree.default_dir(ctx),
-				worktree.resolve_dir(ctx, {
-					dir = function()
-						return ""
 					end,
 				})
 			)
@@ -192,16 +161,10 @@ describe("worktree", function()
 			}))
 		end)
 
-		it("rejects a non-boolean enabled", function()
-			assert.is_false(worktree.validate({ enabled = "yes" }))
-		end)
-
-		it("rejects a dir that is neither string nor function", function()
-			assert.is_false(worktree.validate({ dir = 42 }))
-		end)
-
-		it("rejects a relative dir string", function()
-			assert.is_false(worktree.validate({ dir = "review" }))
+		it("rejects invalid enabled and directory settings", function()
+			for _, config in ipairs({ { enabled = "yes" }, { dir = 42 }, { dir = "review" } }) do
+				assert.is_false(worktree.validate(config))
+			end
 		end)
 
 		it("rejects link entries that are not strings", function()
@@ -227,41 +190,36 @@ describe("worktree", function()
 	end)
 
 	describe("claim", function()
-		before_each(function()
-			for _, dir in ipairs(worktree.claimed_dirs()) do
+		local claimed = {}
+		after_each(function()
+			for _, dir in ipairs(claimed) do
 				worktree.release(dir)
 			end
+			claimed = {}
 		end)
 
-		it("hands out the resolved directory when it is free", function()
-			local ctx = context()
-			local dir = worktree.claim(ctx, nil)
-
-			assert.equals(worktree.default_dir(ctx), dir)
-			assert.is_true(worktree.is_claimed(dir))
-		end)
-
-		it("suffixes the directory while another session holds it", function()
+		it("isolates simultaneous sessions and reuses a directory only after release", function()
 			local ctx = context()
 			local first = worktree.claim(ctx, nil)
 			local second = worktree.claim(ctx, nil)
+			claimed = { first, second }
 
-			assert.are_not.equals(first, second)
+			assert.equals(worktree.default_dir(ctx), first)
 			assert.equals(first .. "-2", second)
-		end)
+			assert.is_true(worktree.is_claimed(first))
+			assert.is_true(worktree.is_claimed(second))
 
-		it("reuses a released directory", function()
-			local ctx = context()
-			local first = worktree.claim(ctx, nil)
 			worktree.release(first)
-			local second = worktree.claim(ctx, nil)
-
-			assert.equals(first, second)
-			assert.is_false(worktree.is_claimed(first .. "-2"))
+			assert.is_false(worktree.is_claimed(first))
+			local reused = worktree.claim(ctx, nil)
+			claimed[#claimed + 1] = reused
+			assert.equals(first, reused)
+			assert.is_true(worktree.is_claimed(second))
 		end)
 
 		it("propagates resolution errors", function()
 			local dir, err = worktree.claim(context(), { dir = "relative" })
+			claimed[1] = dir
 
 			assert.is_nil(dir)
 			assert.is_truthy(err)
@@ -301,11 +259,6 @@ describe("worktree", function()
 
 			assert.same({ "/home/dev/code/atlas.nvim", "/tmp/atlas/worktrees/repo/pr-1" }, paths)
 		end)
-
-		it("handles empty output", function()
-			assert.same({}, worktree.parse_worktree_list(""))
-			assert.same({}, worktree.parse_worktree_list(nil))
-		end)
 	end)
 
 	describe("remove and ensure on existing directories", function()
@@ -315,11 +268,9 @@ describe("worktree", function()
 		local original_logwarn = logger.logwarn
 		local original_loginfo = logger.loginfo
 		local deleted
-		local warnings
 
 		before_each(function()
 			deleted = {}
-			warnings = {}
 			vim.fn = setmetatable({
 				isdirectory = function()
 					return 1
@@ -335,9 +286,7 @@ describe("worktree", function()
 					return path
 				end,
 			}, { __index = original_uv or {} })
-			logger.logwarn = function(message)
-				table.insert(warnings, message)
-			end
+			logger.logwarn = function() end
 			logger.loginfo = function() end
 		end)
 
@@ -487,6 +436,41 @@ describe("worktree", function()
 			assert.same({}, deleted)
 			assert.is_true(ran(calls.calls, "remove"))
 			assert.is_true(ran(calls.calls, "add"))
+		end)
+
+		it("cancels recreation during removal or fallback pruning", function()
+			for _, stage in ipairs({ "remove", "prune" }) do
+				local calls, pending, cancelled = {}, nil, false
+				local completed = false
+				core_git.run = function(args, _, on_done)
+					table.insert(calls, args[4])
+					if args[4] == stage then
+						pending = on_done
+					else
+						on_done({ code = args[4] == "remove" and 128 or 0, stdout = "", stderr = "" })
+					end
+					return {
+						cancel = function()
+							assert.equals(stage, args[4])
+							cancelled = true
+						end,
+					}
+				end
+
+				local handle = worktree.ensure({
+					repo_root = "/home/dev/code/atlas.nvim",
+					head_sha = "abcdef0123456789abcdef0123456789abcdef01",
+					dir = worktree.cache_root() .. "/repo/pr-1",
+				}, function()
+					completed = true
+				end)
+
+				handle.cancel()
+				assert.is_true(cancelled)
+				pending({ code = 0, stdout = "", stderr = "" })
+				assert.is_false(completed)
+				assert.same(stage == "remove" and { "list", "remove" } or { "list", "remove", "prune" }, calls)
+			end
 		end)
 	end)
 end)

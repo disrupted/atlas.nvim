@@ -3,7 +3,7 @@ local help = require("atlas.ui.popups.help")
 
 local M = {}
 
----@type table<integer, AtlasHelpKeyItem[]>
+---@type table<integer, table<string, AtlasHelpKeyItem[]>>
 local installed = {}
 
 ---@param buf integer
@@ -15,46 +15,73 @@ function M.setup(buf, sidebar_buf, callbacks)
 	local refresh = {
 		key = resolver.resolve("ui.refresh") or {},
 		desc = "Refresh tags",
+		index = 80,
 		callback = callbacks.refresh,
 		opts = { nowait = true, silent = true },
 	}
 	local actions = {
-		{ resolver.resolve("ui.next_page"), "Next page", callbacks.next_page },
-		{ resolver.resolve("ui.previous_page"), "Previous page", callbacks.previous_page },
-		{ resolver.resolve("ui.search"), "Search tags", callbacks.search },
+		{ key = resolver.resolve("ui.next_page"), desc = "Next page", callback = callbacks.next_page, index = 16 },
 		{
-			vim.list_extend(resolver.resolve("ui.select") or {}, resolver.resolve("ui.toggle_fold") or {}),
-			"Toggle tag details",
-			callbacks.select,
+			key = resolver.resolve("ui.previous_page"),
+			desc = "Previous page",
+			callback = callbacks.previous_page,
+			index = 15,
 		},
-		{ resolver.resolve("pulls.open_diff"), "Open diff", callbacks.diff },
-		{ resolver.resolve("ui.show_details"), "Show tag details", callbacks.details },
-		{ resolver.resolve("ui.open_in_browser"), "Open tag in browser", callbacks.browser },
-		{ resolver.resolve("ui.copy_id"), "Copy commit SHA", callbacks.copy },
-		{ resolver.resolve("ui.copy_url"), "Copy tag URL", callbacks.copy_url },
+		{
+			key = resolver.resolve("ui.search"),
+			desc = "Search tags",
+			callback = callbacks.search,
+			index = 1,
+			group = "Filters",
+		},
+		{
+			key = vim.list_extend(resolver.resolve("ui.select") or {}, resolver.resolve("ui.toggle_fold") or {}),
+			desc = "Toggle tag details",
+			callback = callbacks.select,
+			index = 1,
+		},
+		{ key = resolver.resolve("pulls.open_diff"), desc = "Open diff", callback = callbacks.diff, index = 2 },
+		{
+			key = resolver.resolve("ui.show_details"),
+			desc = "Show tag details",
+			callback = callbacks.details,
+			index = 3,
+		},
+		{
+			key = resolver.resolve("ui.open_in_browser"),
+			desc = "Open tag in browser",
+			callback = callbacks.browser,
+			index = 4,
+		},
+		{ key = resolver.resolve("ui.copy_id"), desc = "Copy commit SHA", callback = callbacks.copy, index = 8 },
+		{ key = resolver.resolve("ui.copy_url"), desc = "Copy tag URL", callback = callbacks.copy_url, index = 9 },
 	}
-	local items = { refresh }
+	local groups = { General = { refresh }, Filters = {} }
 	for _, action in ipairs(actions) do
-		local keys = action[1]
+		local keys = action.key
 		if keys and #keys > 0 then
-			table.insert(items, {
+			table.insert(groups[action.group or "General"], {
 				key = keys,
-				desc = action[2],
-				callback = action[3],
+				desc = action.desc,
+				index = action.index,
+				callback = action.callback,
 				opts = { nowait = true, silent = true },
 			})
 		end
 	end
-	installed[buf] = items
-	help.register("Tags", items, { buffer = buf })
-	installed[sidebar_buf] = { refresh }
-	help.register("Tags", installed[sidebar_buf], { buffer = sidebar_buf })
+	installed[buf] = groups
+	help.register("General", groups.General, { buffer = buf, index = 1 })
+	help.register("Filters", groups.Filters, { buffer = buf, index = 2 })
+	installed[sidebar_buf] = { General = { refresh } }
+	help.register("General", installed[sidebar_buf].General, { buffer = sidebar_buf, index = 1 })
 end
 
 ---@param buf integer
 function M.clear(buf)
 	if installed[buf] then
-		help.remove("Tags", installed[buf], { buffer = buf })
+		for group, items in pairs(installed[buf]) do
+			help.remove(group, items, { buffer = buf })
+		end
 		installed[buf] = nil
 	end
 end

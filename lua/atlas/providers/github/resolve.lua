@@ -21,12 +21,12 @@ function M.resolve(value, parsed)
 		return nil, nil
 	end
 
+	local path = parsed.path
 	if parsed.remote then
-		local path = parsed.path:gsub("%.git$", "")
-		local owner, repo = path:match("^/([^/]+)/([^/]+)$")
-		if owner == nil then
-			return nil, "Unsupported GitHub remote. Expected owner/repository"
-		end
+		path = path:gsub("%.git$", "")
+	end
+	local owner, repo = path:match("^/([^/]+)/([^/]+)$")
+	if owner then
 		local full_name, web_url, repository_url = repository(parsed, owner, repo)
 		return {
 			provider = "github",
@@ -40,8 +40,12 @@ function M.resolve(value, parsed)
 			repo_full_name = full_name,
 		}
 	end
+	if parsed.remote then
+		return nil, "Unsupported GitHub remote. Expected owner/repository"
+	end
 
-	local owner, repo, number, tail = parsed.path:match("^/([^/]+)/([^/]+)/pull/(%d+)(.*)$")
+	local number, tail
+	owner, repo, number, tail = parsed.path:match("^/([^/]+)/([^/]+)/pull/(%d+)(.*)$")
 	local domain, entity = "pulls", "pr"
 	if owner == nil then
 		owner, repo, number, tail = parsed.path:match("^/([^/]+)/([^/]+)/issues/(%d+)(.*)$")
@@ -69,22 +73,6 @@ function M.resolve(value, parsed)
 			repo_full_name = full_name,
 			id = entity ~= "issue" and id or nil,
 			number = id,
-		}
-	end
-
-	owner, repo = parsed.path:match("^/([^/]+)/([^/]+)$")
-	if owner then
-		local full_name, web_url, repository_url = repository(parsed, owner, repo)
-		return {
-			provider = "github",
-			domain = "pulls",
-			entity = "repo",
-			url = web_url,
-			repository_url = repository_url,
-			host = parsed.host,
-			owner = owner,
-			repo = repo,
-			repo_full_name = full_name,
 		}
 	end
 

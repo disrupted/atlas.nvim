@@ -1,7 +1,9 @@
 local service = require("atlas.providers.gitlab.client")
 local json = require("atlas.core.json")
 
-local M = {}
+local M = {
+	-- get_assignable_users = nil,
+}
 
 ---@param raw any
 ---@return AtlasUser|nil

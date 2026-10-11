@@ -7,6 +7,16 @@
 ---@field repository AtlasRepositoryCapability|nil
 ---@field notifications AtlasNotificationsCapability|nil
 ---@field users AtlasUsersCapability|nil
+---@field completion table<string, AtlasCompletionSource>|nil
+---@field actions AtlasActionsCapability|nil
+
+---@alias AtlasAction AtlasIssueAction|AtlasPullAction|PullsPipelineAction|AtlasDiffAction
+---@alias AtlasActionContext AtlasIssueActionContext|AtlasPullActionContext|PullsPipelineActionContext|AtlasDiffActionContext
+---@alias AtlasActionResult IssuesActionResult|PullsActionResult
+
+---@class AtlasActionsCapability
+---@field items AtlasAction[]
+---@field find fun(action_id: string): AtlasAction|nil
 
 ---@class AtlasUsersCapability
 ---@field fetch_user fun(on_done: fun(user: AtlasUser|nil, err: string|nil)): { cancel: fun() }|nil

@@ -3,7 +3,7 @@ local M = {}
 local utils = require("atlas.ui.shared.utils")
 local icons = require("atlas.ui.shared.icons")
 local spinner = require("atlas.ui.components.spinner")
-local threads = require("atlas.ui.components.threadsv2")
+local threads = require("atlas.ui.components.threads")
 local notify = require("atlas.core.notify")
 local request_scope = require("atlas.core.requests")
 local detail = require("atlas.pulls.ui.detail.state")
@@ -52,7 +52,7 @@ end
 
 ---@param commit PullsCommit
 ---@param width integer
----@return AtlasThreadV2Item
+---@return AtlasThreadItem
 local function to_thread_item(commit, width)
 	local message = tostring(commit.message or ""):gsub("\r\n", "\n")
 	message = message:match("([^\n]+)") or message
@@ -65,17 +65,17 @@ local function to_thread_item(commit, width)
 	-- Pipeline status
 	local pipeline_state = state.status_by_hash[commit.hash]
 	if pipeline_state == "loading" then
-		content = content .. "  " .. icons.pulls_status("inprogress") .. " pipelines"
+		content = content .. "  " .. icons.get("inprogress", "status") .. " pipelines"
 	elseif pipeline_state ~= nil and pipeline_state ~= "unknown" then
 		content = content
 			.. "  "
-			.. icons.pulls_status(pipeline_state)
+			.. icons.get(pipeline_state, "status")
 			.. " "
 			.. pipeline_utils.state_label(pipeline_state)
 	end
 
 	-- Truncate message to leave room for hash + icon + gaps
-	local commit_icon, commit_icon_hl = icons.pulls("commit")
+	local commit_icon, commit_icon_hl = icons.get("commit")
 	local icon_width = vim.api.nvim_strwidth(commit_icon) + 1
 	local hash_width = #hash + 2
 	local max_msg = width - PADDING_X - icon_width - hash_width
@@ -87,7 +87,8 @@ local function to_thread_item(commit, width)
 		icon = commit_icon,
 		icon_hl = commit_icon_hl,
 		author = message,
-		right_text = hash,
+		author_hl = "Normal",
+		right_text = { { hash, "AtlasTextMuted" } },
 		content = content,
 		meta = {
 			pipeline_state = pipeline_state,
@@ -97,6 +98,38 @@ local function to_thread_item(commit, width)
 			pipeline_url = state.url_by_hash[commit.hash],
 		},
 	}
+end
+
+---@param pr PullRequest
+---@param pipelines PullsPipelineBackend|nil
+---@param opts { force_refresh: boolean|nil }
+---@param refresh fun()
+local function load_statuses(pr, pipelines, opts, refresh)
+	if not pipelines or not pipelines.fetch_commit_status then
+		return
+	end
+	local count = math.min(MAX_STATUS_COMMITS, #state.commits)
+	for i = 1, count do
+		local commit = state.commits[i]
+		local hash = tostring(commit.hash or "")
+		if hash ~= "" then
+			state.status_by_hash[hash] = "loading"
+			state.requests.run(function(done)
+				return pipelines.fetch_commit_status(commit, opts, done)
+			end, function(status, url, status_err)
+				if not is_current(pr) then
+					return
+				end
+				if status_err then
+					state.status_by_hash[hash] = "unknown"
+				else
+					state.status_by_hash[hash] = status or "unknown"
+					state.url_by_hash[hash] = url
+				end
+				refresh()
+			end)
+		end
+	end
 end
 
 ---@param pr PullRequest
@@ -144,31 +177,8 @@ function M.on_select(pr, refresh, opts)
 		state.commits = commits or {}
 		notify.success(string.format("Commits loaded for #%s", pr_id), { timeout = 1200 })
 
-		-- Fetch statuses for the first N commits.
-		if pipelines and pipelines.fetch_commit_status then
-			local count = math.min(MAX_STATUS_COMMITS, #state.commits)
-			for i = 1, count do
-				local commit = state.commits[i]
-				local hash = tostring(commit.hash or "")
-				if hash ~= "" then
-					state.status_by_hash[hash] = "loading"
-					state.requests.run(function(done)
-						return pipelines.fetch_commit_status(commit, opts, done)
-					end, function(status, url, status_err)
-						if not is_current(pr) then
-							return
-						end
-						if status_err then
-							state.status_by_hash[hash] = "unknown"
-						else
-							state.status_by_hash[hash] = status or "unknown"
-							state.url_by_hash[hash] = url
-						end
-						refresh()
-					end)
-				end
-			end
-		end
+		-- Fetch statuses for the latest five commits.
+		load_statuses(pr, pipelines, opts, refresh)
 
 		refresh()
 	end)
@@ -215,15 +225,12 @@ function M.render(_pr, _details, width)
 	local thread_lines, thread_spans, thread_map = threads.render(items, width, {
 		padding_x = PADDING_X,
 		mode = "linked",
-		author_hl = function()
-			return "Normal"
-		end,
 		content_hl = function(item, row, _)
 			local out = { { start_col = 0, end_col = #row, hl_group = "AtlasTextMuted" } }
 			local pipeline_state = item.meta and tostring(item.meta.pipeline_state or "") or ""
 
 			if pipeline_state ~= "" and pipeline_state ~= "unknown" and pipeline_state ~= "loading" then
-				local icon, hl = icons.pulls_status(pipeline_state)
+				local icon, hl = icons.get(pipeline_state, "status")
 				local marker = icon .. " " .. pipeline_utils.state_label(pipeline_state)
 				local start_col, end_col = row:find(marker, 1, true)
 				if start_col ~= nil and end_col ~= nil then
@@ -284,9 +291,7 @@ function M.activate(buf, refresh)
 	if not (buf and vim.api.nvim_buf_is_valid(buf)) then
 		return
 	end
-	if refresh ~= nil then
-		keymaps.setup(buf, refresh)
-	end
+	keymaps.setup(buf, refresh)
 end
 
 ---@param buf integer

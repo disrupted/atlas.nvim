@@ -1,4 +1,3 @@
-local git = require("atlas.core.git")
 local notify = require("atlas.core.notify")
 local requests = require("atlas.core.requests")
 local diff = require("atlas.pulls.diff")
@@ -22,6 +21,8 @@ local utils = require("atlas.ui.shared.utils")
 ---@field cursors table<integer, string>
 ---@field next_cursor string|nil
 ---@field root string|nil
+---@field root_loading boolean
+---@field root_request AtlasRequestScope
 ---@field expanded string|nil
 ---@field line_map table<integer, RepositoryTagSelection>
 ---@field requests AtlasRequestScope
@@ -39,7 +40,7 @@ local states = {}
 local M = {
 	key = "tags",
 	label = "Tags",
-	icon = icons.pulls("tag"),
+	icon = icons.get("tag"),
 }
 local namespace = vim.api.nvim_create_namespace("atlas.repository.tags")
 
@@ -112,11 +113,6 @@ end
 ---@param page integer|nil
 local function load(state, page)
 	local repository = state.provider.capabilities.repository
-	if not repository then
-		state.tags = "Tags are not available for this provider"
-		render(state)
-		return
-	end
 	state.requests.cancel()
 	state.requests = requests.new()
 	state.page = page or 1
@@ -148,9 +144,6 @@ end
 ---@param state RepositoryTags
 local function search(state)
 	local repository = state.provider.capabilities.repository
-	if not repository then
-		return
-	end
 	local tags = state.tags
 	picker.search({
 		title = "Tags",
@@ -203,24 +196,17 @@ local function open_diff(state)
 		return
 	end
 	if not state.root then
-		notify.warn("Configure this repository under pulls.repo_config.paths to open diffs")
+		notify.warn(
+			state.root_loading and "Resolving local repository..."
+				or "Configure this repository under pulls.repo_config.paths to open diffs"
+		)
 		return
 	end
 	if tag.hash == "" then
 		notify.warn("This tag has no target commit")
 		return
 	end
-	local parent = tag.hash .. "^"
-	local exists = git.check_commits(state.root, { tag.hash, parent })
-	if not exists[1] then
-		notify.warn("This tag's commit is not available in the local repository")
-		return
-	end
-	if not exists[2] then
-		notify.warn("This commit has no local first parent to compare")
-		return
-	end
-	diff.open_range({ root = state.root, base = parent, head = tag.hash }, function(err)
+	diff.open_commit({ root = state.root, commit = tag.hash }, function(err)
 		if err then
 			notify.error(err)
 		end
@@ -239,7 +225,8 @@ function M.open(opts)
 		tags = "loading",
 		page = 1,
 		cursors = {},
-		root = history.resolve(opts.repo),
+		root_request = requests.new(),
+		root_loading = true,
 		line_map = {},
 		requests = requests.new(),
 		spinner = spinner.create(),
@@ -330,13 +317,26 @@ function M.open(opts)
 		end,
 	})
 	load(state)
+	state.root_request.run(function(done)
+		return history.resolve(opts.repo, done)
+	end, function(root)
+		if states[state.buf] ~= state or not utils.window.has_buffer(state.win, state.buf) then
+			return
+		end
+		state.root = root
+		state.root_loading = false
+	end)
 end
 
 ---@param buf integer
 function M.close(buf)
 	local state = states[buf]
+	if not state then
+		return
+	end
 	info.close(state.win)
 	states[buf] = nil
+	state.root_request.cancel()
 	state.requests.cancel()
 	state.spinner:stop()
 	state.statusline:clear_notice()

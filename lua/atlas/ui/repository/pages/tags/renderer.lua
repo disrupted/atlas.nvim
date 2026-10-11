@@ -37,7 +37,7 @@ function M.render(state, width)
 			name = (state.expanded == tag.name and "▾ " or "▸ ") .. tag.name,
 			message = message:match("^[^\r\n]*"),
 			hash = tag.hash:sub(1, 8),
-			date = date ~= "" and date or "—",
+			date = date ~= "" and date or "-",
 			_item = { tag = tag },
 		})
 	end

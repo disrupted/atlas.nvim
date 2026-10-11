@@ -16,17 +16,18 @@ local utils = require("atlas.ui.shared.utils")
 ---@field provider PullsProvider|IssuesProvider
 ---@field statusline AtlasStatusline
 ---@field release AtlasRepositoryReleaseDetails|string|nil
+---@field releases AtlasRepositoryRelease[]|nil
 ---@field selected_id string|nil
 ---@field line_map table<integer, RepositoryReleaseSelection>
 ---@field requests AtlasRequestScope
 ---@field spinner SpinnerInstance
 ---@field group integer
----@field keymaps table<integer, AtlasHelpKeyItem[]>
+---@field keymaps table<integer, table<string, AtlasHelpKeyItem[]>>
 
 local M = {
 	key = "releases",
 	label = "Releases",
-	icon = icons.pulls("tag"),
+	icon = icons.get("tag"),
 }
 local namespace = vim.api.nvim_create_namespace("atlas.repository.releases")
 ---@type table<integer, RepositoryReleases>
@@ -54,7 +55,7 @@ local function render(state)
 		})
 		return
 	end
-	local lines, line_map, spans = renderer.render(release)
+	local lines, line_map, spans = renderer.render(release, vim.api.nvim_win_get_width(state.win))
 	state.line_map = line_map
 	vim.bo[state.buf].modifiable = true
 	vim.api.nvim_buf_set_lines(state.buf, 0, -1, false, lines)
@@ -66,7 +67,6 @@ local function render(state)
 		})
 	end
 	vim.bo[state.buf].modifiable = false
-	vim.bo[state.buf].filetype = "markdown"
 end
 
 ---@param state RepositoryReleases
@@ -107,6 +107,10 @@ local function fetch_releases(state, on_done)
 	if state.release == "loading" then
 		return
 	end
+	if state.releases then
+		on_done(state.releases)
+		return
+	end
 	local repository = state.provider.capabilities.repository
 	local fetch = repository and repository.fetch_releases
 	if not fetch then
@@ -127,6 +131,7 @@ local function fetch_releases(state, on_done)
 			notify.info("No releases found")
 			return
 		end
+		state.releases = releases
 		on_done(releases)
 	end)
 end
@@ -189,20 +194,23 @@ end
 ---@param buf integer
 ---@param actions table[]
 local function register(state, buf, actions)
-	local items = {}
+	local groups = { General = {}, Filters = {} }
 	for _, action in ipairs(actions) do
-		local keys = action[1]
+		local keys = action.key
 		if keys and #keys > 0 then
+			local items = groups[action.group or "General"]
 			table.insert(items, {
 				key = keys,
-				desc = action[2],
-				callback = action[3],
+				desc = action.desc,
+				index = action.index,
+				callback = action.callback,
 				opts = { silent = true, nowait = true },
 			})
 		end
 	end
-	state.keymaps[buf] = items
-	help.register("Releases", items, { buffer = buf })
+	state.keymaps[buf] = groups
+	help.register("General", groups.General, { buffer = buf, index = 1 })
+	help.register("Filters", groups.Filters, { buffer = buf, index = 2 })
 end
 
 ---@param opts { buf: integer, win: integer, sidebar_buf: integer, repo: AtlasRepositoryDetails, provider: PullsProvider|IssuesProvider, statusline: AtlasStatusline }
@@ -228,36 +236,44 @@ function M.open(opts)
 			render(state)
 		end
 	end
+	vim.bo[state.buf].filetype = "atlas-ui.repository"
 	vim.wo[state.win].wrap = true
+	vim.wo[state.win].linebreak = true
 
 	local actions = {
 		{
-			resolver.resolve("ui.refresh"),
-			"Refresh release",
-			function()
+			key = resolver.resolve("ui.refresh"),
+			desc = "Refresh release",
+			callback = function()
+				state.releases = nil
 				load(state, state.selected_id)
 			end,
+			index = 80,
 		},
 		{
-			resolver.resolve("ui.search"),
-			"Search releases",
-			function()
+			key = resolver.resolve("ui.search"),
+			desc = "Search releases",
+			group = "Filters",
+			callback = function()
 				search(state)
 			end,
+			index = 1,
 		},
 		{
-			resolver.resolve("ui.next_page"),
-			"Next release",
-			function()
+			key = resolver.resolve("ui.next_page"),
+			desc = "Next release",
+			callback = function()
 				change_release(state, 1)
 			end,
+			index = 16,
 		},
 		{
-			resolver.resolve("ui.previous_page"),
-			"Previous release",
-			function()
+			key = resolver.resolve("ui.previous_page"),
+			desc = "Previous release",
+			callback = function()
 				change_release(state, -1)
 			end,
+			index = 15,
 		},
 	}
 	register(state, state.sidebar_buf, actions)
@@ -266,46 +282,46 @@ function M.open(opts)
 	end
 	vim.list_extend(actions, {
 		{
-			resolver.resolve("ui.open_in_browser"),
-			"Open in browser",
-			function()
+			key = resolver.resolve("ui.open_in_browser"),
+			desc = "Open in browser",
+			callback = function()
 				local entry = current()
 				if entry then
 					vim.ui.open(entry.asset and entry.asset.url or entry.release.url)
 				end
 			end,
+			index = 4,
 		},
 		{
-			resolver.resolve("ui.copy_id"),
-			"Copy release tag",
-			function()
+			key = resolver.resolve("ui.copy_id"),
+			desc = "Copy release tag",
+			callback = function()
 				local entry = current()
 				if entry then
 					vim.fn.setreg("+", entry.release.tag)
 					notify.success("Copied " .. entry.release.tag)
 				end
 			end,
+			index = 8,
 		},
 		{
-			resolver.resolve("ui.copy_url"),
-			"Copy URL",
-			function()
+			key = resolver.resolve("ui.copy_url"),
+			desc = "Copy URL",
+			callback = function()
 				local entry = current()
 				if entry then
 					vim.fn.setreg("+", entry.asset and entry.asset.url or entry.release.url)
 					notify.success("Copied URL")
 				end
 			end,
+			index = 9,
 		},
 	})
 	register(state, state.buf, actions)
 	vim.api.nvim_create_autocmd({ "WinResized", "VimResized" }, {
 		group = state.group,
 		callback = function(event)
-			if
-				(not state.release or type(state.release) == "string")
-				and (event.event == "VimResized" or vim.tbl_contains(vim.v.event.windows, state.win))
-			then
+			if event.event == "VimResized" or vim.tbl_contains(vim.v.event.windows, state.win) then
 				render(state)
 			end
 		end,
@@ -321,8 +337,10 @@ function M.close(buf)
 	state.spinner:stop()
 	state.statusline:clear_notice()
 	vim.api.nvim_del_augroup_by_id(state.group)
-	for buffer, items in pairs(state.keymaps) do
-		help.remove("Releases", items, { buffer = buffer })
+	for buffer, groups in pairs(state.keymaps) do
+		for group, items in pairs(groups) do
+			help.remove(group, items, { buffer = buffer })
+		end
 	end
 	if utils.window.valid(state.win) then
 		vim.wo[state.win].wrap = false

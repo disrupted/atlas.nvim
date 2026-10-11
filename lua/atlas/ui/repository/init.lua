@@ -35,6 +35,7 @@ local function setup_window(win)
 		cursorline = false,
 		conceallevel = 0,
 		concealcursor = "",
+		winhighlight = "",
 	}) do
 		vim.api.nvim_set_option_value(option, value, { win = win })
 	end
@@ -43,8 +44,8 @@ end
 ---@param session RepositoryBrowser
 local function setup_buffers(session)
 	local prefix = "atlas://repository/" .. session.tab
-	session.sidebar.buf = utils.buffer.create(prefix .. "/sidebar", "atlas.repository")
-	session.content.buf = utils.buffer.create(prefix .. "/content", "atlas.repository")
+	session.sidebar.buf = utils.buffer.create(prefix .. "/sidebar", "atlas-ui.repository")
+	session.content.buf = utils.buffer.create(prefix .. "/content", "atlas-ui.repository")
 end
 
 ---@param session RepositoryBrowser
@@ -111,7 +112,7 @@ local function select_page(session, index)
 		local previous_buf = session.content.buf
 		session.page.close(previous_buf)
 		session.content.buf =
-			utils.buffer.create("atlas://repository/" .. session.tab .. "/content/" .. page.key, "atlas.repository")
+			utils.buffer.create("atlas://repository/" .. session.tab .. "/content/" .. page.key, "atlas-ui.repository")
 		vim.api.nvim_win_set_buf(session.content.win, session.content.buf)
 		utils.buffer.delete(previous_buf)
 	end

@@ -140,14 +140,16 @@ function M.fetch_details(repo, on_done)
 		local result_owner = json.safe_table(result.owner)
 		local default_branch = json.nilify(result.defaultBranchRef)
 		local watchers = json.safe_table(result.watchers)
+		local full_name = tostring(result.nameWithOwner or slug)
+		local name = tostring(result.name or repo_name)
 
 		---@type AtlasRepositoryDetails
 		local details = {
-			id = tostring(result.nameWithOwner or slug),
-			name = tostring(result.name or repo_name),
-			full_name = tostring(result.nameWithOwner or slug),
+			id = full_name,
+			name = name,
+			full_name = full_name,
 			owner = tostring(result_owner.login or owner),
-			repo_name = tostring(result.name or repo_name),
+			repo_name = name,
 			html_url = tostring(result.url or ""),
 			description = tostring(result.description or ""),
 			topics = vim.tbl_map(function(topic)
@@ -157,7 +159,6 @@ function M.fetch_details(repo, on_done)
 			default_branch = default_branch and tostring(default_branch.name or "") or nil,
 			is_private = result.isPrivate == true,
 			created_on = tostring(result.createdAt or ""),
-			readme = nil,
 			stars = tonumber(result.stargazerCount) or nil,
 			forks = tonumber(result.forkCount) or nil,
 			watchers = tonumber(watchers.totalCount),

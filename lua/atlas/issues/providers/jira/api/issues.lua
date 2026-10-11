@@ -6,16 +6,10 @@ local json = require("atlas.core.json")
 local config = require("atlas.config")
 local users_api = require("atlas.providers.jira.users")
 local url_encode = require("atlas.core.utils").url_encode
+local request_scope = require("atlas.core.requests")
 
-local function project_config()
-	return (config.domain_options("jira", "issues") or {}).project_config or {}
-end
-
-local function story_points_field()
-	return tostring(project_config().story_points_field or "customfield_10016")
-end
-
-local function search_fields()
+---@param story_points_field string
+local function search_fields(story_points_field)
 	return {
 		"summary",
 		"status",
@@ -30,7 +24,7 @@ local function search_fields()
 		"created",
 		"updated",
 		"resolutiondate",
-		story_points_field(),
+		story_points_field,
 	}
 end
 
@@ -48,7 +42,7 @@ end
 ---@param extra_fields string[]
 ---@return string[]
 local function detail_fields(extra_fields)
-	local fields = { "description", "labels", "status", "priority", "assignee", "reporter" }
+	local fields = { "summary", "description", "issuetype", "labels", "status", "priority", "assignee", "reporter" }
 	vim.list_extend(fields, extra_fields)
 	return fields
 end
@@ -58,9 +52,11 @@ end
 ---@param opts { force_refresh?: boolean, pagelen: integer, cursor?: string }
 ---@return { job_id: integer, cancel: fun() }|nil
 function M.search_issues(jql, on_done, opts)
-	local cache_key = string.format("jira:search:v6:%s:%d:%s", jql, opts.pagelen, opts.cursor or "first")
+	local cache_key = string.format("jira:search:v7:%s:%d:%s", jql, opts.pagelen, opts.cursor or "first")
 
-	if not opts.force_refresh then
+	if opts.force_refresh then
+		service.clear_memory_cache()
+	else
 		local cached = service.get_cache(cache_key)
 		if cached then
 			on_done(cached, nil)
@@ -68,9 +64,10 @@ function M.search_issues(jql, on_done, opts)
 		end
 	end
 
+	local story_points_field = config.options.issues.jira.project_config.story_points_field
 	local data = {
 		jql = jql,
-		fields = search_fields(),
+		fields = search_fields(story_points_field),
 		maxResults = opts.pagelen,
 	}
 	local endpoint = "/search/jql"
@@ -89,7 +86,7 @@ function M.search_issues(jql, on_done, opts)
 			return
 		end
 
-		local items = normalizer.to_issues_list(result.issues or {}, story_points_field())
+		local items = normalizer.to_issues_list(result.issues or {}, story_points_field)
 		local next_cursor
 		local total_pages
 		if service.is_server() then
@@ -121,7 +118,7 @@ end
 ---@param query string
 ---@param on_done fun(items: JiraIssuePickerItem[]|nil, err: string|nil)
 ---@return { job_id: integer, cancel: fun() }|nil
-function M.search_issue(project, query, on_done)
+function M.issue_picker(project, query, on_done)
 	local q = vim.trim(tostring(query or ""))
 	local project_key = project and project.key
 
@@ -141,7 +138,7 @@ function M.search_issue(project, query, on_done)
 
 	return service.request("GET", endpoint, nil, function(result, err)
 		if err ~= nil then
-			on_done(nil, err or "Empty response")
+			on_done(nil, err)
 			return
 		end
 
@@ -171,7 +168,7 @@ end
 
 ---@param ref IssueRef
 ---@param opts IssuesFetchOpts|nil
----@param callback fun(details: IssueDetails|nil, err: string|nil)
+---@param callback fun(details: JiraIssueDetails|nil, err: string|nil)
 ---@return { job_id: integer, cancel: fun() }|nil
 function M.fetch_issue(ref, opts, callback)
 	local issue_key = tostring(ref.key or "")
@@ -190,7 +187,7 @@ function M.fetch_issue(ref, opts, callback)
 	end
 
 	local project_key = issue_key:match("^([^-]+)-")
-	local configured = project_config()[project_key] or {}
+	local configured = config.options.issues.jira.project_config[project_key] or {}
 	local extra_fields = custom_field_ids(configured)
 	local endpoint = string.format("/issue/%s?fields=%s", issue_key, table.concat(detail_fields(extra_fields), ","))
 
@@ -260,7 +257,7 @@ function M.get_issue_history(issue_key, on_done, opts)
 end
 
 ---@param fields table
----@param callback fun(result: table|nil, err: string|nil)
+---@param callback fun(result: JiraIssueEditorResult|nil, err: string|nil)
 ---@return { job_id: integer, cancel: fun() }|nil
 function M.create_issue(fields, callback)
 	if not fields.summary or fields.summary == "" then
@@ -278,24 +275,18 @@ function M.create_issue(fields, callback)
 		return nil
 	end
 
-	local payload = { fields = fields }
-
-	return service.request("POST", "/issue", payload, function(result, err)
-		if err ~= nil then
+	return service.request("POST", "/issue", { fields = fields }, function(result, err)
+		if err then
 			callback(nil, err)
 			return
 		end
-
 		if not result or not result.key then
 			callback(nil, "Invalid response")
 			return
 		end
 
-		callback({
-			key = result.key,
-			id = result.id,
-			self = result.self,
-		}, nil)
+		service.clear_memory_cache()
+		callback({ key = result.key, id = result.id, self = result.self }, nil)
 	end, {
 		action = "Create issue",
 		summary = fields.summary,
@@ -316,12 +307,10 @@ function M.update_issue(issue_key, fields, callback)
 	local payload = { fields = fields }
 
 	return service.request("PUT", endpoint, payload, function(_, err)
-		if err ~= nil then
-			callback(false, err)
-			return
+		if err == nil then
+			service.clear_memory_cache()
 		end
-
-		callback(true, nil)
+		callback(err == nil, err)
 	end, {
 		action = "Update issue",
 		issue_key = issue_key,
@@ -340,86 +329,65 @@ function M.delete_issue(issue_key, callback)
 	local endpoint = string.format("/issue/%s", issue_key)
 
 	return service.request("DELETE", endpoint, nil, function(_, err)
-		if err ~= nil then
-			callback(false, err)
-			return
-		end
-
-		callback(true, nil)
+		callback(err == nil, err)
 	end, {
 		action = "Delete issue",
 		issue_key = issue_key,
 	})
 end
 
+---@param raw_types table[]
+---@return IssueType[]
+local function map_issue_types(raw_types)
+	local issue_types = {}
+	for _, raw in ipairs(raw_types) do
+		local issue_type = normalizer.to_issue_type(raw)
+		if issue_type ~= nil then
+			table.insert(issue_types, issue_type)
+		end
+	end
+	return issue_types
+end
+
 ---@param project_key string
 ---@param callback fun(issue_types: IssueType[]|nil, err: string|nil)
----@return { job_id: integer, cancel: fun() }|nil
+---@return AtlasRequestScope|nil
 function M.get_create_meta(project_key, callback)
 	if project_key == "" then
 		callback(nil, "Missing project key")
 		return nil
 	end
 
-	local escaped_key = url_encode(project_key)
-
-	if service.is_server() then
-		local endpoint = string.format("/issue/createmeta/%s/issuetypes", escaped_key)
-		return service.request("GET", endpoint, nil, function(result, err)
-			if err ~= nil then
+	local endpoint = string.format("/issue/createmeta/%s/issuetypes", url_encode(project_key))
+	local requests = request_scope.new()
+	local issue_types = {}
+	local function fetch(start_at)
+		requests.run(function(done)
+			return service.request(
+				"GET",
+				string.format("%s?startAt=%d&maxResults=100", endpoint, start_at),
+				nil,
+				done,
+				{ action = "Fetch create metadata", project_key = project_key }
+			)
+		end, function(result, err)
+			if err or not result then
 				callback(nil, err or "Empty response")
 				return
 			end
 
-			local raw_types = result.values or {}
-			local issue_types = {}
-			for _, raw in ipairs(raw_types) do
-				local issue_type = normalizer.to_issue_type(raw)
-				if issue_type ~= nil then
-					table.insert(issue_types, issue_type)
-				end
+			local raw_types = (service.is_server() and result.values or result.issueTypes) or {}
+			vim.list_extend(issue_types, map_issue_types(raw_types))
+			local next_start = start_at + #raw_types
+			if #raw_types > 0 and result.isLast ~= true and next_start < result.total then
+				fetch(next_start)
+			else
+				callback(issue_types, nil)
 			end
-			callback(issue_types, nil)
-		end, {
-			action = "Fetch create metadata",
-			project_key = project_key,
-		})
+		end)
 	end
-
-	local endpoint = string.format("/issue/createmeta?projectKeys=%s&expand=projects.issuetypes", escaped_key)
-
-	return service.request("GET", endpoint, nil, function(result, err)
-		if err ~= nil then
-			callback(nil, err or "Empty response")
-			return
-		end
-
-		local projects = json.safe_table(result.projects)
-
-		local matched_project = nil
-		for _, project in ipairs(projects) do
-			if tostring(project.key or "") == project_key then
-				matched_project = project
-				break
-			end
-		end
-
-		local project = matched_project or projects[1]
-		local raw_types = json.safe_table(project and project.issuetypes)
-
-		local issue_types = {}
-		for _, raw in ipairs(raw_types) do
-			local issue_type = normalizer.to_issue_type(raw)
-			if issue_type ~= nil then
-				table.insert(issue_types, issue_type)
-			end
-		end
-
-		callback(issue_types, nil)
-	end, {
-		action = "Fetch create metadata",
-		project_key = project_key,
-	})
+	fetch(0)
+	return requests
 end
 
 ---@param opts { project: string|nil, issue_key: string|nil }
@@ -455,7 +423,7 @@ function M.get_assignable_users(opts, query, callback)
 
 	return service.request("GET", endpoint, nil, function(result, err)
 		if err ~= nil then
-			callback(nil, err or "Empty response")
+			callback(nil, err)
 			return
 		end
 
@@ -582,12 +550,7 @@ function M.assign_issue(issue_key, account_id, callback)
 	end
 
 	return service.request("PUT", endpoint, payload, function(_, err)
-		if err ~= nil then
-			callback(false, err)
-			return
-		end
-
-		callback(true, nil)
+		callback(err == nil, err)
 	end, {
 		action = "Assign issue",
 		issue_key = issue_key,
@@ -619,14 +582,32 @@ function M.change_reporter(issue_key, account_id, callback)
 	end
 
 	return service.request("PUT", endpoint, payload, function(_, err)
-		if err ~= nil then
-			callback(false, err)
-			return
-		end
-
-		callback(true, nil)
+		callback(err == nil, err)
 	end, {
 		action = "Change reporter",
+		issue_key = issue_key,
+	})
+end
+
+---@param issue_key string
+---@param subscribed boolean
+---@param account_id string|nil Required when unsubscribing.
+---@param on_done fun(subscribed: boolean|nil, err: string|nil)
+---@return { job_id: integer, cancel: fun() }|nil
+function M.set_subscription(issue_key, subscribed, account_id, on_done)
+	local endpoint = "/issue/" .. issue_key .. "/watchers"
+	if not subscribed then
+		local param_name = service.is_server() and "username" or "accountId"
+		endpoint = string.format("%s?%s=%s", endpoint, param_name, url_encode(account_id))
+	end
+	return service.request(subscribed and "POST" or "DELETE", endpoint, nil, function(_, err)
+		if err then
+			on_done(nil, err)
+			return
+		end
+		on_done(subscribed, nil)
+	end, {
+		action = subscribed and "Subscribe to issue" or "Unsubscribe from issue",
 		issue_key = issue_key,
 	})
 end

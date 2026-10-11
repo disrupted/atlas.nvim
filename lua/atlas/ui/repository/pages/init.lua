@@ -6,6 +6,7 @@ local branches = require("atlas.ui.repository.pages.branches")
 local tags = require("atlas.ui.repository.pages.tags")
 
 ---@class RepositoryPage
+---The browser checks provider.capabilities.repository before opening a page.
 ---@field key string
 ---@field label string
 ---@field icon string

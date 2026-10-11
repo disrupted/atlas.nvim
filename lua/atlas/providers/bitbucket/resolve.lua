@@ -20,12 +20,12 @@ function M.resolve(value, parsed)
 		return nil, nil
 	end
 	if parsed.host == "bitbucket.org" then
+		local path = parsed.path
 		if parsed.remote then
-			local path = parsed.path:gsub("%.git$", "")
-			local workspace, repo = path:match("^/([^/]+)/([^/]+)$")
-			if workspace == nil then
-				return nil, "Unsupported Bitbucket remote. Expected workspace/repository"
-			end
+			path = path:gsub("%.git$", "")
+		end
+		local workspace, repo = path:match("^/([^/]+)/([^/]+)$")
+		if workspace then
 			local full_name, web_url, repository_url = repository(parsed, workspace, repo)
 			return {
 				provider = "bitbucket",
@@ -40,11 +40,15 @@ function M.resolve(value, parsed)
 				repo_full_name = full_name,
 			}
 		end
+		if parsed.remote then
+			return nil, "Unsupported Bitbucket remote. Expected workspace/repository"
+		end
 
-		local workspace, repo, number, tail = parsed.path:match("^/([^/]+)/([^/]+)/pull%-requests/(%d+)(.*)$")
+		local number, tail
+		workspace, repo, number, tail = path:match("^/([^/]+)/([^/]+)/pull%-requests/(%d+)(.*)$")
 		local entity = "pr"
 		if workspace == nil then
-			workspace, repo, number, tail = parsed.path:match("^/([^/]+)/([^/]+)/pipelines/results/(%d+)(.*)$")
+			workspace, repo, number, tail = path:match("^/([^/]+)/([^/]+)/pipelines/results/(%d+)(.*)$")
 			entity = "pipeline"
 		end
 		if workspace then
@@ -66,23 +70,6 @@ function M.resolve(value, parsed)
 				repo_full_name = full_name,
 				id = id,
 				number = id,
-			}
-		end
-
-		workspace, repo = parsed.path:match("^/([^/]+)/([^/]+)$")
-		if workspace then
-			local full_name, web_url, repository_url = repository(parsed, workspace, repo)
-			return {
-				provider = "bitbucket",
-				domain = "pulls",
-				entity = "repo",
-				url = web_url,
-				repository_url = repository_url,
-				host = parsed.host,
-				workspace = workspace,
-				owner = workspace,
-				repo = repo,
-				repo_full_name = full_name,
 			}
 		end
 

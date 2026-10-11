@@ -31,23 +31,20 @@ local function describe_update(update)
 		end
 		if key == "reviewers" then
 			local rev = as_table(changes.reviewers) or {}
-			local added = as_table(rev.added) or {}
-			if #added > 0 then
-				local names = {}
-				for _, r in ipairs(added) do
-					names[#names + 1] = r.display_name or r.nickname or "someone"
-				end
-				return "added reviewer: " .. table.concat(names, ", ")
+			local reviewers = as_table(rev.added) or {}
+			local verb = "added"
+			if #reviewers == 0 then
+				reviewers = as_table(rev.removed) or {}
+				verb = "removed"
 			end
-			local removed = as_table(rev.removed) or {}
-			if #removed > 0 then
-				local names = {}
-				for _, r in ipairs(removed) do
-					names[#names + 1] = r.display_name or r.nickname or "someone"
-				end
-				return "removed reviewer: " .. table.concat(names, ", ")
+			if #reviewers == 0 then
+				return "updated reviewers"
 			end
-			return "updated reviewers"
+			local names = {}
+			for _, reviewer in ipairs(reviewers) do
+				names[#names + 1] = reviewer.display_name or reviewer.nickname or "someone"
+			end
+			return verb .. " reviewer: " .. table.concat(names, ", ")
 		end
 	end
 
@@ -70,16 +67,13 @@ end
 ---@param is_draft boolean
 ---@return "open"|"merged"|"declined"|"draft"
 local function map_state(bb_state, is_draft)
-	if is_draft then
-		return "draft"
-	end
 	local s = tostring(bb_state or ""):upper()
-	if s == "OPEN" then
-		return "open"
-	elseif s == "MERGED" then
+	if s == "MERGED" then
 		return "merged"
 	elseif s == "DECLINED" or s == "SUPERSEDED" then
 		return "declined"
+	elseif is_draft then
+		return "draft"
 	end
 	return "open"
 end
@@ -263,6 +257,31 @@ local function actor(user)
 	}
 end
 
+---@param content table
+---@return string|nil
+local function content_display(content)
+	local raw = tostring(content.raw or "")
+	local names = {}
+	local entities = { amp = "&", lt = "<", gt = ">", quot = '"', apos = "'" }
+
+	for _, id, label in
+		tostring(content.html or ""):gmatch("<span[^>]-data%-atlassian%-id=(['\"])(.-)%1[^>]*>(.-)</span>")
+	do
+		local name = label:gsub("<[^>]*>", ""):gsub("&(#?[%w]+);", function(entity)
+			local hexadecimal = entity:match("^#x(%x+)$")
+			local code = hexadecimal and tonumber(hexadecimal, 16) or tonumber(entity:match("^#(%d+)$"))
+			return code and vim.fn.nr2char(code) or entities[entity]
+		end)
+
+		if name ~= "" then
+			names[id] = name:gsub("([\\`*_~%[%]<>])", "\\%1")
+		end
+	end
+
+	local display = raw:gsub("@{([^}]+)}", names)
+	return display ~= raw and display or nil
+end
+
 ---@param result table|nil
 ---@return PullsActivityEntry[]
 function M.to_activities_list(result)
@@ -299,7 +318,7 @@ function M.to_activities_list(result)
 			})
 		elseif comment ~= nil then
 			local content = as_table(comment.content) or {}
-			local body = tostring(content.raw or "")
+			local body = content_display(content) or tostring(content.raw or "")
 			table.insert(entries, {
 				kind = "comment",
 				date = tostring(comment.created_on or ""),
@@ -381,7 +400,6 @@ function M.to_comment(result)
 	local outdated = raw_inline ~= nil and raw_inline.outdated == true
 	local inline, file = comment_position(raw_inline)
 	local state = entry.deleted == true and "DELETED"
-		or (entry.pending == true and "PENDING")
 		or (resolution ~= nil and "RESOLVED")
 		or (outdated and "OUTDATED")
 		or nil
@@ -391,6 +409,7 @@ function M.to_comment(result)
 		parent_id = parent ~= nil and tonumber(parent.id) or nil,
 		author = actor(entry.user),
 		content_raw = tostring(content.raw or ""),
+		content_display = content_display(content),
 		created_on = tostring(entry.created_on or ""),
 		resolved_on = resolution
 				and is_thread_root
@@ -401,6 +420,7 @@ function M.to_comment(result)
 		file = file,
 		inline = inline,
 		is_task = nil,
+		pending = entry.pending == true and entry.deleted ~= true,
 		state = state,
 		outdated = outdated,
 		url = tostring((as_table(links.self) or {}).href or ""),
@@ -442,13 +462,13 @@ function M.to_tasks_list(result)
 			parent_id = comment ~= nil and tonumber(comment.id) or nil,
 			author = actor(task.creator),
 			content_raw = tostring(content.raw or ""),
+			content_display = content_display(content),
 			created_on = tostring(task.created_on or ""),
 			resolved_on = type(task.resolved_on) == "string" and task.resolved_on or nil,
 			resolved_by = resolved_by and actor(resolved_by) or nil,
 			is_task = true,
-			state = task.pending == true and "PENDING"
-				or (tostring(task.state or "") == "RESOLVED" and "RESOLVED")
-				or nil,
+			pending = task.pending == true,
+			state = tostring(task.state or "") == "RESOLVED" and "RESOLVED" or nil,
 			url = tostring((as_table(links.self) or {}).href or ""),
 			html_url = tostring((as_table(links.html) or {}).href or ""),
 		})

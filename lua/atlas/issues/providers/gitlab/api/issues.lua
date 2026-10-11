@@ -3,8 +3,9 @@ local M = {}
 local service = require("atlas.providers.gitlab.client")
 local normalizer = require("atlas.issues.providers.gitlab.api.mapper")
 local request_scope = require("atlas.core.requests")
+local users_api = require("atlas.providers.gitlab.users")
 local json = require("atlas.core.json")
-local LIST_CACHE_PREFIX = "gitlab:issues:list:v4:"
+local LIST_CACHE_PREFIX = "gitlab:issues:list:gql:"
 
 local ISSUE_LABELS_GQL = [[
 query($path: ID!, $iid: String!) {
@@ -30,12 +31,63 @@ local ISSUE_DETAILS_GQL = [[
 query($path: ID!, $iid: String!) {
   project(fullPath: $path) {
     issue(iid: $iid) {
+      title
       description
       assignees(first: 100) { nodes { id username name } }
       labels(first: 100) { nodes { title color } }
-      milestone { title }
+      milestone { id title }
     }
   }
+}
+]]
+
+local ISSUES_QUERY = [[
+query(
+  %s
+  $state: IssuableState
+  $sort: IssueSort
+  $first: Int
+  $after: String
+  $iids: [String!]
+  $labelName: [String]
+  $milestoneTitle: [String]
+  $assigneeUsernames: [String!]
+  $authorUsername: String
+  $search: String
+) {
+  %s
+  items: issues(
+    state: $state
+    sort: $sort
+    first: $first
+    after: $after
+    iids: $iids
+    labelName: $labelName
+    milestoneTitle: $milestoneTitle
+    assigneeUsernames: $assigneeUsernames
+    authorUsername: $authorUsername
+    search: $search
+  ) {
+    nodes {
+      iid
+      reference(full: true)
+      title
+      state
+      issue_type: type
+      confidential
+      subscribed
+      author { id username name }
+      assignees(first: 1) { nodes { id username name } }
+      web_url: webUrl
+      due_date: dueDate
+      created_at: createdAt
+      updated_at: updatedAt
+      closed_at: closedAt
+      user_notes_count: userNotesCount
+    }
+    pageInfo { hasNextPage endCursor }
+  }
+  %s
 }
 ]]
 
@@ -46,101 +98,104 @@ local function invalidate_issue(path, iid)
 	service.clear_cache(LIST_CACHE_PREFIX)
 end
 
----@param params table<string, any>
----@return string
-local function build_query(params)
-	local keys = {}
-	for k, v in pairs(params) do
-		if (type(v) == "table" and #v > 0) or (type(v) ~= "table" and v ~= nil and v ~= "") then
-			table.insert(keys, k)
-		end
-	end
-	if #keys == 0 then
-		return ""
-	end
-	table.sort(keys)
-
-	local parts = {}
-	for _, key in ipairs(keys) do
-		local value = params[key]
-		if type(value) == "table" then
-			for _, item in ipairs(value) do
-				if item ~= nil and item ~= "" then
-					table.insert(parts, key .. "=" .. service.url_encode(tostring(item)))
-				end
-			end
-		else
-			table.insert(parts, key .. "=" .. service.url_encode(tostring(value)))
-		end
-	end
-	return "?" .. table.concat(parts, "&")
-end
-
----@param view AtlasGitLabIssuesViewConfig
----@param opts { force_refresh?: boolean, pagelen: integer, cursor?: string }
+---@param view AtlasGitLabIssuesSearchConfig
+---@param opts { force_refresh?: boolean, pagelen: integer, cursor?: string, iids?: integer[] }
 ---@param on_done fun(page: IssuesPage, err: string|nil)
 ---@return { cancel: fun() }|nil
 function M.list_issues(view, opts, on_done)
-	local scoped_project = view.project ~= nil and tostring(view.project) ~= ""
-	local page = tonumber(opts.cursor) or 1
-	local params = {
-		scope = view.scope or "all",
+	local scope = view.scope or "all"
+	if scope ~= "all" and scope ~= "assigned_to_me" and scope ~= "created_by_me" then
+		on_done({ items = {} }, "Unknown GitLab issue scope: " .. scope)
+		return nil
+	end
+
+	local order_by = view.order_by or "updated_at"
+	if order_by == "created_at" or order_by == "updated_at" then
+		order_by = order_by:sub(1, -4)
+	end
+	local variables = {
 		state = view.state or "opened",
-		per_page = tostring(opts.pagelen),
-		page = tostring(page),
-		order_by = view.order_by or "updated_at",
-		sort = view.sort or "desc",
+		sort = (order_by .. "_" .. (view.sort or "desc")):upper(),
+		first = opts.pagelen,
+		after = opts.cursor,
+		iids = opts.iids and vim.tbl_map(tostring, opts.iids),
+		labelName = view.labels and vim.split(view.labels, ",", { plain = true }),
+		milestoneTitle = view.milestone and { view.milestone },
+		assigneeUsernames = view.assignee_username and { view.assignee_username },
+		authorUsername = view.author_username,
+		search = view.search,
 	}
-	if view.labels then
-		params.labels = view.labels
-	end
-	if view.milestone then
-		params.milestone = view.milestone
-	end
-	if view.assignee_username then
-		params.assignee_username = view.assignee_username
-	end
-	if view.author_username then
-		params.author_username = view.author_username
-	end
-	if view.search and view.search ~= "" then
-		params.search = view.search
-	end
-	for k, v in pairs(view.extra_params or {}) do
-		if k ~= "page" and k ~= "per_page" then
-			params[k] = v
+	if view.project then
+		local project_id = tonumber(view.project)
+		if project_id then
+			variables.projectIds = { "gid://gitlab/Project/" .. project_id }
+		else
+			variables.projectPaths = { view.project }
 		end
 	end
 
-	local endpoint = (
-		scoped_project and string.format("/projects/%s/issues", service.url_encode(tostring(view.project))) or "/issues"
-	) .. build_query(params)
-	local cache_key = LIST_CACHE_PREFIX .. endpoint
-
-	if not opts.force_refresh then
-		local cached, ok = service.get_cache(cache_key)
-		if ok then
-			local next_cursor = #cached == opts.pagelen and tostring(page + 1) or nil
-			on_done({ items = cached, next_cursor = next_cursor }, nil)
-			return nil
+	local function fetch(done)
+		local query
+		if view.project then
+			query = ISSUES_QUERY:format(
+				"$projectIds: [ID!], $projectPaths: [String!]",
+				"projects(ids: $projectIds, fullPaths: $projectPaths, first: 1) { nodes {",
+				"} }"
+			)
+		else
+			query = ISSUES_QUERY:format("", "", "")
 		end
+		local cache_key = LIST_CACHE_PREFIX .. query .. vim.inspect(variables)
+		if not opts.force_refresh then
+			local cached, ok = service.get_cache(cache_key)
+			if ok then
+				done(cached, nil)
+				return nil
+			end
+		end
+
+		return service.graphql(query, variables, function(result, err)
+			if err then
+				done({ items = {} }, err)
+				return
+			end
+			local source = json.safe_table(result)
+			if view.project then
+				source = json.safe_table(json.safe_table(source.projects).nodes)[1]
+			end
+			local items = json.nilify(json.safe_table(source).items)
+			if not items then
+				done({ items = {} }, "Unable to load GitLab issues" .. (view.project and ": " .. view.project or ""))
+				return
+			end
+			-- TODO: GitLab's GraphQL Issue type does not expose parent refs. Fetch them through WorkItems.
+			local page = {
+				items = normalizer.to_issues_list(items.nodes),
+				next_cursor = items.pageInfo.hasNextPage and items.pageInfo.endCursor or nil,
+			}
+			service.set_cache(cache_key, page)
+			done(page, nil)
+		end, { action = "List issues", project = view.project, scope = scope })
 	end
 
-	return service.request("GET", endpoint, nil, function(result, err)
-		if err then
-			on_done({ items = {} }, err)
+	if scope == "all" then
+		return fetch(on_done)
+	end
+
+	local requests = request_scope.new()
+	requests.run(users_api.fetch_user, function(user, err)
+		if not user then
+			on_done({ items = {} }, err or "Unable to load the current GitLab user")
 			return
 		end
-		-- TODO: GitLab's /issues REST API does not include parent refs. We either need to switch this
-		-- to GraphQL and map the view config, or make another request here to fetch those refs.
-		local issues = normalizer.to_issues_list(result)
-		service.set_cache(cache_key, issues)
-		local next_cursor = #issues == opts.pagelen and tostring(page + 1) or nil
-		on_done({ items = issues, next_cursor = next_cursor }, nil)
-	end, {
-		action = "List issues",
-		endpoint = endpoint,
-	})
+		if scope == "assigned_to_me" then
+			variables.assigneeUsernames = { user.username }
+		else
+			variables.authorUsername = user.username
+		end
+		requests.run(fetch, on_done)
+	end)
+	return requests
 end
 
 ---@param refs IssueRef[]
@@ -167,32 +222,36 @@ function M.fetch_by_refs(refs, opts, on_done)
 
 	local starts = {}
 	for path, iids in pairs(iids_by_project) do
-		starts[path] = function(done)
-			return M.list_issues({
-				project = path,
-				scope = "all",
-				state = "all",
-				extra_params = { ["iids[]"] = iids },
-			}, {
-				force_refresh = opts.force_refresh == true,
-				pagelen = #iids,
-			}, function(page, err)
-				done(page.items, err)
-			end)
+		for offset = 1, #iids, 100 do
+			local batch = {}
+			for index = offset, math.min(offset + 99, #iids) do
+				batch[#batch + 1] = iids[index]
+			end
+			starts[path .. "#" .. offset] = function(done)
+				return M.list_issues({
+					project = path,
+					scope = "all",
+					state = "all",
+				}, {
+					force_refresh = opts.force_refresh == true,
+					pagelen = #batch,
+					iids = batch,
+				}, function(page, err)
+					done(page.items, err)
+				end)
+			end
 		end
 	end
 
 	local requests = request_scope.new()
 	requests.all(starts, function(values, errors)
 		local issues = {}
-		for path in pairs(iids_by_project) do
-			if errors[path] then
-				on_done({}, errors[path])
-				return
-			end
-			vim.list_extend(issues, values[path] or {})
+		local err
+		for key in pairs(starts) do
+			err = err or errors[key]
+			vim.list_extend(issues, values[key] or {})
 		end
-		on_done(issues, nil)
+		on_done(issues, err)
 	end)
 	return requests
 end
@@ -279,29 +338,28 @@ function M.get_assignees(key, on_done)
 	})
 end
 
----@param issue Issue
----@param description string
----@param on_done fun(ok: boolean, err: string|nil)
+---@param issue GitLabIssue
+---@param subscribed boolean
+---@param on_done fun(subscribed: boolean|nil, err: string|nil)
 ---@return { cancel: fun() }|nil
-function M.update_description(issue, description, on_done)
-	local path, iid = normalizer.parse_key(tostring(issue.key or ""))
-	if path == "" or iid == nil then
-		on_done(false, "Invalid issue key")
-		return nil
-	end
-
-	local endpoint = string.format("/projects/%s/issues/%d", service.url_encode(path), iid)
-	return service.request("PUT", endpoint, { description = description }, function(_, err)
+function M.set_subscription(issue, subscribed, on_done)
+	local action = subscribed and "subscribe" or "unsubscribe"
+	local endpoint =
+		string.format("/projects/%s/issues/%d/%s", service.url_encode(issue.project_path), issue.iid, action)
+	return service.request("POST", endpoint, nil, function(result, err)
 		if err then
-			on_done(false, err)
+			on_done(nil, err)
 			return
 		end
-		invalidate_issue(path, iid)
-		on_done(true, nil)
+		local value = type(result) == "table" and result.subscribed
+		if type(value) ~= "boolean" then
+			value = subscribed
+		end
+		on_done(value, nil)
 	end, {
-		action = "Update issue description",
-		path = path,
-		iid = iid,
+		action = subscribed and "Subscribe to issue" or "Unsubscribe from issue",
+		project_path = issue.project_path,
+		iid = issue.iid,
 	})
 end
 
@@ -443,7 +501,7 @@ function M.set_assignee_ids(key, ids, on_done)
 end
 
 ---@param opts { project_path: string, title: string, description: string|nil, assignee_ids: integer[]|nil, labels: string[]|nil, milestone_id: integer|nil, due_date: string|nil, confidential: boolean|nil }
----@param on_done fun(result: { key: string|nil, iid: integer|nil, url: string|nil }|nil, err: string|nil)
+---@param on_done fun(result: GitLabIssueEditorResult|nil, err: string|nil)
 ---@return { cancel: fun() }|nil
 function M.create_issue(opts, on_done)
 	local path = tostring(opts.project_path or "")
@@ -500,6 +558,40 @@ function M.create_issue(opts, on_done)
 		action = "Create issue",
 		path = path,
 		title = title,
+	})
+end
+
+---@param key string
+---@param fields { title: string, description: string, labels: string[], assignee_ids: integer[], milestone_id?: integer }
+---@param on_done fun(result: GitLabIssueEditorResult|nil, err: string|nil)
+---@return { cancel: fun() }|nil
+function M.update_issue(key, fields, on_done)
+	local path, iid = normalizer.parse_key(key)
+	if path == "" or iid == nil then
+		on_done(nil, "Invalid issue key")
+		return nil
+	end
+
+	local payload = {
+		title = fields.title,
+		description = fields.description,
+		labels = table.concat(fields.labels, ","),
+		assignee_ids = #fields.assignee_ids > 0 and fields.assignee_ids or { 0 },
+		milestone_id = fields.milestone_id or 0,
+	}
+	local endpoint = string.format("/projects/%s/issues/%d", service.url_encode(path), iid)
+	return service.request("PUT", endpoint, payload, function(result, err)
+		if err then
+			on_done(nil, err)
+			return
+		end
+
+		invalidate_issue(path, iid)
+		on_done({ key = key, iid = iid, url = json.safe_str(json.safe_table(result).web_url) }, nil)
+	end, {
+		action = "Update issue",
+		path = path,
+		iid = iid,
 	})
 end
 

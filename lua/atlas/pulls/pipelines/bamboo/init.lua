@@ -275,7 +275,8 @@ function M.new(opts)
 				end
 			end
 			scope.all(starts, function(results, errors)
-				for _, err in pairs(errors) do
+				local _, err = next(errors)
+				if err ~= nil then
 					on_done(nil, err)
 					return
 				end
@@ -337,8 +338,9 @@ function M.new(opts)
 				end
 			end
 			scope.all(starts, function(_, errors)
-				for _, error in pairs(errors) do
-					on_done(nil, error)
+				local _, fetch_err = next(errors)
+				if fetch_err ~= nil then
+					on_done(nil, fetch_err)
 					return
 				end
 				on_done(builds, nil)
@@ -460,6 +462,7 @@ function M.new(opts)
 		fetch_job = fetch_job,
 		fetch_job_log = fetch_job_log,
 		parse = parser.parse,
+		-- step_target = nil,
 		fetch_commit_status = fetch_commit_status,
 		actions = actions.new(web_base, request),
 	}

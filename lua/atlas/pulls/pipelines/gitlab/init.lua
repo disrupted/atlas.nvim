@@ -19,6 +19,7 @@ return {
 	fetch_job = api.fetch_job,
 	fetch_job_log = api.fetch_job_log,
 	parse = parser.parse,
+	-- step_target = nil,
 	fetch_commit_status = api.fetch_commit_status,
 	actions = actions,
 }

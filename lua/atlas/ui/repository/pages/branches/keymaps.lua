@@ -3,7 +3,7 @@ local help = require("atlas.ui.popups.help")
 
 local M = {}
 
----@type table<integer, AtlasHelpKeyItem[]>
+---@type table<integer, table<string, AtlasHelpKeyItem[]>>
 local installed = {}
 
 ---@param buf integer
@@ -15,46 +15,83 @@ function M.setup(buf, sidebar_buf, callbacks)
 	local refresh = {
 		key = resolver.resolve("ui.refresh") or {},
 		desc = "Refresh branches",
+		index = 80,
 		callback = callbacks.refresh,
 		opts = { nowait = true, silent = true },
 	}
 	local actions = {
-		{ resolver.resolve("ui.next_page"), "Next page", callbacks.next_page },
-		{ resolver.resolve("ui.previous_page"), "Previous page", callbacks.previous_page },
-		{ resolver.resolve("ui.search"), "Search branches", callbacks.search },
+		{ key = resolver.resolve("ui.next_page"), desc = "Next page", callback = callbacks.next_page, index = 16 },
 		{
-			vim.list_extend(resolver.resolve("ui.select") or {}, resolver.resolve("ui.toggle_fold") or {}),
-			"Toggle branch history",
-			callbacks.select,
+			key = resolver.resolve("ui.previous_page"),
+			desc = "Previous page",
+			callback = callbacks.previous_page,
+			index = 15,
 		},
-		{ resolver.resolve("pulls.open_diff"), "Open branch or commit diff", callbacks.diff },
-		{ resolver.resolve("pulls.checkout"), "Checkout branch", callbacks.checkout },
-		{ resolver.resolve("ui.show_details"), "Show branch or commit details", callbacks.details },
-		{ resolver.resolve("ui.open_actions"), "Open branch actions", callbacks.actions },
-		{ resolver.resolve("ui.delete"), "Delete branch", callbacks.delete },
+		{
+			key = resolver.resolve("ui.search"),
+			desc = "Search branches",
+			callback = callbacks.search,
+			index = 1,
+			group = "Filters",
+		},
+		{
+			key = vim.list_extend(resolver.resolve("ui.select") or {}, resolver.resolve("ui.toggle_fold") or {}),
+			desc = "Toggle branch history",
+			callback = callbacks.select,
+			index = 2,
+		},
+		{
+			key = resolver.resolve("pulls.open_diff"),
+			desc = "Open branch or commit diff",
+			callback = callbacks.diff,
+			index = 3,
+		},
+		{
+			key = resolver.resolve("pulls.checkout"),
+			desc = "Checkout branch",
+			callback = callbacks.checkout,
+			index = 20,
+		},
+		{
+			key = resolver.resolve("ui.show_details"),
+			desc = "Show branch or commit details",
+			callback = callbacks.details,
+			index = 4,
+		},
+		{
+			key = resolver.resolve("ui.open_actions"),
+			desc = "Open branch actions",
+			callback = callbacks.actions,
+			index = 1,
+		},
+		{ key = resolver.resolve("ui.delete"), desc = "Delete branch", callback = callbacks.delete, index = 90 },
 	}
-	local items = { refresh }
+	local groups = { General = { refresh }, Filters = {} }
 	for _, action in ipairs(actions) do
-		local keys = action[1]
-		if keys and #keys > 0 and action[3] then
-			table.insert(items, {
+		local keys = action.key
+		if keys and #keys > 0 and action.callback then
+			table.insert(groups[action.group or "General"], {
 				key = keys,
-				desc = action[2],
-				callback = action[3],
+				desc = action.desc,
+				index = action.index,
+				callback = action.callback,
 				opts = { nowait = true, silent = true },
 			})
 		end
 	end
-	installed[buf] = items
-	help.register("Branches", items, { buffer = buf })
-	installed[sidebar_buf] = { refresh }
-	help.register("Branches", installed[sidebar_buf], { buffer = sidebar_buf })
+	installed[buf] = groups
+	help.register("General", groups.General, { buffer = buf, index = 1 })
+	help.register("Filters", groups.Filters, { buffer = buf, index = 2 })
+	installed[sidebar_buf] = { General = { refresh } }
+	help.register("General", installed[sidebar_buf].General, { buffer = sidebar_buf, index = 1 })
 end
 
 ---@param buf integer
 function M.clear(buf)
 	if installed[buf] then
-		help.remove("Branches", installed[buf], { buffer = buf })
+		for group, items in pairs(installed[buf]) do
+			help.remove(group, items, { buffer = buf })
+		end
 		installed[buf] = nil
 	end
 end

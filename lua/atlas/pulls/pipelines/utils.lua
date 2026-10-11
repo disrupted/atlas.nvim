@@ -1,3 +1,5 @@
+local utils = require("atlas.ui.shared.utils")
+
 local M = {}
 
 local STATE_PRIORITY = {
@@ -99,6 +101,12 @@ local function summarize(items)
 	end
 
 	return aggregate, counts
+end
+
+---@param seconds number
+---@return string
+function M.format_duration(seconds)
+	return seconds < 60 and string.format("%ds", math.floor(seconds)) or utils.human_duration(seconds)
 end
 
 ---@param started_at string|nil

@@ -87,7 +87,7 @@ function M.fetch_commits(pr, opts, on_done)
 			return
 		end
 		local commits = mapper.to_commits_list(result)
-		service.set_cache(key, commits, service.cache_ttl())
+		service.set_cache(key, commits)
 		on_done(commits, nil)
 	end, { action = "Fetch PR commits", repo = pr.repo_full_name, id = pr.id })
 end

@@ -1,9 +1,58 @@
 local M = {}
 
 local config = require("atlas.config")
-local live = require("atlas.ui.popups.live")
+local console = require("atlas.ui.console")
 local logger = require("atlas.core.logger")
 local notify = require("atlas.core.notify")
+
+---@param issue Issue
+---@param details IssueDetails
+---@return { title: string, lines: string[] }
+function M.issue_preview(issue, details)
+	local assignees = vim.tbl_map(function(user)
+		return "@" .. (user.username or user.name)
+	end, details.assignees)
+	local label_names = vim.tbl_map(function(label)
+		return label.name
+	end, details.labels)
+	local author = issue.reporter and issue.reporter.name or "Unknown"
+	local lines = {
+		"**Status:** " .. tostring(issue.status or "Open"),
+		"**Author:** " .. author,
+		"**Assignees:** " .. (#assignees > 0 and table.concat(assignees, ", ") or "Unassigned"),
+	}
+	if #label_names > 0 then
+		table.insert(lines, "**Labels:** " .. table.concat(label_names, ", "))
+	end
+	if details.milestone then
+		table.insert(lines, "**Milestone:** " .. details.milestone.title)
+	end
+	vim.list_extend(lines, { "", "## Description", "" })
+	local description = vim.trim(details.description)
+	vim.list_extend(lines, vim.split(description ~= "" and description or "No description", "\n", { plain = true }))
+	return {
+		title = string.format("%s - %s", issue.key, issue.title),
+		lines = lines,
+	}
+end
+
+---@param original table<string, boolean>
+---@param selected table<string, boolean>
+---@return string[] adds, string[] removes
+function M.selection_diff(original, selected)
+	local adds, removes = {}, {}
+	for value in pairs(selected) do
+		if not original[value] then
+			table.insert(adds, value)
+		end
+	end
+	for value in pairs(original) do
+		if not selected[value] then
+			table.insert(removes, value)
+		end
+	end
+	return adds, removes
+end
 
 ---@param context AtlasIssueActionContext
 ---@return boolean, string|nil
@@ -21,10 +70,13 @@ local function custom_action(item)
 		id = item.id,
 		label = item.label,
 		icon = item.icon,
+		confirmation = item.confirmation,
 		is_available = has_issue,
 		run = function(context, done)
 			notify.loading(string.format("Running %s...", item.label))
 			local finished = false
+			---@type AtlasConsoleOutput|nil
+			local output
 			local function log_failure(err)
 				logger.logerror("Custom issue action failed", {
 					action_id = item.id,
@@ -38,6 +90,12 @@ local function custom_action(item)
 					return
 				end
 				finished = true
+				if output then
+					if ok == false and message then
+						output:write(message .. "\n")
+					end
+					output:finish(ok == false and 1 or 0)
+				end
 				vim.schedule(function()
 					if ok == false then
 						local err = message or (item.label .. " failed")
@@ -55,7 +113,16 @@ local function custom_action(item)
 			local ok, err = pcall(item.run, context.issue, {
 				issue = context.issue,
 				user = context.current_user,
-				output = live.create,
+				write = function(text)
+					if finished then
+						return
+					end
+					if not output then
+						output = console.start(item.label)
+						console.open()
+					end
+					output:write(text)
+				end,
 			}, complete)
 			if not ok then
 				local message = "Custom action failed: " .. tostring(err)

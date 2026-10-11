@@ -20,6 +20,9 @@ return {
 		},
 	},
 	capabilities = {
+		-- repository = nil,
+		-- notifications = nil,
 		users = users,
+		completion = require("atlas.providers.jira.completion"),
 	},
 }

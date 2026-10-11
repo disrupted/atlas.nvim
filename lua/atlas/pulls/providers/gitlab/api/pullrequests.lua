@@ -4,6 +4,7 @@ local service = require("atlas.providers.gitlab.client")
 local mapper = require("atlas.pulls.providers.gitlab.api.mapper")
 local request_scope = require("atlas.core.requests")
 local reviews_api = require("atlas.pulls.providers.gitlab.api.reviews")
+local users_api = require("atlas.providers.gitlab.users")
 local json = require("atlas.core.json")
 
 local MR_DETAILS_QUERY = [[
@@ -19,143 +20,215 @@ query($path:ID!,$iid:String!){
 }
 ]]
 
+local MR_FIELDS = [[
+fragment MergeRequestFields on MergeRequest {
+  iid
+  reference(full:true)
+  title
+  state
+  draft
+  author{id name username}
+  source_branch:sourceBranch
+  target_branch:targetBranch
+  diff_refs:diffRefs{base_sha:baseSha start_sha:startSha head_sha:headSha}
+  user_notes_count:userNotesCount
+  created_at:createdAt
+  updated_at:updatedAt
+  web_url:webUrl
+  merge_status:mergeStatus
+  detailed_merge_status:detailedMergeStatus
+  reviewers(first:100){nodes{id name username}}
+}
+]]
+
 local MR_SUMMARIES_QUERY = [[
 query($path:ID!,$iids:[String!]!){
   project(fullPath:$path){
     mergeRequests(iids:$iids,first:100){
-      nodes{
-        iid
-        reference(full:true)
-        title
-        state
-        draft
-        author{id name username}
-        source_branch:sourceBranch
-        target_branch:targetBranch
-        diff_refs:diffRefs{base_sha:baseSha start_sha:startSha head_sha:headSha}
-        user_notes_count:userNotesCount
-        created_at:createdAt
-        updated_at:updatedAt
-        web_url:webUrl
-        merge_status:mergeStatus
-        detailed_merge_status:detailedMergeStatus
-        reviewers(first:100){nodes{id name username}}
-      }
+      nodes{...MergeRequestFields}
     }
   }
 }
-]]
+]] .. MR_FIELDS
 
----@param params table<string, any>
----@return string
-local function build_query(params)
-	local parts = {}
-	for k, v in pairs(params) do
-		if type(v) == "table" then
-			for _, item in ipairs(v) do
-				if item ~= nil and item ~= "" then
-					table.insert(parts, k .. "=" .. service.url_encode(tostring(item)))
-				end
-			end
-		elseif v ~= nil and v ~= "" then
-			table.insert(parts, k .. "=" .. service.url_encode(tostring(v)))
-		end
+local SCOPES = {
+	assigned_to_me = { connection = "assignedMergeRequests", filter = "assigneeUsername" },
+	created_by_me = { connection = "authoredMergeRequests", filter = "authorUsername" },
+	reviews_for_me = { connection = "reviewRequestedMergeRequests", filter = "reviewerUsername" },
+}
+
+local FILTER_TYPES = {
+	state = "MergeRequestState",
+	sort = "MergeRequestSort",
+	first = "Int",
+	after = "String",
+	labelName = "[String]",
+	milestoneTitle = "String",
+	search = "String",
+	sourceBranches = "[String!]",
+	targetBranches = "[String!]",
+	authorUsername = "String",
+	assigneeUsername = "String",
+	reviewerUsername = "String",
+	reviewStates = "[MergeRequestReviewState!]",
+}
+
+---@param root string
+---@param connection string
+---@param path string|nil
+---@param filters table
+---@return string, table
+local function list_query(root, connection, path, filters)
+	local definitions, arguments = {}, {}
+	local variables = vim.tbl_extend("force", {}, filters)
+	local names = vim.tbl_keys(filters)
+	table.sort(names)
+	for _, name in ipairs(names) do
+		table.insert(definitions, "$" .. name .. ": " .. FILTER_TYPES[name])
+		table.insert(arguments, name .. ": $" .. name)
 	end
-	table.sort(parts)
-	if #parts == 0 then
-		return ""
+
+	if path then
+		table.insert(definitions, "$path: ID!")
+		variables.path = path
+		root = root .. "(fullPath: $path)"
 	end
-	return "?" .. table.concat(parts, "&")
+
+	return string.format(
+		[[query(%s) {
+  source: %s {
+    items: %s(%s) {
+      nodes { ...MergeRequestFields }
+      pageInfo { hasNextPage endCursor }
+    }
+  }
+}
+%s]],
+		table.concat(definitions, ", "),
+		root,
+		connection,
+		table.concat(arguments, ", "),
+		MR_FIELDS
+	),
+		variables
 end
 
 ---@param view AtlasGitLabPullsViewConfig
----@param opts { force_refresh?: boolean, pagelen: integer, state?: "opened"|"closed"|"merged"|"all", page?: integer }
+---@param opts { force_refresh?: boolean, pagelen: integer, state?: "opened"|"closed"|"merged"|"all", cursor?: string }
 ---@param on_done fun(page: PullsPage, err: string|nil)
 ---@return { cancel: fun() }|nil
 function M.fetch_pullrequests(view, opts, on_done)
-	local project = view.project ~= nil and tostring(view.project) ~= "" and view.project or nil
-	local group = view.group ~= nil and tostring(view.group) ~= "" and view.group or nil
-	local state = opts.state or "opened"
-	local page = opts.page or 1
+	local path = view.project or view.group
+	local root = view.project and "project" or view.group and "group" or "currentUser"
+	local scope_name = view.scope or (path and "all" or "assigned_to_me")
+	local scope = SCOPES[scope_name]
+	if not scope and scope_name ~= "all" then
+		on_done({ items = {} }, "Unknown GitLab MR scope: " .. scope_name)
+		return nil
+	end
+	if not path and scope_name == "all" then
+		on_done({ items = {} }, "GitLab MR scope 'all' requires a project or group")
+		return nil
+	end
+	if path and type(path) ~= "string" then
+		on_done({ items = {} }, "GitLab MR views require a project or group path, not a numeric ID")
+		return nil
+	end
 
-	local params = {
+	local state = opts.state or view.state or "opened"
+	local order_by = (view.order_by or "updated_at"):gsub("_at$", "")
+	local filters = {
 		state = state,
-		per_page = tostring(opts.pagelen),
-		page = tostring(page),
-		order_by = view.order_by or "updated_at",
-		sort = view.sort or "desc",
+		sort = (order_by .. "_" .. (view.sort or "desc")):upper(),
+		first = opts.pagelen,
+		after = opts.cursor,
+		labelName = view.labels and vim.split(view.labels, ",", { plain = true }),
+		milestoneTitle = view.milestone,
+		authorUsername = view.author_username,
+		assigneeUsername = view.assignee_username,
+		search = view.search,
+		sourceBranches = view.source_branch and { view.source_branch },
+		targetBranches = view.target_branch and { view.target_branch },
+		reviewStates = view.review_states,
 	}
-	if project == nil and group == nil then
-		params.scope = view.scope or "assigned_to_me"
-	elseif view.scope then
-		params.scope = view.scope
+	if root == "currentUser" then
+		-- The personal connection already selects the current user for this role.
+		filters[scope.filter] = nil
 	end
-	if view.labels then
-		params.labels = view.labels
-	end
-	if view.milestone then
-		params.milestone = view.milestone
-	end
-	if view.assignee_username then
-		params.assignee_username = view.assignee_username
-	end
-	if view.author_username then
-		params.author_username = view.author_username
-	end
-	if view.search and view.search ~= "" then
-		params.search = view.search
-	end
-	for k, v in pairs(view.extra_params or {}) do
-		if k ~= "state" and k ~= "page" and k ~= "per_page" then
-			params[k] = v
+
+	local function fetch(username, done)
+		if path and scope then
+			filters[scope.filter] = username
 		end
-	end
 
-	local endpoint
-	if project ~= nil then
-		endpoint =
-			string.format("/projects/%s/merge_requests%s", service.url_encode(tostring(project)), build_query(params))
-	elseif group ~= nil then
-		endpoint =
-			string.format("/groups/%s/merge_requests%s", service.url_encode(tostring(group)), build_query(params))
-	else
-		endpoint = "/merge_requests" .. build_query(params)
-	end
-
-	local cache_key = "gitlab_pulls:merge_requests:v2:" .. endpoint
-	if not opts.force_refresh then
-		local cached, ok = service.get_cache(cache_key)
-		if ok then
-			local next_cursor = #cached == opts.pagelen and { [state] = tostring(page + 1) } or nil
-			on_done({ items = cached, next_cursor = next_cursor }, nil)
-			return nil
+		local connection = path and "mergeRequests" or scope.connection
+		local query, variables = list_query(root, connection, path, filters)
+		local cache_key = "gitlab_pulls:merge_requests:gql:" .. query .. vim.inspect(variables)
+		if not opts.force_refresh then
+			local cached, ok = service.get_cache(cache_key)
+			if ok then
+				done(cached, nil)
+				return nil
+			end
 		end
+
+		return service.graphql(query, variables, function(result, err)
+			if err then
+				done({ items = {} }, err)
+				return
+			end
+			local source = json.nilify(json.safe_table(result).source)
+			local items = source and json.nilify(source.items)
+			if not items then
+				done({ items = {} }, "Unable to load GitLab merge requests" .. (path and ": " .. path or ""))
+				return
+			end
+			local page = {
+				items = mapper.to_pull_requests(items.nodes),
+				next_cursor = items.pageInfo.hasNextPage and { [state] = items.pageInfo.endCursor } or nil,
+			}
+			service.set_cache(cache_key, page)
+			done(page, nil)
+		end, { action = "List MRs", project = view.project, group = view.group, scope = scope_name, state = state })
 	end
 
-	return service.request("GET", endpoint, nil, function(result, err)
-		if err then
-			on_done({ items = {} }, err)
+	if not path or not scope then
+		return fetch(nil, on_done)
+	end
+
+	local requests = request_scope.new()
+	requests.run(users_api.fetch_user, function(user, err)
+		if not user then
+			on_done({ items = {} }, err or "Unable to load the current GitLab user")
 			return
 		end
-		local pulls = mapper.to_pull_requests(result)
-		service.set_cache(cache_key, pulls)
-		local next_cursor = #pulls == opts.pagelen and { [state] = tostring(page + 1) } or nil
-		on_done({ items = pulls, next_cursor = next_cursor }, nil)
-	end, {
-		action = "List MRs",
-		endpoint = endpoint,
-	})
+		requests.run(function(done)
+			return fetch(user.username, done)
+		end, on_done)
+	end)
+	return requests
 end
 
 ---@param pages table<string, PullsPage>
+---@param view AtlasGitLabPullsViewConfig
 ---@return PullRequest[]
-local function merge_results(pages)
+local function merge_results(pages, view)
 	local pulls = {}
+	local count = 0
 	for _, page in pairs(pages) do
+		count = count + 1
 		vim.list_extend(pulls, page.items)
 	end
+	if count < 2 then
+		return pulls
+	end
+	local fields = { updated_at = "updated_on", created_at = "created_on", title = "title" }
+	local field = fields[view.order_by or "updated_at"]
 	table.sort(pulls, function(left, right)
-		return left.updated_on > right.updated_on
+		if view.sort == "asc" then
+			return left[field] < right[field]
+		end
+		return left[field] > right[field]
 	end)
 	return pulls
 end
@@ -182,7 +255,7 @@ function M.fetch_states(view, api_states, opts, on_done)
 				force_refresh = opts.force_refresh,
 				pagelen = opts.pagelen,
 				state = planned_state,
-				page = opts.cursor and tonumber(opts.cursor[planned_state]) or nil,
+				cursor = opts.cursor and opts.cursor[planned_state] or nil,
 			}, done)
 		end
 	end
@@ -198,7 +271,7 @@ function M.fetch_states(view, api_states, opts, on_done)
 			end
 		end
 		on_done({
-			items = merge_results(pages),
+			items = merge_results(pages, view),
 			next_cursor = next(next_cursor) and next_cursor or nil,
 		}, #collected_errors > 0 and collected_errors or nil)
 	end)
@@ -231,9 +304,9 @@ function M.fetch_by_refs(refs, opts, on_done)
 	local starts = {}
 	for path, iids in pairs(iids_by_project) do
 		starts[path] = function(done)
-			local sorted_iids = vim.deepcopy(iids)
-			table.sort(sorted_iids)
-			local cache_key = string.format("gitlab_pulls:refs:%s!%s", path, table.concat(sorted_iids, ","))
+			local string_iids = vim.tbl_map(tostring, iids)
+			table.sort(iids)
+			local cache_key = string.format("gitlab_pulls:refs:%s!%s", path, table.concat(iids, ","))
 			if not opts.force_refresh then
 				local cached, ok = service.get_memory_cache(cache_key)
 				if ok then
@@ -241,7 +314,6 @@ function M.fetch_by_refs(refs, opts, on_done)
 					return nil
 				end
 			end
-			local string_iids = vim.tbl_map(tostring, iids)
 			return service.graphql(MR_SUMMARIES_QUERY, { path = path, iids = string_iids }, function(result, err)
 				if err then
 					done(nil, err)
@@ -267,14 +339,12 @@ function M.fetch_by_refs(refs, opts, on_done)
 	local requests = request_scope.new()
 	requests.all(starts, function(values, errors)
 		local pulls = {}
+		local err
 		for path in pairs(iids_by_project) do
-			if errors[path] then
-				on_done({}, errors[path])
-				return
-			end
+			err = err or errors[path]
 			vim.list_extend(pulls, values[path] or {})
 		end
-		on_done(pulls, nil)
+		on_done(pulls, err)
 	end)
 	return requests
 end
@@ -328,10 +398,10 @@ local function project_iid(pr)
 end
 
 ---@param pr PullRequest
----@param _opts { force_refresh?: boolean }|nil
+---@param _ { force_refresh?: boolean }|nil
 ---@param on_done fun(description: string|nil, err: string|nil)
 ---@return { cancel: fun() }|nil
-function M.fetch_description(pr, _opts, on_done)
+function M.fetch_description(pr, _, on_done)
 	local path, iid = project_iid(pr)
 	if path == "" or iid == nil then
 		on_done(nil, "Invalid MR identifier")
@@ -360,6 +430,7 @@ local function invalidate_detail_caches(pr)
 	service.delete_memory_cache(string.format("gitlab_pulls:details:%s!%d", path, iid))
 	service.delete_memory_cache(string.format("gitlab_pulls:reviewers:%s!%d", path, iid))
 	service.delete_memory_cache(string.format("gitlab_pulls:review_metadata:%s!%d", path, iid))
+	service.clear_cache("gitlab_pulls:merge_requests:gql:")
 end
 
 ---@param pr PullRequest
@@ -382,6 +453,31 @@ local function update(pr, payload, on_done)
 		on_done(true, nil)
 	end, {
 		action = "Update MR",
+		project_path = path,
+		iid = iid,
+	})
+end
+
+---@param path string
+---@param iid integer
+---@param subscribed boolean
+---@param on_done fun(subscribed: boolean|nil, err: string|nil)
+---@return { cancel: fun() }|nil
+function M.set_subscription(path, iid, subscribed, on_done)
+	local action = subscribed and "subscribe" or "unsubscribe"
+	local endpoint = string.format("/projects/%s/merge_requests/%d/%s", service.url_encode(path), iid, action)
+	return service.request("POST", endpoint, nil, function(result, err)
+		if err then
+			on_done(nil, err)
+			return
+		end
+		local value = type(result) == "table" and result.subscribed
+		if type(value) ~= "boolean" then
+			value = subscribed
+		end
+		on_done(value, nil)
+	end, {
+		action = subscribed and "Subscribe to MR" or "Unsubscribe from MR",
 		project_path = path,
 		iid = iid,
 	})
@@ -419,34 +515,68 @@ function M.update_description(pr, description, on_done)
 end
 
 ---@param pr PullRequest
----@param draft boolean
+---@param opts PullsUpdatePROpts
 ---@param on_done fun(ok: boolean, err: string|nil)
 ---@return { cancel: fun() }|nil
-function M.set_draft(pr, draft, on_done)
-	local title = tostring(pr.title or ""):gsub("^%s*[Dd]raft:%s*", ""):gsub("^%s*WIP:%s*", "")
-	if title == "" then
-		on_done(false, "MR title is empty after stripping draft prefix")
-		return nil
+function M.update_pr(pr, opts, on_done)
+	local payload = {
+		title = opts.title,
+		description = opts.body,
+		target_branch = opts.base,
+		labels = opts.labels and table.concat(opts.labels, ",") or nil,
+	}
+
+	if opts.reviewers then
+		local ids = {}
+		for _, reviewer in ipairs(opts.reviewers) do
+			ids[#ids + 1] = tonumber(reviewer.provider_id)
+		end
+		payload.reviewer_ids = #ids == 0 and { 0 } or ids
 	end
-	if draft then
-		title = "Draft: " .. title
+	if opts.assignees then
+		local ids = {}
+		for _, user in ipairs(opts.assignees) do
+			ids[#ids + 1] = tonumber(user.id)
+		end
+		payload.assignee_ids = #ids == 0 and { 0 } or ids
 	end
 
-	return update(pr, { title = title }, function(ok, err)
+	if opts.draft ~= nil then
+		local title = (opts.title or pr.title):gsub("^%s*[Dd]raft:%s*", ""):gsub("^%s*WIP:%s*", "")
+		if title == "" then
+			on_done(false, "MR title is empty after stripping draft prefix")
+			return nil
+		end
+		payload.title = opts.draft and "Draft: " .. title or title
+	end
+
+	return update(pr, payload, function(ok, err)
 		if not ok then
 			on_done(false, err)
 			return
 		end
-		pr.title = title
-		pr.state = draft and "draft" or "open"
+		if payload.title then
+			pr.title = payload.title
+		end
+		if opts.draft ~= nil then
+			pr.state = opts.draft and "draft" or "open"
+		end
 		on_done(true, nil)
 	end)
 end
 
----@param opts { repo_slug: string, repo_root: string|nil, head: string, base: string, pr: PullRequest|nil }
----@param on_done fun(reviewers: PullsCreatePRReviewer[]|nil, err: string|nil)
+---@param pr PullRequest
+---@param draft boolean
+---@param on_done fun(ok: boolean, err: string|nil)
 ---@return { cancel: fun() }|nil
-function M.fetch_default_reviewers(opts, on_done)
+function M.set_draft(pr, draft, on_done)
+	return M.update_pr(pr, { draft = draft }, on_done)
+end
+
+---@param opts { repo_slug: string, pr: PullRequest|nil }
+---@param on_done fun(reviewers: PullsReviewerCandidate[]|nil, err: string|nil)
+---@return { cancel: fun() }|nil
+function M.fetch_reviewer_candidates(opts, on_done)
 	local slug = tostring(opts.repo_slug or "")
 	if slug == "" then
 		vim.schedule(function()
@@ -459,7 +589,7 @@ function M.fetch_default_reviewers(opts, on_done)
 	local starts = {
 		members = function(done)
 			return service.request("GET", endpoint, nil, done, {
-				action = "Fetch default reviewers",
+				action = "Fetch reviewer candidates",
 				project_path = slug,
 			})
 		end,
@@ -499,7 +629,6 @@ function M.fetch_default_reviewers(opts, on_done)
 					label = "@" .. username,
 					provider_id = tostring(id),
 					selected = selected[key] ~= nil,
-					default = false,
 				})
 			end
 		end
@@ -512,7 +641,6 @@ function M.fetch_default_reviewers(opts, on_done)
 					label = "@" .. tostring(reviewer.username),
 					provider_id = id,
 					selected = true,
-					default = false,
 				})
 			end
 		end
@@ -522,11 +650,11 @@ function M.fetch_default_reviewers(opts, on_done)
 end
 
 ---@param pr PullRequest
----@param reviewers PullsCreatePRReviewer[]
----@param _original_reviewers PullsCreatePRReviewer[]
+---@param reviewers PullsReviewerCandidate[]
+---@param _ PullsReviewerCandidate[]
 ---@param on_done fun(ok: boolean, err: string|nil)
 ---@return { cancel: fun() }|nil
-function M.update_reviewers(pr, reviewers, _original_reviewers, on_done)
+function M.update_reviewers(pr, reviewers, _, on_done)
 	local ids = {}
 	for _, reviewer in ipairs(reviewers) do
 		local id = tonumber(reviewer.provider_id)
@@ -549,7 +677,7 @@ function M.update_assignees(pr, ids, on_done)
 end
 
 ---@param pr PullRequest
----@param opts { squash: boolean|nil, should_remove_source_branch: boolean|nil, merge_commit_message: string|nil, squash_commit_message: string|nil }|nil
+---@param opts PullsMergeOpts
 ---@param on_done fun(ok: boolean, err: string|nil)
 ---@return { cancel: fun() }|nil
 function M.merge(pr, opts, on_done)
@@ -558,19 +686,17 @@ function M.merge(pr, opts, on_done)
 		on_done(false, "Invalid MR identifier")
 		return nil
 	end
-	opts = opts or {}
-	local body = {}
-	if opts.squash ~= nil then
-		body.squash = opts.squash == true
-	end
-	if opts.should_remove_source_branch ~= nil then
-		body.should_remove_source_branch = opts.should_remove_source_branch == true
-	end
-	if opts.merge_commit_message and opts.merge_commit_message ~= "" then
-		body.merge_commit_message = opts.merge_commit_message
-	end
-	if opts.squash_commit_message and opts.squash_commit_message ~= "" then
-		body.squash_commit_message = opts.squash_commit_message
+	---@type table<string, boolean|string>
+	local body = {
+		squash = opts.method == "squash",
+		should_remove_source_branch = opts.delete_source_branch == true,
+	}
+	if opts.subject ~= nil or opts.body ~= nil then
+		local message = opts.subject or ""
+		if opts.body and opts.body ~= "" then
+			message = message .. (message ~= "" and "\n\n" or "") .. opts.body
+		end
+		body[opts.method == "squash" and "squash_commit_message" or "merge_commit_message"] = message
 	end
 
 	local endpoint = string.format("/projects/%s/merge_requests/%d/merge", service.url_encode(path), iid)
@@ -648,6 +774,7 @@ function M.create_pr(opts, on_done)
 			return
 		end
 		local iid = tonumber(mr.id)
+		service.clear_cache("gitlab_pulls:merge_requests:gql:")
 		on_done({
 			id = iid,
 			url = mr.link.html,

@@ -1,4 +1,6 @@
-local M = {}
+local M = {
+	-- list_members = nil,
+}
 
 local client = require("atlas.providers.github.client")
 local mapping = require("atlas.providers.github.mapping")

@@ -22,11 +22,12 @@ end
 local function labels(raw_labels)
 	local result = {}
 	for _, raw in ipairs(json.safe_table(raw_labels)) do
-		local name = type(raw) == "string" and raw or json.safe_str(raw.name) or json.safe_str(raw.title)
+		raw = json.safe_table(raw)
+		local name = json.safe_str(raw.title)
 		if name and name ~= "" then
 			table.insert(result, {
 				name = name,
-				color = type(raw) == "table" and json.safe_str(raw.color) or nil,
+				color = json.safe_str(raw.color),
 			})
 		end
 	end
@@ -44,7 +45,8 @@ local function milestone(raw)
 	if title == nil then
 		return nil
 	end
-	return { title = title }
+	local id = json.safe_str(raw.id) or ""
+	return { id = tonumber(id:match("([^/]+)$")), title = title }
 end
 
 ---@param state string|nil
@@ -64,6 +66,7 @@ local function to_issue_type(raw_type)
 	if id == nil or id == "" then
 		return nil
 	end
+	id = id:lower()
 	local name = id:gsub("_", " ")
 	name = name:sub(1, 1):upper() .. name:sub(2)
 	return { id = id, name = name, subtask = false }
@@ -84,7 +87,7 @@ function M.to_issue(raw)
 
 	local web_url = json.safe_str(raw.web_url) or ""
 	local refs = json.nilify(raw.references)
-	local key = type(refs) == "table" and json.safe_str(refs.full) or nil
+	local key = json.safe_str(raw.reference) or (type(refs) == "table" and json.safe_str(refs.full) or nil)
 	local project_path = key and key:match("^(.-)#%d+$") or nil
 	if not key or key == "" then
 		project_path = web_url:match("^https?://[^/]+/(.+)/%-/issues/")
@@ -94,7 +97,7 @@ function M.to_issue(raw)
 	local status_name, status_id = normalize_state(raw.state)
 	local title = json.safe_str(raw.title) or ""
 
-	local issue_assignees = assignees(raw.assignees)
+	local issue_assignees = assignees(json.safe_table(raw.assignees).nodes or raw.assignees)
 	local created_at = json.safe_str(raw.created_at)
 	local updated_at = json.safe_str(raw.updated_at)
 	local closed_at = json.safe_str(raw.closed_at)
@@ -107,10 +110,10 @@ function M.to_issue(raw)
 		title = title,
 		status = status_name,
 		status_id = status_id,
+		confidential = json.nilify(raw.confidential),
 		type = to_issue_type(raw.issue_type),
 		assignee = issue_assignees[1],
 		reporter = M.to_user(raw.author),
-		story_points = tonumber(json.nilify(raw.weight)),
 		duedate = json.safe_str(raw.due_date),
 		parent = nil,
 		url = web_url ~= "" and web_url or nil,
@@ -133,9 +136,10 @@ function M.to_issue_details(raw)
 
 	---@type IssueDetails
 	return {
+		title = json.safe_str(raw.title),
 		description = json.safe_str(raw.description) or "",
-		assignees = assignees(json.safe_table(raw.assignees).nodes or raw.assignees),
-		labels = labels(json.safe_table(raw.labels).nodes or raw.labels),
+		assignees = assignees(json.safe_table(raw.assignees).nodes),
+		labels = labels(json.safe_table(raw.labels).nodes),
 		milestone = milestone(raw.milestone),
 	}
 end

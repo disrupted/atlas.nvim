@@ -1,16 +1,8 @@
 ---@type PullsProviderDetail
 local M = {}
 
-local icons = require("atlas.ui.shared.icons")
 local header = require("atlas.pulls.ui.components.header")
-
----@param hex string
----@return string
-local function label_hl(hex)
-	local name = string.format("AtlasGHLabel_%s", hex)
-	vim.api.nvim_set_hl(0, name, { fg = "#1e1e2e", bg = "#" .. hex, bold = true })
-	return name
-end
+local highlights = require("atlas.ui.highlights")
 
 -- Detail
 
@@ -24,13 +16,9 @@ function M.header_fields(_pr, details, loading)
 		return loading and { header.loading_field("Assignees") } or {}
 	end
 
-	local logins = {}
-	for _, assignee in ipairs(details.assignees) do
-		local login = assignee.username
-		if login ~= "" then
-			table.insert(logins, login)
-		end
-	end
+	local logins = vim.tbl_map(function(assignee)
+		return assignee.username
+	end, details.assignees)
 
 	return { header.assignee_field(logins) }
 end
@@ -44,12 +32,7 @@ function M.chips(_pr, details, _loading)
 	local chips = {}
 
 	for _, lbl in ipairs(details and details.labels or {}) do
-		local name = tostring(lbl.name or "")
-		if name ~= "" then
-			local color = tostring(lbl.color or "")
-			local hl = color ~= "" and label_hl(color) or "AtlasTabInactive"
-			table.insert(chips, { label = name, hl = hl })
-		end
+		table.insert(chips, { label = lbl.name, hl = highlights.chip(lbl.color) })
 	end
 
 	return chips
@@ -59,36 +42,7 @@ end
 
 ---@return PullsDetailTab[]
 function M.tabs()
-	local overview_icon = icons.general("overview")
-	local conversation_icon = icons.general("conversation")
-	local review_icon = icons.pulls("review")
-	local commit_icon = icons.pulls("commit")
-	return {
-		{
-			key = "overview",
-			label = "Overview",
-			icon = { icon = overview_icon },
-			mod = require("atlas.pulls.ui.detail.tabs.overview"),
-		},
-		{
-			key = "conversation",
-			label = "Conversation",
-			icon = { icon = conversation_icon },
-			mod = require("atlas.pulls.ui.detail.tabs.conversation"),
-		},
-		{
-			key = "review",
-			label = "Review",
-			icon = { icon = review_icon },
-			mod = require("atlas.pulls.ui.detail.tabs.review"),
-		},
-		{
-			key = "commits",
-			label = "Commits",
-			icon = { icon = commit_icon },
-			mod = require("atlas.pulls.ui.detail.tabs.commits"),
-		},
-	}
+	return require("atlas.pulls.ui.detail").default_tabs()
 end
 
 return M

@@ -14,6 +14,11 @@ Review pull requests and manage issues across GitHub, GitLab, Bitbucket and Jira
   <img alt="Jira" src="https://img.shields.io/badge/Jira-0052CC?style=flat-square&logo=jira&logoColor=white">
 </p>
 
+<img alt="github" src="https://github.com/user-attachments/assets/08281971-0c9f-404f-a106-4aede061b770" />
+
+> [!CAUTION]
+> **Still in early development, will have breaking changes!**
+
 **Quick links**
 
 - [Configuration](#configuration)
@@ -23,24 +28,16 @@ Review pull requests and manage issues across GitHub, GitLab, Bitbucket and Jira
 - [Bitbucket](#bitbucket)
 - [Jira](#jira)
 
-<img alt="Atlas UI" src="https://github.com/user-attachments/assets/62909665-e036-44be-bec0-1d27da613eb6" />
-
-> [!CAUTION]
-> **Still in early development, will have breaking changes!**
-
 ## Installation
 
 <details>
 <summary><strong>Using <a href="https://github.com/folke/lazy.nvim">lazy.nvim</a></strong></summary>
 
 ```lua
----@module "atlas"
-
 {
   "emrearmagan/atlas.nvim",
   dependencies = {
     "nvim-tree/nvim-web-devicons", -- optional but recommended
-    "MeanderingProgrammer/render-markdown.nvim", -- optional but recommended
     "esmuellert/codediff.nvim", -- optional (PullRequest diff)
     "sindrets/diffview.nvim", -- optional; or "dlyongemallo/diffview-plus.nvim"
   },
@@ -74,35 +71,38 @@ require("atlas").setup({})
 - Jira: Jira Cloud REST API v3 (`*.atlassian.net`) or Jira Server REST API v2
 - Bitbucket: Bitbucket Cloud REST API 2.0 (`api.bitbucket.org`)
 - GitHub: GitHub CLI (`gh`) authenticated with `gh auth login`
-- GitLab: GitLab REST API v4 (`gitlab.com` or self-hosted), Personal Access Token with `api` scope
+- GitLab: GitLab 17.7+ (`gitlab.com` or self-hosted), Personal Access Token with `api` scope
 
 </details>
 
 > [!tip]
 > It's a good idea to run `:checkhealth atlas` to see if everything is set up correctly.
 
-## Features
+## Review Pull Requests
 
-### Review Pull Requests
-
-<img alt="AtlasDiff" src="https://github.com/user-attachments/assets/38d40d4d-5d1d-4cb5-a597-2d94faabf1a3">
+<img alt="AtlasDiff" src="https://github.com/user-attachments/assets/4f9f9628-fdad-492f-abe4-2b59a0f0f2e3">
 
 Run `:Atlas review` in a Git repository to pick a pull request, or pass a PR URL directly. Atlas opens it in your configured diff viewer.
 
 - Browse files, commits, hunks, and review history.
-- Comment, suggest changes, manage threads, or leave local notes.
+- Comment, suggest changes, manage threads, or leave notes.
 - Track tasks, checklists, and reviewed files.
 - Submit, approve, request changes, or merge.
 
 > [!NOTE]
-> **Alternative viewers:** [CodeDiff](https://github.com/esmuellert/codediff.nvim), [Diffview](https://github.com/sindrets/diffview.nvim), and [Diffview-plus](https://github.com/dlyongemallo/diffview-plus.nvim) can display Atlas comment, task, and local-note overlays, but their integrations rely on plugin internals and may break after upstream changes.
+> **Alternative viewers:** [CodeDiff](https://github.com/esmuellert/codediff.nvim) requires **v3.0.0 or newer**. [Diffview](https://github.com/sindrets/diffview.nvim) and [Diffview-plus](https://github.com/dlyongemallo/diffview-plus.nvim) are also supported. These viewers can display Atlas comment, task, and note overlays, but their integrations rely on plugin internals and may break after upstream changes.
 
 <details>
-<summary><strong>Notes</strong> - annotate a diff without posting anything</summary>
+<summary><strong>More Features</strong></summary>
 
-Local notes let you leave something on a diff without posting it to the pull request. Each note is attached to a file and line and can be an `ISSUE`, `SUGGESTION`, `NOTE`, or `PRAISE`.
+### Notes
 
-#### Script and integration
+Notes let you leave something on a diff without posting it to the pull request. Each note is attached to a file and line and can be an `ISSUE`, `SUGGESTION`, `NOTE`, or `PRAISE`.
+
+<img alt="notes" src="https://github.com/user-attachments/assets/ab7b054f-5c41-4b37-bb9b-a6a36ca8a86e" />
+
+<details>
+<summary><strong>Script and integration</strong></summary>
 
 For scripts, use `bin/atlas-notes`. Notes added there appear in AtlasDiff, CodeDiff, Diffview, Diffview-plus, and `:Atlas notes`:
 
@@ -118,51 +118,30 @@ My dotfiles include a [Pi extension that wraps this script](https://github.com/e
 
 </details>
 
-<details>
-<summary><strong>LSP for Reviews</strong> - attach LSP to the new side of a diff</summary>
+### LSP for Reviews
 
-Use your configured language servers for hover and go-to-definition on the new side of AtlasDiff.
-
-```lua
-pulls = {
-  diff = {
-    lsp = {
-      enabled = true,
-      -- link = { "node_modules", ".venv" }, -- optional dependencies
-    },
-  },
-}
-```
+Use your configured language servers for hover and go-to-definition on the new side of AtlasDiff or CodeDiff.
 
 Atlas uses a temporary worktree and removes it when the diff closes. Set `link` to symlink dependency folders from your local checkout. See [Pulls Configuration](#pulls-configuration) for all options.
 
-<img alt="lsp-support" src="https://github.com/user-attachments/assets/9d67cd02-f1fa-4ee3-94ad-d11fa1388dbd" />
+<img alt="lsp-support" src="https://github.com/user-attachments/assets/a5a51c9d-0fd7-4141-828f-fd433435dbaf" />
 
-</details>
-
-### Also included
-
-<details>
-<summary><strong>Repository browser</strong> - Browse repositories from Neovim</summary>
+### Repository browser
 
 <img alt="repository" src="https://github.com/user-attachments/assets/2462e7ce-7e80-4d6c-badc-d2112c808e12" />
 
 Browse a repository's README, pull requests, issues, builds, branches, tags, releases and deployments. Use `:Atlas browse .` for the current repository, or pass a repository URL.
 
-</details>
+### Pipelines
 
-<details>
-<summary><strong>Pipelines</strong> - Browse jobs, steps, and logs</summary>
-
-<p align="center">
-  <img width="85%" alt="View pipelines" src="https://github.com/user-attachments/assets/34b76468-6f91-46ee-a86d-608187060a13">
-</p>
+<img alt="View pipelines" src="https://github.com/user-attachments/assets/34b76468-6f91-46ee-a86d-608187060a13">
 
 View pipelines and their jobs, inspect their status, and read job logs directly in Atlas.
 
 Use `:Atlas pipelines <target>` with a branch name, PR URL or number (`123`, `#123`, or GitLab `!123`), or a build URL. Branch names use the local repository; `:Atlas pipelines .` opens builds for the current branch.
 
-#### Pipeline Configuration
+<details>
+<summary><strong>Configuration</strong></summary>
 
 Atlas uses your provider's CI by default. Set `ci.backend` to use your own. For Bamboo on Bitbucket, use `require("atlas.pulls.pipelines.bamboo").new(opts)` with `host`, `user`, and `password`.
 
@@ -180,12 +159,16 @@ providers = {
           done(job, nil)
         end,
         fetch_job_log = function(context, pipeline, job, done)
+          -- Fetch the job's raw log output.
           done({ raw = "Your log output here" }, nil)
         end,
         parse = function(log)
           -- Return cleaned lines or your own nested groups.
           return log.lines
         end,
+        actions = {
+          -- Add your actions here.
+        },
       },
       highlights = {
         { pattern = "^FAIL%s", level = "error" },
@@ -200,14 +183,14 @@ providers = {
 
 </details>
 
-<details>
-<summary><strong>Custom actions</strong> - Run project-specific actions for pull requests and issues</summary>
+### Custom actions
 
-<p align="center">
-  <img width="85%" alt="Atlas custom action" src="https://github.com/user-attachments/assets/6d1ebd15-0c48-47d2-b108-b281d492827c">
-</p>
+<img alt="Atlas custom action" src="https://github.com/user-attachments/assets/6d1ebd15-0c48-47d2-b108-b281d492827c">
 
 Add project-specific actions to pull requests and issues. Custom actions receive the current item and provider context, making it possible to call local scripts, open repositories in tmux, copy branch names, or connect Atlas to your own tooling.
+
+<details>
+<summary><strong>Configuration</strong></summary>
 
 ```lua
 pulls = {
@@ -232,17 +215,20 @@ pulls = {
           return
         end
 
-        local output = ctx.output("Repository status")
-        output:write("Checking " .. ctx.repo_path)
-        output:run({ "git", "status", "--short" }, function(code)
-          if code ~= 0 then
+        local function write(_, data)
+          if data then ctx.write(data) end
+        end
+        vim.system({ "git", "status", "--short" }, {
+          cwd = ctx.repo_path,
+          stdout = write,
+          stderr = write,
+        }, function(result)
+          if result.code ~= 0 then
             done(false, "Failed to read repository status")
             return
           end
           done(true, "Repository status loaded")
-        end, {
-          cwd = ctx.repo_path,
-        })
+        end)
       end,
     },
   },
@@ -253,6 +239,7 @@ issues = {
       id = "copy_branch_name",
       label = "Copy branch name",
       icon = "",
+      confirmation = false,
       ---@param issue Issue
       ---@param ctx AtlasIssuesCustomActionContext
       ---@param done fun(ok: boolean|nil, message: string|nil)
@@ -266,17 +253,16 @@ issues = {
 },
 ```
 
-Use `ctx.output(title)` to show output from a custom action:
+Use `ctx.write(text)` to show output and `done(ok, message)` to finish the action.
 
 ```lua
-output:write("Loading...")
-output:run(cmd, on_exit, { cwd = "/repo" })
+ctx.write("Running checks...\n")
+done(true, "Checks passed")
 ```
 
 </details>
 
-<details>
-<summary><strong>Create</strong> - Create pull requests and issues from Neovim</summary>
+### Create PRs and Issues
 
 <p align="center">
   <img width="49%" alt="Create pull request" src="https://github.com/user-attachments/assets/dbaa5fcb-a701-419c-8ad6-a8803a0ffc7d">
@@ -285,18 +271,11 @@ output:run(cmd, on_exit, { cwd = "/repo" })
 
 Use `:Atlas create [pr|issue]` to create a pull request from the current branch or a new issue. For pull requests, Atlas can fill the description from your template or commits.
 
-</details>
+### Bookmarks
 
-<details>
-<summary><strong>Bookmarks</strong> - Save searches and star items locally</summary>
-
-<p align="center">
-  <img width="85%" alt="Bookmarks" src="https://github.com/user-attachments/assets/24e8463a-61c2-4fa7-8240-1425d31c0d61">
-</p>
+<img alt="bookmarks" src="https://github.com/user-attachments/assets/c51d1fbd-29b3-41de-a398-122caf867447" />
 
 Save searches as bookmarks, or press `*` to star a pull request or issue. Both appear alongside your configured views.
-
-</details>
 
 ### Other features
 
@@ -310,13 +289,18 @@ Save searches as bookmarks, or press `*` to star a pull request or issue. Both a
 - Remap shortcuts or assign multiple keys to the same action.
 - Set local repository paths and PR templates per project.
 
+</details>
+
 ## Configuration
 
 ```lua
 {
   ui = {
-    -- Global statusline for Atlas. See the Statusline section below.
-    statusline = true,
+    -- Set either to false to keep your existing statusline.
+    statusline = {
+      atlas = true, -- Dashboards, details, and other non-diff Atlas views.
+      diff = true, -- Diff and review views.
+    },
     -- "auto", "default", "snacks", or "fzf-lua".
     picker = "auto",
     -- Make the main Atlas dashboard a listed buffer.
@@ -366,45 +350,22 @@ Save searches as bookmarks, or press `*` to star a pull request or issue. Both a
 }
 ```
 
-<details>
-<summary><strong>Statusline</strong></summary>
-
-Atlas comes with its own statusline for key hints, loading progress, and notifications. Keeping it enabled is recommended because most interaction and feedback goes through it.
-
-If you use lualine, disable its statusline for Atlas buffers so it does not replace the Atlas statusline:
-
-```lua
-require("lualine").setup({
-  options = {
-    disabled_filetypes = {
-      statusline = { "atlas" },
-      winbar = {},
-    },
-  },
-})
-```
-
-At some point there will probably an extension for lualine.
-
-</details>
-
 ## Commands
 
 - `:Atlas` - Pick a command
 - `:Atlas pulls [provider]` - Open a pull-request provider dashboard
 - `:Atlas issues [provider]` - Open an issue provider dashboard
 - `:Atlas review [pull-request-url]` - Review a pull request with the configured diff viewer
-- `:Atlas diff [target]` - Open a Git range or pull request in native AtlasDiff
+- `:Atlas diff <target>` - Open a Git range or pull request with the configured diff viewer; a target is required
 - `:Atlas pipelines [target|.]` - Open pipelines by branch name, PR URL or number, or build URL; `.` uses the current branch
 - `:Atlas create [pr|issue]` - Create a pull request or issue
 - `:Atlas search [provider]` - Search configured pull-request and issue providers
 - `:Atlas open [target|.]` - Open a provider URL, Jira key, a PR/issue number in the current repository, or the current repository
 - `:Atlas browse [repository URL|.] [page]` - Open the repository browser, e.g. `:Atlas browse . branches`
-- `:Atlas notes [target]` - Inspect local review notes
-- `:Atlas clear [cache|notes|stars]` - Clear all Atlas data or only cached data and cloned repositories, local review notes, or starred items
+- `:Atlas notes [target]` - Inspect notes
+- `:Atlas clear [cache|notes|stars]` - Clear all Atlas data or only cached data and cloned repositories, notes, or starred items
 - `:Atlas logs` - Toggle Atlas logs
-- `:AtlasDiff <base>...<head>` - Open a Git range in native AtlasDiff directly
-- `:AtlasDiff <pull-request-url>` - Open a pull request in native AtlasDiff directly
+- `:Atlas console` - Open the latest command output
 
 ## Pulls
 
@@ -415,10 +376,17 @@ Shared authentication and endpoints are configured in the top-level `providers` 
 
 ```lua
 pulls = {
-  delete_notes = false, -- Delete local PR notes after approval or merge.
+  delete_notes = false, -- Delete notes after approval or merge.
   default_merge_method = "merge", -- "merge" or "squash".
-  default_delete_branch = false,
+  default_delete_source_branch = false,
   git_transport = "https", -- "https" or "ssh" for Atlas-managed Git remotes.
+
+  description = {
+    include_summary = true,
+    include_commit_hashes = true,
+    include_related = true,
+    include_diffstat = false,
+  },
 
   -- Replaces the built-in Conventional Comments templates.
   comment_templates = {
@@ -431,8 +399,8 @@ pulls = {
   },
 
   diff = {
-    -- Any command that accepts explicit <base>...<head> Git revisions.
-    open_cmd = "AtlasDiff", -- default; for example "DiffviewOpen" or "CodeDiff".
+    -- "auto", or a command that accepts explicit <base>...<head> Git revisions.
+    open_cmd = "auto", -- CodeDiff, DiffviewOpen or AtlasDiff
     comment_display = "virtual_lines", -- "virtual_lines" or compact "virtual_text" hints.
     review_panel = {
       hidden = true, -- Set false to show the review panel when a diff opens.
@@ -442,10 +410,9 @@ pulls = {
     -- AtlasDiff options; external viewers use their own configuration.
     layout = "inline", -- "inline" or "side-by-side".
     compact = true, -- Start with only changed hunks and surrounding context visible.
-    compact_context_lines = 3, -- Context lines shown around hunks in compact mode.
     lsp = {
       -- Back the new side of the diff with a detached worktree at the PR head so it is made of
-      -- real files and your language servers attach to it (AtlasDiff only). Off by default.
+      -- real files and your language servers attach to it (AtlasDiff and CodeDiff). Off by default.
       enabled = false,
       -- Defaults to `stdpath("cache")/atlas/worktrees/<repo>/pr-<id>` (or `<repo>/<sha>` without a PR).
       -- May be an absolute path, or a function receiving
@@ -462,19 +429,23 @@ pulls = {
       width = 40,
       initial_focus = "explorer", -- "explorer" or "diff".
       preview = false, -- Show a file as soon as the explorer cursor moves onto it.
+      focus_on_select = false, -- Move into the diff after selecting a file.
       ignore = { ".git/**", ".jj/**" },
     },
   },
   repo_config = {
-    -- Maps `workspace/repo` to local paths. Used for checkout, diffs, and custom actions.
+    -- Maps `namespace/repo` to local paths. Used for checkout, diffs, and custom actions.
     paths = {
       ["your-workspace/*"] = "~/code/repos/*",
       ["your-workspace/atlas"] = "~/code/atlas",
+      ["group/subgroup/*"] = "~/code/subgroup/*",
     },
     settings = {
       ["your-workspace/atlas"] = {
         readme = "README.md", -- optional, defaults to README.md
         pr_template = ".github/pull_request_template.md", -- optional, defaults to .github/pull_request_template.md
+        merge_method = "squash", -- Overrides default_merge_method.
+        delete_source_branch = true, -- Overrides default_delete_source_branch when merging.
       },
     },
   },
@@ -487,6 +458,8 @@ pulls = {
 <details>
 <summary><strong>GitHub</strong></summary>
 
+[Full configuration](https://github.com/emrearmagan/atlas.nvim/blob/main/lua/atlas/pulls/providers/github/config.lua)
+
 ```lua
 pulls = {
   ---@type AtlasGitHubPullsConfig
@@ -497,6 +470,7 @@ pulls = {
         name = "My PRs",
         key = "1",
         layout = "plain", -- "compact", "grouped", or "plain"
+        -- current_repo = true, -- Limit this view to the local repository.
         search = "author:@me sort:updated-desc",
       },
       {
@@ -526,7 +500,7 @@ pulls = {
 },
 ```
 
-<img alt="GitHub pull requests" src="https://github.com/user-attachments/assets/e18fbbb4-1b93-4059-8b80-0b6ebb7a55c6">
+<img alt="github" src="https://github.com/user-attachments/assets/08281971-0c9f-404f-a106-4aede061b770" />
 
 </details>
 
@@ -534,6 +508,8 @@ pulls = {
 
 <details>
 <summary><strong>Bitbucket</strong></summary>
+
+[Full configuration](https://github.com/emrearmagan/atlas.nvim/blob/main/lua/atlas/pulls/providers/bitbucket/config.lua)
 
 ```lua
 pulls = {
@@ -545,6 +521,7 @@ pulls = {
         name = "Me",
         key = "M",
         layout = "compact", -- "compact", "grouped", or "plain"
+        -- current_repo = true, -- Remove repo:/project: targets from search when enabled.
         -- https://developer.atlassian.com/cloud/bitbucket/rest/#filter-and-sort-api-objects
         search = 'repo:your-workspace/standalone-repo project:your-workspace/CORE author.nickname = "your-name"',
       },
@@ -570,7 +547,7 @@ pulls = {
 },
 ```
 
-<img alt="Bitbucket pull requests" src="https://github.com/user-attachments/assets/d2a9c7cd-6aa5-46dc-bd04-5fd760a9269d">
+<img alt="bitbucket" src="https://github.com/user-attachments/assets/5803fb26-960c-40e3-b2f4-9845b2aa6643" />
 
 </details>
 
@@ -578,6 +555,8 @@ pulls = {
 
 <details>
 <summary><strong>GitLab</strong></summary>
+
+[Full configuration](https://github.com/emrearmagan/atlas.nvim/blob/main/lua/atlas/pulls/providers/gitlab/config.lua)
 
 ```lua
 pulls = {
@@ -590,20 +569,23 @@ pulls = {
         key = "1",
         layout = "grouped", -- "compact", "grouped", or "plain"
         scope = "assigned_to_me",
+        -- current_repo = true, -- Limit this view to the local repository.
       },
       {
-        name = "Reviewing",
+        name = "Waiting for review",
         key = "3",
         scope = "reviews_for_me",
+        state = "opened", -- "opened", "closed", "merged", or "all".
+        review_states = { "UNREVIEWED", "REVIEW_STARTED" },
       },
       -- Single project
       {
         name = "GitLab",
         key = "G",
         project = "gitlab-org/gitlab",
-        extra_params = { target_branch = "main" },
+        target_branch = "main",
       },
-      -- Whole group, all projects under it
+      -- Projects directly in this group
       {
         name = "GitLab Org",
         key = "O",
@@ -616,14 +598,14 @@ pulls = {
       label = "Search", -- default
       items = {
         ["Reviewing"]    = { scope = "reviews_for_me" },
-        ["Created by me"] = { scope = "all", author_username = "me" },
+        ["Created by me"] = { scope = "created_by_me" },
       },
     },
   },
 },
 ```
 
-<img alt="GitLab pull requests" src="https://github.com/user-attachments/assets/6b3ea556-68b8-411e-ae2b-464a28071f61">
+<img alt="gitlab" src="https://github.com/user-attachments/assets/7b5b840d-c67f-489f-9756-e84b0091c823" />
 
 </details>
 
@@ -648,6 +630,8 @@ issues = {
 
 > [!IMPORTANT]
 > The markdown editor for issue descriptions and comments is still experimental and may not work perfectly in all cases. You can toggle between markdown and ADF view in the overview tab to see the raw ADF content and how it translates to markdown. If you encounter any issues with the markdown editor, please open an issue with details.
+
+[Full configuration](https://github.com/emrearmagan/atlas.nvim/blob/main/lua/atlas/issues/providers/jira/config.lua)
 
 ```lua
 issues = {
@@ -682,11 +666,21 @@ issues = {
     project_config = {
       -- The Jira custom field ID used for story points. Defaults to "customfield_10016".
       story_points_field = "customfield_10016",
+      -- Override issue type styles by name (case-insensitive).
       issue_types = {
-        ["Maintenance"] = { icon = "", hl_group = "AtlasTextWarning" },
-        ["Infrastructure"] = { icon = "󰒋", hl_group = "AtlasLogInfo" },
+        bug = { icon = "" },
+        maintenance = { icon = "", hl_group = "AtlasTextWarning" },
+        infrastructure = { icon = "󰒋", hl_group = "AtlasLogInfo" },
+      },
+      -- Override icons by status name or category.
+      status_icons = {
+        new = "●",
+        indeterminate = "",
+        done = "",
+        ["In Review"] = "",
       },
 
+      -- Custom fields to display per project; replace KAN with your project key.
       KAN = {
         customfield_10003 = {
           name = "Approvers",
@@ -705,7 +699,7 @@ issues = {
 },
 ```
 
-<img alt="Jira issues" src="https://github.com/user-attachments/assets/9cbf7ce9-b16f-409d-a8c0-b499af99c127">
+<img alt="jira" src="https://github.com/user-attachments/assets/5268d7d7-b16d-4f1d-9650-87db31bf5a2d" />
 
 </details>
 
@@ -713,6 +707,8 @@ issues = {
 
 <details>
 <summary><strong>GitHub Issues</strong></summary>
+
+[Full configuration](https://github.com/emrearmagan/atlas.nvim/blob/main/lua/atlas/issues/providers/github/config.lua)
 
 ```lua
 issues = {
@@ -724,6 +720,7 @@ issues = {
         name = "Assigned",
         key = "1",
         layout = "plain",
+        -- current_repo = true, -- Limit this view to the local repository.
         search = "assignee:@me is:open",
       },
       {
@@ -751,6 +748,7 @@ issues = {
   },
 },
 ```
+<img alt="github-issue" src="https://github.com/user-attachments/assets/109b9a2a-86f2-4867-86e2-ff6a0645ca29" />
 
 </details>
 
@@ -758,6 +756,8 @@ issues = {
 
 <details>
 <summary><strong>GitLab Issues</strong></summary>
+
+[Full configuration](https://github.com/emrearmagan/atlas.nvim/blob/main/lua/atlas/issues/providers/gitlab/config.lua)
 
 ```lua
 issues = {
@@ -770,6 +770,7 @@ issues = {
         key = "1",
         scope = "assigned_to_me",
         state = "opened",
+        -- current_repo = true, -- Limit this view to the local repository.
       },
       {
         name = "Created",
@@ -782,8 +783,6 @@ issues = {
         key = "3",
         scope = "all",
         state = "opened",
-        -- Anything not covered by the explicit fields below can be passed via `extra_params`.
-        extra_params = { ["not[labels]"] = "wontfix" },
       },
     },
 
@@ -791,14 +790,14 @@ issues = {
       key   = "S",      -- default
       label = "Search", -- default
       items = {
-        ["No labels"] = { scope = "all", state = "opened",
-                          extra_params = { ["not[labels]"] = "*" } },
-        ["Closed"]    = { scope = "created_by_me", state = "closed" },
+        ["Closed"] = { scope = "created_by_me", state = "closed" },
       },
     },
   },
 },
 ```
+
+<img alt="gitlab-issue" src="https://github.com/user-attachments/assets/65fedb30-dee0-442d-afa5-46a42aeae425" />
 
 </details>
 
@@ -807,8 +806,8 @@ issues = {
 Atlas emits these `User` events after the corresponding cleanup or setup has completed:
 
 - `AtlasUIClosed` for the main pulls/issues dashboard.
-- `AtlasDiffOpened` and `AtlasDiffClosed` for the native AtlasDiff view.
-- `AtlasReviewAttached` and `AtlasReviewDetached` for Atlas review overlays in AtlasDiff, CodeDiff, and Diffview.
+- `AtlasDiffOpened` and `AtlasDiffClosed` for diff sessions in AtlasDiff, CodeDiff, and Diffview.
+- `AtlasDiffFileChanged` when the current diff file changes in any of these viewers.
 
 ## Keymaps
 
@@ -835,6 +834,7 @@ keymaps = {
     toggle_panel = "p",
     toggle_fold = "za",
     toggle_all_folds = "zA",
+    toggle_description_mode = "<leader>m",
     previous_panel_tab = "<S-Tab>",
     next_panel_tab = "<Tab>",
     notifications = {
@@ -855,6 +855,7 @@ keymaps = {
     copy_url = "Y",
     show_details = "K",
     search = "?",
+    edit_search = "i",
   },
   picker = {
     next_item = { "<Down>", "<C-n>", "<C-j>" },
@@ -868,64 +869,63 @@ keymaps = {
     change_assignee = "ga",
     change_reporter = "gr",
     edit_issue = "ge",
-    edit_search = "i",
     create_issue = "c",
-    toggle_description_mode = "m",
   },
   pulls = {
     open_diff = "gd",
     checkout = "gc",
-    external_help = "gA", -- Atlas help in external diff viewers
     open_repository = "o",
-    toggle_repo_issue_state = "t",
-    edit_title = "T",
-    edit_description = "D",
-    edit_search = "i",
+    edit_pr = "ge",
+    review = {
+      show_details = "K", -- File/commit details.
+      toggle_file_reviewed = "-",
+      approve = "<leader>ga",
+      request_changes = "<leader>gr",
+      submit_review = "<leader>gs",
+      add_task = "<leader>t",
+      comment_templates = "gT",
+      toggle_resolved = "x",
+      next_comment = "]c",
+      prev_comment = "[c",
+      next_note = "]n",
+      prev_note = "[n",
+      add_comment = "c",
+      submit_comment = "C",
+      add_suggestion = "s",
+      submit_suggestion = "S",
+      add_note = "<leader>n",
+      view = {
+        external_help = "gA", -- External diff viewer help.
+        toggle_review_panel = "gR",
+        toggle_detail_panel = "gD",
+        toggle_comments = "gH",
+      },
+      explorer = {
+        toggle_commits = "gC",
+        next_unreviewed_file = "]u",
+        prev_unreviewed_file = "[u",
+        find_file = "<leader>f",
+      },
+      -- Built-in navigation; external viewers use their own keys.
+      atlas = {
+        next_file = { "]f", "<Tab>" },
+        prev_file = { "[f", "<S-Tab>" },
+        toggle_explorer = "<leader>b",
+        focus_explorer = "<leader>e",
+        open_file = "gf",
+        toggle_view_mode = "i",
+        next_hunk = "]h",
+        prev_hunk = "[h",
+        toggle_layout = "t",
+        toggle_compact = "gc",
+      },
+    },
     pipelines = {
       next_job = { "]j", "<Tab>" },
       previous_job = { "[j", "<S-Tab>" },
       show_history = "gH",
       toggle_raw_logs = "gL",
-    },
-    review = {
-      open_item = "<CR>", -- Open the selected file, review item, or inline comment/note.
-      show_details = "K",
-      approve = "<leader>ga",
-      request_changes = "<leader>gr",
-      submit_review = "<leader>gs",
-      add_task = "<leader>t",
-      find_file = "<leader>ff",
-      comment_templates = "gT",
-      explorer = {
-        toggle_explorer = "<leader>b",
-        find_file = { "f", "<leader>ff" },
-        next_file = { "]f", "<Tab>" },
-        previous_file = { "[f", "<S-Tab>" },
-        next_unreviewed_file = "]u",
-        previous_unreviewed_file = "[u",
-        toggle_grouping = "T",
-        toggle_file_reviewed = "-",
-        toggle_commits = "gC",
-      },
-      diff = {
-        toggle_layout = "t",
-        toggle_compact = "gc",
-        next_hunk = "]h",
-        previous_hunk = "[h",
-        toggle_review_panel = "gR",
-        toggle_detail_panel = "gD",
-        toggle_comments = "gH",
-        next_comment = "]c",
-        previous_comment = "[c",
-        next_note = "]n",
-        previous_note = "[n",
-        add_comment = "c",
-        submit_comment = "C",
-        add_suggestion = "s",
-        submit_suggestion = "S",
-        add_note = "<leader>n",
-        toggle_resolved = "x",
-      },
+      toggle_auto_refresh = "gR",
     },
     filters = {
       open = "gpo",

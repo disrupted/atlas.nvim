@@ -11,21 +11,21 @@ local function provider_options()
 	return config.provider_options("jira") or {}
 end
 
----@return string, string, string|nil
-local function get_auth()
+---@return string|nil
+local function auth_error()
 	local jira = provider_options()
 	local base_url = jira.base_url
 	local email = jira.email or ""
 	local token = jira.token
 
 	if not base_url or base_url == "" or not token or token == "" then
-		return "", "", "Missing Jira credentials in config (providers.jira.base_url, providers.jira.token)"
+		return "Missing Jira credentials in config (providers.jira.base_url, providers.jira.token)"
 	end
 	if jira.auth_method ~= "bearer" and email == "" then
-		return "", "", "Missing Jira credentials in config (providers.jira.email)"
+		return "Missing Jira credentials in config (providers.jira.email)"
 	end
 
-	return base_url, email, nil
+	return nil
 end
 
 ---@return table<string, string>
@@ -119,7 +119,7 @@ end
 ---@param ctx table|nil   optional extra context merged into the request log line (e.g. { action, issue_key, ... })
 ---@return { job_id: integer, cancel: fun() }|nil
 function M.request(method, endpoint, data, on_done, ctx)
-	local _, _, auth_err = get_auth()
+	local auth_err = auth_error()
 	if auth_err then
 		logger.logerror("Jira auth missing", { error = auth_err })
 		on_done(nil, auth_err)

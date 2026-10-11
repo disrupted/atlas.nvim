@@ -378,8 +378,9 @@ function M.fetch(context, opts, on_done)
 			end
 		end
 		scope.all(starts, function(_, errors)
-			for _, error in pairs(errors) do
-				on_done(nil, error)
+			local _, first_err = next(errors)
+			if first_err ~= nil then
+				on_done(nil, first_err)
 				return
 			end
 			service.set_cache(key, pipelines)
@@ -561,7 +562,7 @@ function M.fetch_commit_status(commit, opts, on_done)
 
 		local values = (result or {}).values or {}
 		local status, first_url = aggregate_statuses(values)
-		service.set_cache(key, { status = status, url = first_url }, service.cache_ttl())
+		service.set_cache(key, { status = status, url = first_url })
 		on_done(status, first_url, nil)
 	end, { action = "Fetch commit status", commit_hash = commit.hash })
 end

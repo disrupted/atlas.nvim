@@ -2,22 +2,10 @@ local M = {}
 
 local dashboard_host = require("atlas.ui.dashboard")
 local ui_state = require("atlas.ui.state")
+local utils = require("atlas.ui.shared.utils")
 local statusline = require("atlas.ui.statusline")
 local starred = require("atlas.core.starred")
 local ns = vim.api.nvim_create_namespace("atlas.ui")
-
----@param buf integer
----@param spans table[]
-local function apply_spans(buf, spans)
-	vim.api.nvim_buf_clear_namespace(buf, ns, 0, -1)
-	for _, span in ipairs(spans) do
-		vim.api.nvim_buf_set_extmark(buf, ns, span.line, span.start_col, {
-			end_row = span.line,
-			end_col = span.end_col,
-			hl_group = span.hl_group,
-		})
-	end
-end
 
 function M.render()
 	local win = dashboard_host.win()
@@ -37,7 +25,7 @@ function M.render()
 
 	vim.api.nvim_set_option_value("modifiable", true, { buf = buf })
 	vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines)
-	apply_spans(buf, spans)
+	utils.apply_spans(buf, ns, spans)
 	vim.api.nvim_set_option_value("modifiable", false, { buf = buf })
 end
 
@@ -87,7 +75,7 @@ function M.prev_detail_tab()
 end
 
 ---@param provider PullsProvider
----@param opts? { initial_view?: AtlasPullsViewConfig }
+---@param opts { initial_view: AtlasPullsViewConfig|nil }|nil
 function M.init(provider, opts)
 	local state = require("atlas.pulls.state")
 	local controller = require("atlas.pulls.ui.dashboard.controller")
@@ -96,10 +84,7 @@ function M.init(provider, opts)
 		state.current_user = nil
 	end
 	state.provider = provider
-	state.provider_views = vim.tbl_map(function(view)
-		return vim.tbl_extend("force", {}, view)
-	end, provider.views())
-	state.is_loading = false
+	state.views = provider.views()
 	state.error = nil
 	state.pulls = {}
 	state.current_page = 1
@@ -114,21 +99,14 @@ function M.init(provider, opts)
 
 	local bookmarks = require("atlas.ui.shared.bookmarks")
 	state.bookmarks = bookmarks.new(provider.id, "pulls")
-	state.views = bookmarks.views(state.provider_views, state.bookmarks, state.starred_items)
 	local initial_view = opts and opts.initial_view
-	state.view = initial_view and vim.tbl_extend("force", {}, initial_view) or state.views[1]
-
+	state.view = initial_view and vim.tbl_extend("force", {}, initial_view)
+		or bookmarks.views(state.views, state.bookmarks, state.starred_items)[1]
 	statusline.clear_items()
 
 	local buf = dashboard_host.buf()
 	if buf ~= nil then
 		keymaps.register(buf, state.views)
-	end
-
-	if state.view == nil then
-		state.error = "No pull request view configured"
-		M.render()
-		return
 	end
 
 	controller.switch_view(state.view)

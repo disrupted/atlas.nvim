@@ -2,7 +2,10 @@ local service = require("atlas.providers.jira.client")
 local config = require("atlas.config")
 local json = require("atlas.core.json")
 
-local M = {}
+local M = {
+	-- list_members = nil,
+	-- get_assignable_users = nil,
+}
 
 ---@param raw_user any Decoded API value.
 ---@return AtlasUser|nil
@@ -31,8 +34,8 @@ function M.fetch_user(callback)
 	end
 
 	return service.request("GET", "/myself", nil, function(result, err)
-		if err or not result then
-			callback(nil, err or "Empty response")
+		if err then
+			callback(nil, err)
 			return
 		end
 

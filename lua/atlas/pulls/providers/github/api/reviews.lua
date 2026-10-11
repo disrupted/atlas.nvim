@@ -65,26 +65,12 @@ query($owner:String!,$repo:String!,$number:Int!,$endCursor:String){
 }
 ]]
 
-local REVIEW_MENTIONS_QUERY = [[
-query($owner:String!,$repo:String!,$number:Int!){
-  repository(owner:$owner,name:$repo){
-    pullRequest(number:$number){
-      assignees(first:100){nodes{id login name}}
-      reviews(first:100){nodes{author{login}}}
-      reviewRequests(first:100){
-        nodes{
-          requestedReviewer{
-            ... on User{id login name}
-            ... on Bot{id login}
-            ... on Mannequin{id login name}
-            ... on Team{id teamName:name slug organization{login}}
-            ... on EnterpriseTeam{id teamName:name slug combinedSlug}
-          }
-        }
-      }
-    }
-  }
-}
+local REVIEWER_FIELDS = [[
+... on User{id login name}
+... on Bot{id login}
+... on Mannequin{id login name}
+... on Team{id teamName:name slug organization{login}}
+... on EnterpriseTeam{id teamName:name slug combinedSlug}
 ]]
 
 local REVIEWERS_QUERY = [[
@@ -101,11 +87,7 @@ query($owner:String!,$name:String!,$number:Int!,$endCursor:String){
       reviewRequests(first:100){
         nodes{
           requestedReviewer{
-            ... on User{id login name}
-            ... on Bot{id login}
-            ... on Mannequin{id login name}
-            ... on Team{id teamName:name slug organization{login}}
-            ... on EnterpriseTeam{id teamName:name slug combinedSlug}
+]] .. REVIEWER_FIELDS .. [[
           }
         }
       }
@@ -113,11 +95,7 @@ query($owner:String!,$name:String!,$number:Int!,$endCursor:String){
         nodes{
           ... on ReviewRequestedEvent{
             requestedReviewer{
-              ... on User{id login name}
-              ... on Bot{id login}
-              ... on Mannequin{id login name}
-              ... on Team{id teamName:name slug organization{login}}
-              ... on EnterpriseTeam{id teamName:name slug combinedSlug}
+]] .. REVIEWER_FIELDS .. [[
             }
           }
         }
@@ -147,11 +125,7 @@ query($owner:String!,$name:String!,$number:Int!,$endCursor:String){
       reviewRequests(first:100){
         nodes{
           requestedReviewer{
-            ... on User{id login name}
-            ... on Bot{id login}
-            ... on Mannequin{id login name}
-            ... on Team{id teamName:name slug organization{login}}
-            ... on EnterpriseTeam{id teamName:name slug combinedSlug}
+]] .. REVIEWER_FIELDS .. [[
           }
         }
       }
@@ -159,11 +133,7 @@ query($owner:String!,$name:String!,$number:Int!,$endCursor:String){
         nodes{
           ... on ReviewRequestedEvent{
             requestedReviewer{
-              ... on User{id login name}
-              ... on Bot{id login}
-              ... on Mannequin{id login name}
-              ... on Team{id teamName:name slug organization{login}}
-              ... on EnterpriseTeam{id teamName:name slug combinedSlug}
+]] .. REVIEWER_FIELDS .. [[
             }
           }
         }
@@ -434,34 +404,23 @@ local function finish(pr, review, event, body, on_done)
 		return create(pr, pull_request_id, event, body, done)
 	end
 
-	local cancelled = false
-	local current
-	current = find_pending(pr, function(pull_request_id, pending, err)
-		if cancelled then
-			return
-		end
+	local requests = request_scope.new()
+	requests.run(function(callback)
+		return find_pending(pr, callback)
+	end, function(pull_request_id, pending, err)
 		if err then
 			done(false, err)
 			return
 		end
 		M.update(review, pending)
-		if pending then
-			current = submit_pending(pr, tostring(pending.id), event, body, done)
-		else
-			current = create(pr, tostring(pull_request_id), event, body, done)
-		end
-		if cancelled and current then
-			current.cancel()
-		end
-	end)
-	return {
-		cancel = function()
-			cancelled = true
-			if current then
-				current.cancel()
+		requests.run(function(callback)
+			if pending then
+				return submit_pending(pr, tostring(pending.id), event, body, callback)
 			end
-		end,
-	}
+			return create(pr, tostring(pull_request_id), event, body, callback)
+		end, done)
+	end)
+	return requests
 end
 
 ---@param pr PullRequest
@@ -867,10 +826,9 @@ local function fetch_comments(pr, include_hunks, on_done)
 end
 
 ---@param pr PullRequest
----@param _opts { force_refresh: boolean|nil }|nil
 ---@param on_done fun(tasks: PullsComment[]|nil, err: string|nil)
 ---@return { cancel: fun() }|nil
-local function fetch_tasks(pr, _opts, on_done)
+local function fetch_tasks(pr, on_done)
 	local repo_slug = pr.repo_full_name or ""
 	if repo_slug == "" then
 		vim.schedule(function()
@@ -920,7 +878,7 @@ local function fetch_review(pr, opts, include_hunks, on_done)
 			return fetch_comments(pr, include_hunks, done)
 		end,
 		tasks = function(done)
-			return fetch_tasks(pr, opts, done)
+			return fetch_tasks(pr, done)
 		end,
 		details = function(done)
 			return fetch_review_details(pr, opts, done)
@@ -1062,38 +1020,35 @@ end
 ---@param pr PullRequest
 ---@param review PullsReview|nil
 ---@param commit_oid string
----@param use_review fun(review_id: string): { cancel: fun() }|nil
----@param on_error fun(err: string)
+---@param use_review fun(review_id: string, done: fun(result: any, err: string|nil)): { cancel: fun() }|nil
+---@param on_done fun(result: any, err: string|nil)
 ---@return { cancel: fun() }|nil
-function M.with_pending(pr, review, commit_oid, use_review, on_error)
+function M.with_pending(pr, review, commit_oid, use_review, on_done)
 	---@cast pr GitHubPullRequest
-	local function use(value)
+	local function use(value, done)
 		if commit_oid ~= "" and value.commit_hash and commit_oid ~= value.commit_hash then
-			on_error("Pending review belongs to a different commit")
+			done(nil, "Pending review belongs to a different commit")
 			return nil
 		end
-		return use_review(value.id)
+		return use_review(value.id, done)
 	end
 
 	if review and review.pending and review.id then
-		return use(review)
+		return use(review, on_done)
 	end
 
 	local requests = request_scope.new()
-	local cancelled = false
-	local current_handle
 	local function continue_with(value)
-		current_handle = use(value)
-		if cancelled and current_handle then
-			current_handle.cancel()
-		end
+		requests.run(function(done)
+			return use(value, done)
+		end, on_done)
 	end
 	local function create_review(pull_request_id)
 		requests.run(function(done)
 			return create_pending(pr, pull_request_id, review, commit_oid, done)
 		end, function(review_id, err)
 			if err then
-				on_error(err)
+				on_done(nil, err)
 				return
 			end
 			continue_with({ id = review_id })
@@ -1103,7 +1058,7 @@ function M.with_pending(pr, review, commit_oid, use_review, on_error)
 	local pull_request_id = pr.node_id or ""
 	if review and not review.pending then
 		if pull_request_id == "" then
-			on_error("Missing pull request node id")
+			on_done(nil, "Missing pull request node id")
 			return nil
 		end
 		create_review(pull_request_id)
@@ -1112,7 +1067,7 @@ function M.with_pending(pr, review, commit_oid, use_review, on_error)
 			return find_pending(pr, done)
 		end, function(found_pr_id, pending, err)
 			if err then
-				on_error(err)
+				on_done(nil, err)
 				return
 			end
 			local found = from_node(pending)
@@ -1124,15 +1079,7 @@ function M.with_pending(pr, review, commit_oid, use_review, on_error)
 			end
 		end)
 	end
-	return {
-		cancel = function()
-			cancelled = true
-			requests.cancel()
-			if current_handle then
-				current_handle.cancel()
-			end
-		end,
-	}
+	return requests
 end
 
 ---@param pr PullRequest
@@ -1140,11 +1087,11 @@ end
 ---@param on_done fun(ok: boolean, err: string|nil)
 ---@return { cancel: fun() }|nil
 function M.start(pr, review, on_done)
-	return M.with_pending(pr, review, pr.source.commit_hash, function()
-		on_done(true, nil)
+	return M.with_pending(pr, review, pr.source.commit_hash, function(_, done)
+		done(true, nil)
 		return nil
-	end, function(err)
-		on_done(false, err)
+	end, function(ok, err)
+		on_done(ok == true, err)
 	end)
 end
 
@@ -1173,47 +1120,30 @@ function M.fetch_context(pr, opts, on_done)
 		end
 	end
 
-	local function fetch(query, paginate, action, done)
-		local args = {
-			"api",
-			"graphql",
-			"-f",
-			"query=" .. reviewer_query(query),
-			"-f",
-			"owner=" .. owner,
-			"-f",
-			"repo=" .. repo,
-			"-F",
-			"number=" .. tostring(pr.id),
-		}
-		if paginate then
-			vim.list_extend(args, { "--paginate", "--slurp" })
-		end
-		return cli.gh(args, done, { action = action, repo = repo_slug, number = pr.id })
-	end
-
-	local function pull_request_from_response(response)
-		local data = json.safe_table(json.safe_table(response).data)
-		return json.nilify(json.safe_table(data.repository).pullRequest)
-	end
-
-	local requests = request_scope.new()
-	requests.all({
-		files = function(done)
-			return fetch(REVIEW_CONTEXT_QUERY, true, "Fetch PR reviewed files", done)
-		end,
-		mentions = function(done)
-			return fetch(REVIEW_MENTIONS_QUERY, false, "Fetch PR review mentions", done)
-		end,
-	}, function(results, errors)
-		if errors.files or type(results.files) ~= "table" then
-			on_done(nil, errors.files or "Failed to fetch reviewed files")
+	local args = {
+		"api",
+		"graphql",
+		"-f",
+		"query=" .. REVIEW_CONTEXT_QUERY,
+		"-f",
+		"owner=" .. owner,
+		"-f",
+		"repo=" .. repo,
+		"-F",
+		"number=" .. tostring(pr.id),
+		"--paginate",
+		"--slurp",
+	}
+	return cli.gh(args, function(pages, err)
+		if err or type(pages) ~= "table" then
+			on_done(nil, err or "Failed to fetch reviewed files")
 			return
 		end
 		local pull_request
 		local reviewed_files = {}
-		for _, page in ipairs(results.files) do
-			local current = pull_request_from_response(page)
+		for _, page in ipairs(pages) do
+			local data = json.safe_table(json.safe_table(page).data)
+			local current = json.nilify(json.safe_table(data.repository).pullRequest)
 			if not current then
 				on_done(nil, "Failed to fetch reviewed files")
 				return
@@ -1230,46 +1160,10 @@ function M.fetch_context(pr, opts, on_done)
 			return
 		end
 		pr.node_id = tostring(pull_request.id or "")
-		local mentions = pull_request_from_response(results.mentions)
-		local mention_error = errors.mentions
-		if type(mentions) ~= "table" then
-			mention_error = mention_error or "Missing pull request mention data"
-		end
-		if mention_error then
-			mentions = {}
-		end
-
-		local mention_candidates = {}
-		local seen = {}
-		local function add(author)
-			if author == nil then
-				return
-			end
-			local key = tostring(author.username or author.nickname or author.name or ""):lower()
-			if key ~= "" and not seen[key] then
-				seen[key] = true
-				table.insert(mention_candidates, author)
-			end
-		end
-
-		add(pr.author)
-		for _, raw in ipairs(((mentions.assignees or {}).nodes or {})) do
-			add(review_author(raw))
-		end
-		for _, raw in ipairs(((mentions.reviews or {}).nodes or {})) do
-			add(review_author(raw.author))
-		end
-		for _, raw in ipairs(((mentions.reviewRequests or {}).nodes or {})) do
-			add(review_author(raw.requestedReviewer or raw))
-		end
-
-		local context = { mention_candidates = mention_candidates, reviewed_files = reviewed_files }
-		if not mention_error then
-			cli.set_mem(cache_key, context, cli.cache_ttl())
-		end
-		on_done(context, mention_error and ("Mention suggestions unavailable: " .. mention_error) or nil)
-	end)
-	return requests
+		local context = { reviewed_files = reviewed_files }
+		cli.set_mem(cache_key, context, cli.cache_ttl())
+		on_done(context, nil)
+	end, { action = "Fetch PR reviewed files", repo = repo_slug, number = pr.id })
 end
 
 return M

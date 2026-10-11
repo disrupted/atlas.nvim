@@ -47,9 +47,6 @@ describe("GitHub related issues and pull requests", function()
 				callback(response(), nil)
 			end,
 		})
-		local client = require("atlas.providers.github.client")
-		client.get_mem = function() end
-		client.set_mem = function() end
 		package.loaded[MODULE] = nil
 	end)
 

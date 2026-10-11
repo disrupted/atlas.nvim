@@ -20,18 +20,26 @@ local PIPELINE_STATES = {
 	CANCELING = "INPROGRESS",
 }
 
+local JOB_FIELDS = [[
+  nodes { id name status webPath startedAt duration stage { name status } }
+  pageInfo { hasNextPage endCursor }
+]]
+
+local PIPELINE_FIELDS = [[
+  id name status path sha ref startedAt createdAt
+  project { fullPath ciConfigPathOrDefault }
+  stages(first:100) { nodes { name status } }
+  jobs(first:100,retried:false,jobKind:BUILD) {
+]] .. JOB_FIELDS .. [[
+  }
+]]
+
 local PIPELINES_QUERY = [[
 query($path:ID!,$iid:String!){
   project(fullPath:$path){
     mergeRequest(iid:$iid){
       head_pipeline:headPipeline {
-        id name status path sha ref startedAt createdAt
-        project { fullPath ciConfigPathOrDefault }
-        stages(first:100) { nodes { name status } }
-        jobs(first:100,retried:false,jobKind:BUILD) {
-          nodes { id name status webPath startedAt duration stage { name status } }
-          pageInfo { hasNextPage endCursor }
-        }
+]] .. PIPELINE_FIELDS .. [[
       }
     }
   }
@@ -42,13 +50,7 @@ local PIPELINE_QUERY = [[
 query($path:ID!,$pipelineId:CiPipelineID!){
   project(fullPath:$path){
     pipeline(id:$pipelineId) {
-      id name status path sha ref startedAt createdAt
-      project { fullPath ciConfigPathOrDefault }
-      stages(first:100) { nodes { name status } }
-      jobs(first:100,retried:false,jobKind:BUILD) {
-        nodes { id name status webPath startedAt duration stage { name status } }
-        pageInfo { hasNextPage endCursor }
-      }
+]] .. PIPELINE_FIELDS .. [[
     }
   }
 }
@@ -59,8 +61,7 @@ query($path:ID!,$pipelineId:CiPipelineID!,$cursor:String!){
   project(fullPath:$path){
     pipeline(id:$pipelineId) {
       jobs(first:100,after:$cursor,retried:false,jobKind:BUILD) {
-        nodes { id name status webPath startedAt duration stage { name status } }
-        pageInfo { hasNextPage endCursor }
+]] .. JOB_FIELDS .. [[
       }
     }
   }
@@ -525,8 +526,7 @@ function M.fetch_commit_status(commit, opts, on_done)
 		end
 	end
 
-	local endpoint =
-		string.format("/projects/%s/repository/commits/%s/statuses?per_page=100", service.url_encode(path), commit.hash)
+	local endpoint = string.format("/projects/%s/repository/commits/%s/statuses", service.url_encode(path), commit.hash)
 	return service.fetch_all_pages(endpoint, function(result, err)
 		if err then
 			on_done(nil, nil, err)

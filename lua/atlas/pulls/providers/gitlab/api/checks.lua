@@ -19,6 +19,50 @@ query($path:ID!,$iid:String!){
 }
 ]]
 
+---@type table<string, PullsMergeCheck>
+local MERGE_STATUS_CHECKS = {
+	merge_request_blocked = {
+		key = "blocks",
+		state = "failed",
+		label = "Merge request dependencies must be merged",
+	},
+	requested_changes = {
+		key = "requested_changes",
+		state = "failed",
+		label = "Change requests must be approved by the requesting user",
+	},
+	not_approved = {
+		key = "approvals",
+		state = "failed",
+		label = "All required approvals must be given",
+	},
+	need_rebase = {
+		key = "rebase",
+		state = "failed",
+		label = "Source branch must be rebased onto target",
+	},
+	jira_association_missing = {
+		key = "jira",
+		state = "failed",
+		label = "Jira issue must be referenced",
+	},
+	external_status_checks = {
+		key = "external_checks",
+		state = "failed",
+		label = "External status checks must pass",
+	},
+	broken_status = {
+		key = "broken",
+		state = "failed",
+		label = "Merge status is broken",
+	},
+	preparing = {
+		key = "preparing",
+		state = "inprogress",
+		label = "Preparing merge",
+	},
+}
+
 ---@class GitLabMergeCheckState
 ---@field draft boolean
 ---@field detailed_merge_status string|nil
@@ -38,7 +82,7 @@ local function parse_merge_checks(state)
 			key = "draft",
 			state = "warning",
 			label = "This merge request is still a draft",
-			details = { "Draft merge requests cannot be merged." },
+			details = { "Draft merge requests cannot be merged" },
 		})
 	end
 
@@ -47,7 +91,7 @@ local function parse_merge_checks(state)
 			key = "conflicts",
 			state = "failed",
 			label = "This branch has conflicts that must be resolved",
-			details = { "Conflicting files must be resolved before merging." },
+			details = { "Conflicting files must be resolved before merging" },
 		})
 	elseif dms == "mergeable" then
 		table.insert(checks, {
@@ -62,71 +106,16 @@ local function parse_merge_checks(state)
 			key = "discussions",
 			state = "failed",
 			label = "Unresolved discussions",
-			details = { "Resolve all threads before merging." },
+			details = { "Resolve all threads before merging" },
 		})
 	end
 
-	if dms == "merge_request_blocked" then
+	local status_check = MERGE_STATUS_CHECKS[dms]
+	if status_check then
 		table.insert(checks, {
-			key = "blocks",
-			state = "failed",
-			label = "Merge request dependencies must be merged",
-		})
-	end
-
-	if dms == "requested_changes" then
-		table.insert(checks, {
-			key = "requested_changes",
-			state = "failed",
-			label = "Change requests must be approved by the requesting user",
-		})
-	end
-
-	if dms == "not_approved" then
-		table.insert(checks, {
-			key = "approvals",
-			state = "failed",
-			label = "All required approvals must be given",
-		})
-	end
-
-	if dms == "need_rebase" then
-		table.insert(checks, {
-			key = "rebase",
-			state = "failed",
-			label = "Source branch must be rebased onto target",
-		})
-	end
-
-	if dms == "jira_association_missing" then
-		table.insert(checks, {
-			key = "jira",
-			state = "failed",
-			label = "Jira issue must be referenced",
-		})
-	end
-
-	if dms == "external_status_checks" then
-		table.insert(checks, {
-			key = "external_checks",
-			state = "failed",
-			label = "External status checks must pass",
-		})
-	end
-
-	if dms == "broken_status" then
-		table.insert(checks, {
-			key = "broken",
-			state = "failed",
-			label = "Merge status is broken",
-		})
-	end
-
-	if dms == "preparing" then
-		table.insert(checks, {
-			key = "preparing",
-			state = "inprogress",
-			label = "Preparing merge",
+			key = status_check.key,
+			state = status_check.state,
+			label = status_check.label,
 		})
 	end
 
@@ -143,7 +132,7 @@ local function parse_merge_checks(state)
 			key = "ci",
 			state = dms == "ci_still_running" and "inprogress" or "warning",
 			label = "Pipeline must pass",
-			details = { "CI is required to merge." },
+			details = { "CI is required to merge" },
 		})
 	end
 

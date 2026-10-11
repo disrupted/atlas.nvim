@@ -6,14 +6,15 @@ local utils = require("atlas.ui.shared.utils")
 
 local M = {}
 
-local PR_ICON, PR_ICON_HL = icons.pulls("pr")
-local MERGED_PR_ICON, MERGED_PR_ICON_HL = icons.pulls("merged_pr")
-local DECLINED_PR_ICON, DECLINED_PR_ICON_HL = icons.pulls("declined_pr")
-local STAR_ICON, STAR_ICON_HL = icons.general("star")
+local PR_ICON, PR_ICON_HL = icons.get("pr")
+local DRAFT_PR_ICON, DRAFT_PR_ICON_HL = icons.get("draft_pr")
+local MERGED_PR_ICON, MERGED_PR_ICON_HL = icons.get("merged_pr")
+local DECLINED_PR_ICON, DECLINED_PR_ICON_HL = icons.get("declined_pr")
+local STAR_ICON, STAR_ICON_HL = icons.get("star")
 
 local PR_STATE_ICON = {
 	open = { PR_ICON, PR_ICON_HL },
-	draft = { PR_ICON, "AtlasPRDraft" },
+	draft = { DRAFT_PR_ICON, DRAFT_PR_ICON_HL },
 	merged = { MERGED_PR_ICON, MERGED_PR_ICON_HL },
 	declined = { DECLINED_PR_ICON, DECLINED_PR_ICON_HL },
 }
@@ -73,8 +74,8 @@ local function cell_hl(row, col, ctx, display)
 		return { { start_col = 0, end_col = #ctx.text, hl_group = "AtlasSectionHeader" } }
 	end
 	if col.key == "name" and row.kind == "pr" then
-		local icon_hl = row._pr_icon_hl or "AtlasPROpen"
-		local icon = row._pr_icon_str or PR_ICON
+		local icon_hl = row._pr_icon_hl
+		local icon = row._pr_icon_str
 		local spans = {}
 		if ctx.text:find(icon .. " " .. STAR_ICON .. " ", 1, true) == 1 then
 			table.insert(spans, {
@@ -116,6 +117,26 @@ local function add_values(row, values)
 	end
 end
 
+---@param pr PullRequest
+---@param repo AtlasRepository
+---@param opts table
+---@return table
+local function pull_row(pr, repo, opts)
+	local icon, icon_hl = pr_icon(pr, opts)
+	local author = presentation.user_handle(pr.author)
+	return {
+		kind = "pr",
+		_pr_icon_str = icon,
+		_pr_icon_hl = icon_hl,
+		conversation = tostring(pr.comments_count),
+		author = string.format("%s %s", icons.get("user"), utils.shorten_name(author, 20)),
+		author_hl = author,
+		created = utils.relative_time(pr.created_on),
+		updated = utils.relative_time(pr.updated_on),
+		_item = { kind = "pr", id = pr.id, repo = repo, pr = pr },
+	}
+end
+
 ---@param pulls PullRequest[]
 ---@param display table
 ---@param opts table
@@ -124,25 +145,13 @@ local function compact_rows(pulls, display, opts)
 	local rows = {}
 	for _, pr in ipairs(pulls) do
 		local repo = pr.repo
-		local icon, icon_hl = pr_icon(pr, opts)
-		local author = presentation.user_handle(pr.author)
-		local row = {
-			kind = "pr",
-			pr_icon = icon,
-			_pr_icon_str = icon,
-			_pr_icon_hl = icon_hl,
-			repo_pr = (pr.is_starred and STAR_ICON .. " " or "")
-				.. display.reference
-				.. tostring(pr.id)
-				.. " "
-				.. pr.title,
-			conversation = tostring(pr.comments_count),
-			author = string.format("%s %s", icons.general("user"), utils.shorten_name(author, 20)),
-			author_hl = author,
-			created = utils.relative_time(pr.created_on),
-			updated = utils.relative_time(pr.updated_on),
-			_item = { kind = "pr", id = pr.id, repo = repo, pr = pr },
-		}
+		local row = pull_row(pr, repo, opts)
+		row.pr_icon = row._pr_icon_str
+		row.repo_pr = (pr.is_starred and STAR_ICON .. " " or "")
+			.. display.reference
+			.. tostring(pr.id)
+			.. " "
+			.. pr.title
 		add_values(row, display.values(pr))
 		table.insert(rows, row)
 		table.insert(rows, {
@@ -186,23 +195,14 @@ local function list_rows(pulls, grouped, display, opts)
 			if not grouped and #rows > 0 then
 				table.insert(rows, { kind = "spacer" })
 			end
-			local repo = group.repo
-			local icon, icon_hl = pr_icon(pr, opts)
-			local author = presentation.user_handle(pr.author)
-			local row = {
-				kind = "pr",
-				_pr_icon_str = icon,
-				_pr_icon_hl = icon_hl,
-				name = icon .. " " .. (pr.is_starred and STAR_ICON .. " " or "") .. display.reference .. tostring(
-					pr.id
-				) .. " " .. pr.title,
-				conversation = tostring(pr.comments_count),
-				author = string.format("%s %s", icons.general("user"), utils.shorten_name(author, 20)),
-				author_hl = author,
-				created = utils.relative_time(pr.created_on),
-				updated = utils.relative_time(pr.updated_on),
-				_item = { kind = "pr", id = pr.id, repo = repo, pr = pr },
-			}
+			local row = pull_row(pr, group.repo, opts)
+			row.name = row._pr_icon_str
+				.. " "
+				.. (pr.is_starred and STAR_ICON .. " " or "")
+				.. display.reference
+				.. tostring(pr.id)
+				.. " "
+				.. pr.title
 			add_values(row, display.values(pr))
 			table.insert(rows, row)
 			if grouped and pr_index < #group.pulls then

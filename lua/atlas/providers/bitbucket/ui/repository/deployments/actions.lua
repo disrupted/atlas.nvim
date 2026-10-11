@@ -21,7 +21,7 @@ local M = {}
 M.open_build = {
 	id = "open_build",
 	label = "Open build",
-	icon = icons.action("pipeline"),
+	icon = icons.get("pipeline", "actions"),
 	is_available = function(ctx)
 		return ctx.deployment ~= nil and ctx.deployment.pipeline_id ~= nil
 	end,
@@ -48,7 +48,7 @@ M.open_build = {
 M.open_in_browser = {
 	id = "open_in_browser",
 	label = "Open deployment in browser",
-	icon = icons.action("open_in_browser"),
+	icon = icons.get("open_in_browser", "actions"),
 	is_available = function(ctx)
 		return ctx.deployment ~= nil and (ctx.deployment.url ~= nil or ctx.deployment.pipeline_url ~= nil)
 	end,
@@ -69,7 +69,7 @@ M.run_build = {
 		---@cast deployment BitbucketDeployment
 		return string.format("Run new build on %s", deployment.branch)
 	end,
-	icon = icons.action("run"),
+	icon = icons.get("run", "actions"),
 	is_available = function(ctx)
 		return ctx.deployment ~= nil and ctx.deployment.branch ~= nil
 	end,

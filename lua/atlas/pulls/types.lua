@@ -68,6 +68,11 @@
 ---@field role "reviewer"|"participant"
 ---@field decision "approved"|"changes_requested"|"reviewed"|"pending"
 
+---@class PullsReviewerCandidate
+---@field label string
+---@field provider_id string
+---@field selected boolean|nil
+
 --------------------------------------------------------------------------------
 -- Merge check
 --------------------------------------------------------------------------------
@@ -139,12 +144,17 @@
 ---@field file PullsFileCommentPosition|nil
 ---@field is_task boolean|nil                            -- true = render as task (checkbox)
 ---@field task_label string|nil                          -- display name override; defaults to "Task"
----@field state "PENDING"|"RESOLVED"|"DELETED"|"OUTDATED"|nil -- primary state; nil = active/open
+---@field state "RESOLVED"|"DELETED"|"OUTDATED"|nil       -- nil = active/open
+---@field pending boolean|nil                            -- Draft comments can also be resolved.
 ---@field outdated boolean|nil                           -- may coexist with RESOLVED
 ---@field reactions table<string, integer>|nil
 ---@field url string|nil
 ---@field html_url string|nil
 ---@field _raw table|nil
+
+---@class AtlasCommentThreadNode
+---@field comment PullsComment
+---@field children AtlasCommentThreadNode[]
 
 --------------------------------------------------------------------------------
 -- Review
@@ -175,7 +185,6 @@
 ---@field history PullsReviewHistoryEntry[]
 
 ---@class PullsReviewContext
----@field mention_candidates PullsAuthor[]
 ---@field reviewed_files table<string, boolean>|nil
 
 --------------------------------------------------------------------------------

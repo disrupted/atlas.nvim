@@ -26,12 +26,12 @@ local function checks_chip(checks)
 	if status == CHECK_STATES.muted then
 		return nil
 	end
-	local icon, hl = icons.pulls_status(status.icon)
+	local icon, hl = icons.get(status.icon, "status")
 	return { label = icon .. " " .. status.label, hl = hl }
 end
 
 ---@param pr PullRequest
----@param opts { width: integer, padding_x?: integer, extra_chips?: PullsDetailChip[], checks?: PullsMergeCheck[]|"loading"|string, loading?: boolean }
+---@param opts { width: integer, padding_x?: integer, extra_chips?: PullsDetailChip[], checks?: PullsMergeCheck[]|"loading"|string }
 ---@return string[], table[]
 function M.render(pr, opts)
 	local chips = {
@@ -43,10 +43,15 @@ function M.render(pr, opts)
 	end
 
 	local checks = opts.checks
-	if opts.loading or checks == "loading" then
+	if checks == "loading" then
 		table.insert(chips, { label = spinner.with_text("Loading..."), hl = "AtlasTextMuted" })
 	elseif type(checks) == "table" then
 		table.insert(chips, checks_chip(checks))
+	elseif type(checks) == "string" then
+		table.insert(
+			chips,
+			{ label = icons.get("inprogress", "status") .. " Checks unavailable", hl = "AtlasTextWarning" }
+		)
 	end
 
 	return chips_component.render(chips, opts)

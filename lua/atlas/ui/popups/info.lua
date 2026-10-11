@@ -1,5 +1,6 @@
 local M = {}
 
+local utils = require("atlas.ui.shared.utils")
 local ns = vim.api.nvim_create_namespace("atlas.popup.info")
 local group = vim.api.nvim_create_augroup("AtlasInfoPopup", { clear = true })
 
@@ -64,26 +65,6 @@ local function ensure_buf()
 	return buf
 end
 
----@param target_buf integer
----@param highlights AtlasUIHighlight[]
-local function apply_highlights(target_buf, highlights)
-	vim.api.nvim_buf_clear_namespace(target_buf, ns, 0, -1)
-
-	for _, highlight in ipairs(highlights) do
-		if highlight.line_hl_group then
-			vim.api.nvim_buf_set_extmark(target_buf, ns, highlight.line, 0, {
-				line_hl_group = highlight.line_hl_group,
-			})
-		else
-			vim.api.nvim_buf_set_extmark(target_buf, ns, highlight.line, highlight.start_col, {
-				end_row = highlight.line,
-				end_col = highlight.end_col,
-				hl_group = highlight.hl_group,
-			})
-		end
-	end
-end
-
 ---@param owner integer|nil
 function M.close(owner)
 	if owner and owner ~= source_win then
@@ -110,7 +91,7 @@ local function draw(content, owner)
 	if vim.bo[target_buf].filetype ~= filetype then
 		vim.bo[target_buf].filetype = filetype
 	end
-	apply_highlights(target_buf, content.highlights or {})
+	utils.apply_spans(target_buf, ns, content.highlights or {})
 
 	local config = popup_config(content.lines, owner)
 	config.title = content.title or ""

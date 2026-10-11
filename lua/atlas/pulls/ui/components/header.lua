@@ -1,7 +1,7 @@
 local M = {}
 
 local icons = require("atlas.ui.shared.icons")
-local highlights = require("atlas.ui.shared.highlights")
+local highlights = require("atlas.ui.highlights")
 local spinner = require("atlas.ui.components.spinner")
 local table_tree = require("atlas.ui.components.table_tree")
 local utils = require("atlas.ui.shared.utils")
@@ -98,14 +98,14 @@ function M.render(pr, width, extra_fields)
 	local src = pr.source.branch
 	local dst = pr.destination.branch
 
-	local id_text = string.format("#%s", pr.id)
+	local id_text = string.format("%s%s", pr.provider == "gitlab" and "!" or "#", pr.id)
 	local title_text = pr.title
 	local title_lines = utils.wrap_line(string.format("%s %s", id_text, title_text), math.max(1, width - 1))
 	for index, line in ipairs(title_lines) do
 		title_lines[index] = " " .. line
 	end
 
-	local author_icon, author_icon_hl = icons.general("user")
+	local author_icon, author_icon_hl = icons.get("user")
 	local by_prefix = string.format(" %s by @", author_icon)
 	local by_sep = " - "
 	local byline = by_prefix .. author_name .. by_sep .. created_text
@@ -118,7 +118,7 @@ function M.render(pr, width, extra_fields)
 	local fields = {
 		{
 			label = "Repo",
-			value = string.format("%s %s", icons.pulls("repo"), repo_name),
+			value = string.format("%s %s", icons.get("repo"), repo_name),
 			hl = highlights.dynamic_for(repo_name) or "AtlasTextMuted",
 		},
 		{
@@ -133,7 +133,7 @@ function M.render(pr, width, extra_fields)
 	end
 	table.insert(fields, {
 		label = "Branch",
-		value = string.format("%s %s → %s", icons.pulls("branch"), src, dst),
+		value = string.format("%s %s → %s", icons.get("branch"), src, dst),
 		hl = "AtlasTextMuted",
 	})
 

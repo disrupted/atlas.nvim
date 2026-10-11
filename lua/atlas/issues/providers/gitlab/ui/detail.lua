@@ -2,6 +2,7 @@
 local M = {}
 
 local icons = require("atlas.ui.shared.icons")
+local highlights = require("atlas.ui.highlights")
 local utils = require("atlas.ui.shared.utils")
 local helper = require("atlas.issues.ui.presentation")
 local spinner = require("atlas.ui.components.spinner")
@@ -20,7 +21,7 @@ end
 ---@param loading boolean
 ---@return IssuesDetailHeaderField[]
 function M.header_fields(issue, details, _loading)
-	local user_icon = icons.general("user")
+	local user_icon = icons.get("user")
 
 	local assignee = details and details.assignees[1] or issue.assignee
 	local assignee_name = assignee and assignee.name or ""
@@ -65,23 +66,6 @@ function M.header_fields(issue, details, _loading)
 	return fields
 end
 
----@param hex string|nil
----@return string
-local function label_hl(hex)
-	local clean = tostring(hex or ""):lower():gsub("[^0-9a-f]", "")
-	if #clean ~= 6 then
-		return "AtlasChipActive"
-	end
-	local name = "AtlasGLIssueLabel_" .. clean
-	local r = tonumber(clean:sub(1, 2), 16) or 0
-	local g = tonumber(clean:sub(3, 4), 16) or 0
-	local b = tonumber(clean:sub(5, 6), 16) or 0
-	local lum = (0.299 * r + 0.587 * g + 0.114 * b) / 255
-	local fg = lum > 0.6 and "#1e1e2e" or "#ffffff"
-	vim.api.nvim_set_hl(0, name, { fg = fg, bg = "#" .. clean, bold = true })
-	return name
-end
-
 ---@param _issue Issue
 ---@param details IssueDetails|nil
 ---@param loading boolean
@@ -96,7 +80,7 @@ function M.chips(_issue, details, loading)
 	for _, label in ipairs(details and details.labels or {}) do
 		local name = tostring(label.name or "")
 		if name ~= "" then
-			table.insert(chips, { label = name, hl = label_hl(label.color) })
+			table.insert(chips, { label = name, hl = highlights.chip(label.color) })
 		end
 	end
 	return chips
@@ -104,8 +88,8 @@ end
 
 ---@return IssuesDetailTabDefinition[]
 function M.tabs()
-	local overview_icon = icons.general("overview")
-	local conversation_icon = icons.general("conversation")
+	local overview_icon = icons.get("overview")
+	local conversation_icon = icons.get("conversation")
 	return {
 		{
 			key = "overview",

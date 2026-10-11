@@ -53,10 +53,10 @@ function M.render(environments, width, expanded)
 		for index = 1, count do
 			local deployment = environment.deployments[index]
 
-			local icon, hl = icons.pulls_status(deployment.state:lower())
+			local icon, hl = icons.get(deployment.state:lower(), "status")
 			local label = pipeline_utils.state_label(deployment.state)
 			if deployment.state == "UNDEPLOYED" then
-				icon, hl = icons.general("progress")
+				icon, hl = icons.get("progress")
 				label = "Not deployed"
 			end
 
@@ -97,7 +97,7 @@ function M.render(environments, width, expanded)
 			end
 			details[#details + 1] = label
 			if deployment.branch then
-				details[#details + 1] = icons.pulls("branch") .. " " .. deployment.branch
+				details[#details + 1] = icons.get("branch") .. " " .. deployment.branch
 			end
 
 			if deployment.commit and deployment.commit ~= "" then
@@ -105,11 +105,7 @@ function M.render(environments, width, expanded)
 			end
 
 			if deployment.duration then
-				if deployment.duration < 60 then
-					details[#details + 1] = string.format("%ds", math.floor(deployment.duration))
-				else
-					details[#details + 1] = utils.human_duration(deployment.duration)
-				end
+				details[#details + 1] = pipeline_utils.format_duration(deployment.duration)
 			end
 			local text = "   " .. table.concat(details, "  ")
 			if deployment.deployer then
