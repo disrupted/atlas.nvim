@@ -103,52 +103,11 @@ register({
 	run = function(context, done)
 		local issue = assert(context.issue)
 		---@cast issue AzureIssue
-		notify.loading("Loading work item...")
-		issues_api.fetch_issue(issue, { force_refresh = true }, function(details, err)
-			if err then
-				notify.error(err)
-				done(nil, err)
-				return
+		return require("atlas.issues.providers.azure.ui.editor").edit(issue, function(updated, err)
+			if updated then
+				notify.success("Work item updated", { timeout = 1200 })
 			end
-			---@cast details IssueDetails
-			issues_api.list_types(issue.project, function(types, types_err)
-				if types_err then
-					notify.error(types_err)
-					done(nil, types_err)
-					return
-				end
-				notify.clear()
-				---@cast types table[]
-				require("atlas.issues.create.azure.issue").open(issue.project, types, function(updated, update_err)
-					if updated then
-						notify.success("Work item updated", { timeout = 1200 })
-						done({ issue_key = updated.key }, nil)
-					else
-						done(nil, update_err)
-					end
-				end, {
-					issue = issue,
-					description = details.description,
-					description_format = details.description_format,
-				})
-			end)
-		end)
-	end,
-})
-
-register({
-	id = "edit_title",
-	label = "Edit title",
-	icon = icons.action("edit"),
-	is_available = has_issue,
-	run = function(context, done)
-		local issue = assert(context.issue)
-		vim.ui.input({ prompt = "Title: ", default = issue.title }, function(title)
-			if title == nil or vim.trim(title) == "" then
-				done(nil, nil)
-				return
-			end
-			update(issue, { ["System.Title"] = vim.trim(title) }, done)
+			done(updated and { issue_key = updated.key } or nil, err)
 		end)
 	end,
 })
@@ -161,7 +120,7 @@ register({
 	run = function(context, done)
 		local issue = assert(context.issue)
 		local assignee = issue.assignee
-		---@cast assignee AzureIssueUser|nil
+		---@cast assignee AtlasUser|nil
 		vim.ui.input(
 			{ prompt = "Assignee email (empty to unassign): ", default = assignee and assignee.username or "" },
 			function(input)
@@ -209,23 +168,11 @@ register({
 	icon = icons.action("create"),
 	run = function(context, done)
 		with_project(context, function(project)
-			notify.loading("Loading work item types...")
-			issues_api.list_types(project, function(types, err)
-				if err then
-					notify.error(err)
-					done(nil, err)
-					return
+			require("atlas.issues.providers.azure.ui.editor").open(project, function(issue, err)
+				if issue then
+					notify.success("Work item created", { timeout = 1200 })
 				end
-				notify.clear()
-				---@cast types table[]
-				require("atlas.issues.create.azure.issue").open(project, types, function(issue, create_err)
-					if issue then
-						notify.success("Work item created", { timeout = 1200 })
-						done({ issue_key = issue.key }, nil)
-					else
-						done(nil, create_err)
-					end
-				end)
+				done(issue and { issue_key = issue.key } or nil, err)
 			end)
 		end, done)
 	end,

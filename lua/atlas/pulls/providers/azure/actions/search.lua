@@ -4,7 +4,7 @@ local picker = require("atlas.ui.picker")
 local notify = require("atlas.core.notify")
 local state = require("atlas.pulls.state")
 local query = require("atlas.providers.azure.query")
-local repositories = require("atlas.pulls.providers.azure.api.repositories")
+local repositories = require("atlas.providers.azure.repositories")
 local pullrequests = require("atlas.pulls.providers.azure.api.pullrequests")
 
 ---@param title string
@@ -120,8 +120,8 @@ function M.open_view(context, done)
 	local view = current
 		or {
 			name = "Search",
-			project = context.pr and context.pr.workspace,
-			repository = context.pr and context.pr.repo,
+			project = context.pr and context.pr.repo.owner,
+			repository = context.pr and context.pr.repo.repo_name,
 			scope = "all",
 		}
 	vim.ui.input({ prompt = "Search: ", default = query.query(view) }, function(input)

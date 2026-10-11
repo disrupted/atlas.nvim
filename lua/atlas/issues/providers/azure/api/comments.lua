@@ -5,8 +5,9 @@ local M = {}
 local json = require("atlas.core.json")
 local requests = require("atlas.core.requests")
 local mapper = require("atlas.issues.providers.azure.api.mapper")
+local mentions = require("atlas.providers.azure.mentions")
 local markdown = require("atlas.issues.providers.azure.markdown")
-local service = require("atlas.pulls.providers.azure.api.service")
+local service = require("atlas.providers.azure.client")
 local emojis = require("atlas.ui.shared.emojis")
 
 M.reaction_options = {
@@ -31,11 +32,15 @@ local function to_comment(raw)
 	for _, reaction in ipairs(raw.reactions or {}) do
 		reactions[reaction.type] = reaction.count
 	end
+	local author = mapper.to_user(raw.createdBy)
+	local authors = {}
+	mentions.add(authors, author)
 	return {
 		id = tostring(raw.id),
 		self = raw.url,
-		author = mapper.to_user(raw.createdBy),
+		author = author,
 		body = raw.text or "",
+		body_display = mentions.resolve(raw.text or "", authors),
 		body_format = (raw.format or "html"):lower(),
 		created = raw.createdDate,
 		updated = raw.modifiedDate,
@@ -86,6 +91,15 @@ function M.fetch_conversation(issue, opts, on_done)
 						fetch_page(next_token)
 						return
 					end
+					local authors = {}
+					mentions.add(authors, issue.reporter)
+					mentions.add(authors, issue.assignee)
+					for _, item in ipairs(items) do
+						mentions.add(authors, item.entity.author)
+					end
+					for _, item in ipairs(items) do
+						item.entity.body_display = mentions.resolve(item.entity.body, authors)
+					end
 					service.set_cache(cache_key, items)
 					on_done(items, nil)
 					return
@@ -116,9 +130,10 @@ end
 
 ---@param issue Issue
 ---@param text string
+---@param _opts { parent?: IssueComment }|nil
 ---@param on_done fun(comment: IssueComment|nil, err: string|nil)
 ---@return { cancel: fun() }|nil
-function M.add_comment(issue, text, on_done)
+function M.add_comment(issue, text, _opts, on_done)
 	---@cast issue AzureIssue
 	return service.request(
 		"POST",

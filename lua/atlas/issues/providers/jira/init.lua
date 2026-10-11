@@ -6,6 +6,7 @@
 ---@field category table|nil
 
 ---@class JiraIssue : Issue
+---@field id string
 ---@field project JiraIssueProject|nil
 ---@field priority string|nil
 
@@ -16,20 +17,18 @@
 ---@field display "chip"|"table"
 
 ---@class JiraIssueDetails : IssueDetails
+---@field type IssueType|nil
 ---@field status string|nil
 ---@field priority string|nil
----@field reporter IssueUser|nil
+---@field reporter AtlasUser|nil
 ---@field raw_description table|string|nil
 ---@field custom_fields JiraIssueCustomField[]
 
-local actions = require("atlas.issues.providers.jira.actions")
-local author_completion = require("atlas.providers.jira.completion.author")
 local comments_api = require("atlas.issues.providers.jira.api.comments")
 local config = require("atlas.config")
 local detail_ui = require("atlas.issues.providers.jira.ui.detail")
 local issues_api = require("atlas.issues.providers.jira.api.issues")
-local service = require("atlas.issues.providers.jira.api.service")
-local users_api = require("atlas.issues.providers.jira.api.users")
+local links_api = require("atlas.issues.providers.jira.api.links")
 
 ---@param view IssuesViewConfig
 ---@return string
@@ -59,15 +58,16 @@ end
 local function fetch_issues(view, opts, on_done)
 	local jql = resolve_search(view)
 	if jql == "" then
-		on_done({ items = {} }, "Missing Jira view JQL")
+		on_done({ items = {}, query = jql }, "Missing Jira view JQL")
 		return nil
 	end
 
 	return issues_api.search_issues(jql, function(page, err)
 		if err or page == nil then
-			on_done({ items = {} }, err or "Failed to fetch issues")
+			on_done({ items = {}, query = jql }, err or "Failed to fetch issues")
 			return
 		end
+		page.query = jql
 		on_done(page, nil)
 	end, {
 		force_refresh = opts.force_refresh == true,
@@ -105,21 +105,13 @@ end
 
 ---@param issue Issue
 ---@param content string
+---@param opts { parent?: IssueComment }|nil
 ---@param on_done fun(comment: IssueComment|nil, err: string|nil)
 ---@return { cancel: fun() }|nil
-local function add_comment(issue, content, on_done)
+local function add_comment(issue, content, opts, on_done)
 	local issue_key = tostring(issue.key or "")
-	return comments_api.add_comment(issue_key, content, nil, on_done)
-end
-
----@param issue Issue
----@param parent IssueComment
----@param content string
----@param on_done fun(comment: IssueComment|nil, err: string|nil)
----@return { cancel: fun() }|nil
-local function reply_comment(issue, parent, content, on_done)
-	local issue_key = tostring(issue.key or "")
-	return comments_api.add_comment(issue_key, content, { parent_id = tostring(parent.id) }, on_done)
+	local parent = opts and opts.parent
+	return comments_api.add_comment(issue_key, content, { parent_id = parent and tostring(parent.id) or nil }, on_done)
 end
 
 ---@param issue Issue
@@ -188,16 +180,14 @@ end
 return {
 	views = views,
 	view_for_target = view_for_target,
-	resolve_search = resolve_search,
 	issue_ref = target_issue_ref,
 	capabilities = {
+		actions = require("atlas.issues.providers.jira.actions.registry"),
 		core = {
-			fetch_user = users_api.get_myself,
 			fetch_issues = fetch_issues,
 			fetch_by_refs = fetch_by_refs,
 			fetch_issue = issues_api.fetch_issue,
-			-- update_description = issues_api.update_description,
-			refresh = service.clear_memory_cache,
+			fetch_links = links_api.fetch,
 		},
 		comments = {
 			fetch_activity = function(issue, opts, on_done)
@@ -205,17 +195,14 @@ return {
 			end,
 			fetch_conversation = fetch_conversation,
 			add_comment = add_comment,
-			reply_comment = reply_comment,
 			edit_comment = edit_comment,
 			delete_comment = delete_comment,
-			-- add_reaction = comments_api.add_reaction,
-			-- reaction_options = {},
-			comment_completion = author_completion.for_issues,
+			-- add_reaction = nil,
+			-- reaction_options = nil,
 		},
-		-- notifications = notifications_api,
-		actions = actions,
 		ui = {
 			detail = detail_ui,
+			-- repository = nil,
 		},
 	},
 }

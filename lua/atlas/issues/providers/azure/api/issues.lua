@@ -3,7 +3,7 @@ local M = {}
 local mapper = require("atlas.issues.providers.azure.api.mapper")
 local markdown = require("atlas.issues.providers.azure.markdown")
 local request_scope = require("atlas.core.requests")
-local service = require("atlas.pulls.providers.azure.api.service")
+local service = require("atlas.providers.azure.client")
 
 ---@param endpoint string
 ---@param opts IssuesFetchOpts
@@ -101,7 +101,7 @@ function M.list_issues(view, opts, on_done)
 		return query(view, opts, done)
 	end, function(result, err)
 		if err then
-			on_done({ items = {} }, err)
+			on_done({ items = {}, query = view.search }, err)
 			return
 		end
 		local ids = {}
@@ -113,6 +113,7 @@ function M.list_issues(view, opts, on_done)
 		end, function(items, fetch_err)
 			on_done({
 				items = items,
+				query = view.search,
 				next_cursor = offset + size < #result.workItems and tostring(offset + size) or nil,
 				total_pages = math.max(1, math.ceil(#result.workItems / size)),
 			}, fetch_err)
@@ -192,15 +193,6 @@ function M.update(issue, fields, on_done, opts)
 		service.clear_cache()
 		on_done(true, nil)
 	end, { action = "Update work item", issue_key = issue.key }, nil, "application/json-patch+json")
-end
-
----@param issue Issue
----@param content string
----@param on_done fun(ok: boolean, err: string|nil)
----@param opts { format?: string }|nil
----@return { cancel: fun() }|nil
-function M.update_description(issue, content, on_done, opts)
-	return M.update(issue, { ["System.Description"] = content }, on_done, opts)
 end
 
 ---@param issue Issue

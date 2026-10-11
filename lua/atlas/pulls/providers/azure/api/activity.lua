@@ -1,6 +1,6 @@
 local M = {}
 
-local service = require("atlas.pulls.providers.azure.api.service")
+local service = require("atlas.providers.azure.client")
 local mapper = require("atlas.pulls.providers.azure.api.mapper")
 
 ---@param pr PullRequest
@@ -11,8 +11,8 @@ function M.fetch_conversation(pr, opts, on_done)
 	opts = opts or {}
 	local endpoint = string.format(
 		"/%s/_apis/git/repositories/%s/pullrequests/%s/threads",
-		service.url_encode(pr.workspace),
-		service.url_encode(pr.repo),
+		service.url_encode(pr.repo.owner),
+		service.url_encode(pr.repo.repo_name),
 		tostring(pr.id)
 	)
 	local cache_key = "conversation:" .. endpoint

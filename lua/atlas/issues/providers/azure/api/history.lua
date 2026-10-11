@@ -4,7 +4,7 @@ local M = {}
 
 local mapper = require("atlas.issues.providers.azure.api.mapper")
 local requests = require("atlas.core.requests")
-local service = require("atlas.pulls.providers.azure.api.service")
+local service = require("atlas.providers.azure.client")
 
 ---@param issue Issue
 ---@param opts IssuesFetchOpts|nil

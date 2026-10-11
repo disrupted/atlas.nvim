@@ -27,7 +27,7 @@ function M.on_select(issue, refresh, opts)
 		return
 	end
 
-	local key = tostring(issue.key or "")
+	local key = issue.key
 	state.items = "loading"
 	notify.loading(string.format("Loading conversation for %s...", key))
 	state.requests.run(function(done)
@@ -63,21 +63,7 @@ end
 ---@param issue Issue
 ---@param details IssueDetails|nil
 ---@param width integer
-function M.render(issue, details, width)
-	local provider = detail.provider
-	local comments = provider and provider.capabilities.comments
-	local completion = comments
-		and comments.comment_completion
-		and comments.comment_completion({
-			issue = issue,
-			details = details,
-			comments = state.comments(),
-		})
-	if completion and completion.resolve_items then
-		completion.resolve_items()
-	end
-	return renderer.render(issue, details, width)
-end
+M.render = renderer.render
 
 ---@param _lnum integer
 ---@param entry table

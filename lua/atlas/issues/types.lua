@@ -1,13 +1,4 @@
 --------------------------------------------------------------------------------
--- User
---------------------------------------------------------------------------------
-
----@class IssueUser
----@field id integer|nil
----@field account_id string|nil
----@field display_name string
-
---------------------------------------------------------------------------------
 -- Issue
 --------------------------------------------------------------------------------
 
@@ -20,8 +11,8 @@
 ---@field status string|nil
 ---@field status_id string|nil
 ---@field type IssueType|nil
----@field assignee IssueUser|nil
----@field reporter IssueUser|nil
+---@field assignee AtlasUser|nil
+---@field reporter AtlasUser|nil
 ---@field story_points number|nil
 ---@field duedate string|nil
 ---@field parent IssueRef|nil
@@ -34,10 +25,11 @@
 ---@field is_subscribed boolean|nil
 
 ---@class IssueDetails
+---@field title string|nil
 ---@field description string
 --- Azure work-item formats: https://devblogs.microsoft.com/devops/markdown-support-arrives-for-work-items/
 ---@field description_format string|nil Format of the displayed description.
----@field assignees IssueUser[]
+---@field assignees AtlasUser[]
 ---@field labels IssueLabel[]
 ---@field milestone IssueMilestone|nil
 
@@ -54,6 +46,7 @@
 --------------------------------------------------------------------------------
 
 ---@class IssueMilestone
+---@field id integer|nil
 ---@field title string
 
 --------------------------------------------------------------------------------
@@ -94,7 +87,7 @@
 ---@field id string
 ---@field self string|nil
 ---@field url string|nil
----@field author IssueUser|nil
+---@field author AtlasUser|nil
 ---@field body string|nil
 ---@field body_display string|nil
 ---@field created string|nil
@@ -104,10 +97,6 @@
 ---@field reactions table<string, number>|nil
 ---@field deleted boolean|nil
 ---@field _raw table|nil
-
---------------------------------------------------------------------------------
--- History
---------------------------------------------------------------------------------
 
 --------------------------------------------------------------------------------
 -- Activity / reactions
@@ -122,7 +111,7 @@
 
 ---@class IssueActivityEntry
 ---@field kind string
----@field actor IssueUser|nil
+---@field actor AtlasUser|nil
 ---@field date string|nil
 ---@field label string|nil
 ---@field body string|nil

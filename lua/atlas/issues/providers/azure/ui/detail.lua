@@ -14,8 +14,8 @@ function M.header_fields(issue, _details, _loading)
 	return {
 		{ label = "Project", value = issue.project },
 		{ label = "Status", value = issue.status, hl = helper.status_hl(issue.status_id) },
-		{ label = "Assignee", value = issue.assignee and issue.assignee.display_name or "Unassigned" },
-		{ label = "Author", value = issue.reporter and issue.reporter.display_name or "Unknown" },
+		{ label = "Assignee", value = issue.assignee and issue.assignee.name or "Unassigned" },
+		{ label = "Author", value = issue.reporter and issue.reporter.name or "Unknown" },
 		{ label = "Created", value = utils.relative_time_text(issue.created_at), hl = "AtlasTextMuted" },
 		{ label = "Updated", value = utils.relative_time_text(issue.updated_at), hl = "AtlasTextMuted" },
 	}

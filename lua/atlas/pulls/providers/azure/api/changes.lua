@@ -1,7 +1,7 @@
 local M = {}
 
 local request_scope = require("atlas.core.requests")
-local service = require("atlas.pulls.providers.azure.api.service")
+local service = require("atlas.providers.azure.client")
 local mapper = require("atlas.pulls.providers.azure.api.mapper")
 
 -- Azure calls PR updates "iterations". Pick the one matching the displayed commit
@@ -14,8 +14,8 @@ local mapper = require("atlas.pulls.providers.azure.api.mapper")
 function M.fetch_iteration(pr, commit_hash, on_done)
 	local endpoint = string.format(
 		"/%s/_apis/git/repositories/%s/pullrequests/%s/iterations",
-		service.url_encode(pr.workspace),
-		service.url_encode(pr.repo),
+		service.url_encode(pr.repo.owner),
+		service.url_encode(pr.repo.repo_name),
 		tostring(pr.id)
 	)
 	return service.request("GET", endpoint, nil, function(result, err)
@@ -42,8 +42,8 @@ end
 function M.fetch_file_diffs(pr, iteration, opts, on_done)
 	local endpoint = string.format(
 		"/%s/_apis/git/repositories/%s/pullrequests/%s/filesdiff",
-		service.url_encode(pr.workspace),
-		service.url_encode(pr.repo),
+		service.url_encode(pr.repo.owner),
+		service.url_encode(pr.repo.repo_name),
 		tostring(pr.id)
 	)
 	local cache_key = "file-diffs:" .. endpoint .. ":" .. tostring(iteration)
@@ -91,8 +91,8 @@ end
 function M.fetch_commits(pr, opts, on_done)
 	local endpoint = string.format(
 		"/%s/_apis/git/repositories/%s/pullrequests/%s/commits",
-		service.url_encode(pr.workspace),
-		service.url_encode(pr.repo),
+		service.url_encode(pr.repo.owner),
+		service.url_encode(pr.repo.repo_name),
 		tostring(pr.id)
 	)
 	local cache_key = "commits:" .. endpoint
@@ -128,8 +128,8 @@ function M.fetch_commits(pr, opts, on_done)
 					html_url = raw.remoteUrl,
 					statuses_url = string.format(
 						"/%s/_apis/git/repositories/%s/commits/%s/statuses",
-						service.url_encode(pr.workspace),
-						service.url_encode(pr.repo),
+						service.url_encode(pr.repo.owner),
+						service.url_encode(pr.repo.repo_name),
 						raw.commitId
 					),
 				})

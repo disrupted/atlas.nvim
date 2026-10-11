@@ -1,7 +1,7 @@
 local M = {}
 
 local json = require("atlas.core.json")
-local service = require("atlas.pulls.providers.azure.api.service")
+local service = require("atlas.providers.azure.client")
 local utils = require("atlas.ui.shared.utils")
 
 local states = {
@@ -28,7 +28,7 @@ local merge_states = {
 ---@return { cancel: fun() }|nil
 function M.fetch(pr, opts, on_done)
 	---@cast pr AzurePullRequest
-	local endpoint = string.format("/%s/_apis/policy/evaluations", service.url_encode(pr.workspace))
+	local endpoint = string.format("/%s/_apis/policy/evaluations", service.url_encode(pr.repo.owner))
 		.. service.build_query({
 			artifactId = string.format("vstfs:///CodeReview/CodeReviewId/%s/%s", pr.project_id, pr.id),
 		})

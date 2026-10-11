@@ -1,8 +1,9 @@
-local service_name = "atlas.pulls.providers.azure.api.service"
+local service_name = "atlas.providers.azure.client"
 local module_names = {
 	service_name,
-	"atlas.pulls.providers.azure.api.users",
+	"atlas.providers.azure.users",
 	"atlas.pulls.providers.azure.api.mapper",
+	"atlas.providers.azure.repositories",
 	"atlas.pulls.providers.azure.api.pullrequests",
 	"atlas.pulls.providers.azure.api.reviews",
 	"atlas.pulls.providers.azure.api.checks",
@@ -68,6 +69,8 @@ describe("Azure DevOps pull requests", function()
 			assert.equal(1, #page.items)
 			assert.equal("Add Azure support", page.items[1].title)
 			assert.equal("Platform/api", page.items[1].repo_full_name)
+			assert.equal("Platform", page.items[1].repo.owner)
+			assert.equal("api", page.items[1].repo.repo_name)
 			assert.equal("succeeded", page.items[1].merge_status)
 			assert.equal("Emre Armagan", require("atlas.pulls.ui.presentation").user_handle(page.items[1].author))
 		end)
@@ -126,7 +129,7 @@ describe("Azure DevOps pull requests", function()
 			assert.equal(pull_request.description, description)
 			completed = completed + 1
 		end)
-		core.update_title(ref, "Updated title", function(ok, err)
+		capabilities.write.update(ref, { title = "Updated title" }, function(ok, err)
 			assert.is_nil(err)
 			assert.is_true(ok)
 			completed = completed + 1
@@ -311,5 +314,179 @@ describe("Azure DevOps pull requests", function()
 			completed = completed + 1
 		end)
 		assert.equal(2, completed)
+	end)
+
+	it("resolves current-repository views asynchronously without changing their configuration", function()
+		local git = require("atlas.core.git")
+		local original_local_repository = git.local_repository
+		local original_getcwd = vim.fn.getcwd
+		vim.fn.getcwd = function()
+			return "/repository"
+		end
+		local resolve
+		local calls = 0
+		local service = require(service_name)
+		package.loaded[service_name] = {
+			base_url = function()
+				return "https://dev.azure.com/acme"
+			end,
+			url_encode = service.url_encode,
+			build_query = service.build_query,
+			get_cache = function()
+				return nil, false
+			end,
+			set_cache = function() end,
+			request = function(_, endpoint, _, done)
+				calls = calls + 1
+				assert.matches("/Platform/_apis/git/repositories/api/pullrequests", endpoint, 1, true)
+				done({ value = { pull_request } }, nil)
+			end,
+		}
+		git.local_repository = function(_, done)
+			resolve = done
+			return { cancel = function() end }
+		end
+		local view = { name = "Local", current_repo = true }
+		local page
+		local ok, err = pcall(function()
+			require("atlas.pulls.providers.azure.init").capabilities.core.fetch_pullrequests(
+				view,
+				{},
+				function(value, fetch_err)
+					assert.is_nil(fetch_err)
+					page = value
+				end
+			)
+			assert.equal(0, calls)
+			assert.is_nil(page)
+			resolve({ provider = "azure", owner = "Platform", repo = "api" })
+			assert.equal(1, calls)
+			assert.equal("is:open project:Platform repository:api scope:all", page.query)
+			assert.same({ name = "Local", current_repo = true }, view)
+		end)
+		git.local_repository = original_local_repository
+		vim.fn.getcwd = original_getcwd
+		assert.is_true(ok, err)
+	end)
+
+	it("updates editor fields and changes only the selected reviewers", function()
+		local service = require(service_name)
+		local requests = {}
+		package.loaded[service_name] = {
+			base_url = function()
+				return "https://dev.azure.com/acme"
+			end,
+			url_encode = service.url_encode,
+			get_cache = function()
+				return nil, false
+			end,
+			set_cache = function() end,
+			clear_cache = function() end,
+			request = function(method, endpoint, payload, done)
+				requests[#requests + 1] = { method = method, endpoint = endpoint, payload = payload }
+				if method == "GET" then
+					done({
+						value = {
+							{ id = "keep", displayName = "Keep", vote = 10 },
+							{ id = "remove", displayName = "Remove", vote = 0 },
+						},
+					}, nil)
+				else
+					done({}, nil)
+				end
+			end,
+		}
+		local pr = require("atlas.pulls.providers.azure.api.mapper").to_pull_request(pull_request)
+		local completed = false
+		require("atlas.pulls.providers.azure.api.pullrequests").update_pr(pr, {
+			title = "Edited",
+			body = "Updated description",
+			base = "release",
+			draft = false,
+			reviewers = { { provider_id = "keep" }, { provider_id = "add" } },
+		}, function(ok, err)
+			completed = true
+			assert.is_nil(err)
+			assert.is_true(ok)
+		end)
+		assert.is_true(completed)
+		assert.equal("Edited", pr.title)
+		local base = "/Platform/_apis/git/repositories/api/pullrequests/1"
+		assert.same({ method = "GET", endpoint = base .. "/reviewers" }, requests[1])
+		local mutations = {}
+		for i = 2, #requests do
+			mutations[requests[i].method] = requests[i]
+		end
+		assert.same({ method = "POST", endpoint = base .. "/reviewers", payload = { { id = "add" } } }, mutations.POST)
+		assert.same({ method = "DELETE", endpoint = base .. "/reviewers/remove" }, mutations.DELETE)
+		assert.same({
+			method = "PATCH",
+			endpoint = base,
+			payload = {
+				title = "Edited",
+				description = "Updated description",
+				targetRefName = "refs/heads/release",
+				isDraft = false,
+			},
+		}, mutations.PATCH)
+		assert.equal(4, #requests)
+	end)
+
+	it("stops editor updates when loading the current reviewers fails", function()
+		local service = require(service_name)
+		local calls = 0
+		package.loaded[service_name] = {
+			url_encode = service.url_encode,
+			request = function(method, _, _, done)
+				calls = calls + 1
+				assert.equal("GET", method)
+				done(nil, "Reviewers unavailable")
+			end,
+		}
+		local completed = false
+		require("atlas.pulls.providers.azure.api.pullrequests").update_pr({
+			id = 1,
+			repo_full_name = "Platform/api",
+			repo = { owner = "Platform", repo_name = "api" },
+		}, { reviewers = {}, title = "Edited" }, function(ok, err)
+			completed = true
+			assert.is_false(ok)
+			assert.equal("Reviewers unavailable", err)
+		end)
+		assert.is_true(completed)
+		assert.equal(1, calls)
+	end)
+
+	it("maps shared merge options to Azure completion options", function()
+		local service = require(service_name)
+		package.loaded[service_name] = {
+			url_encode = service.url_encode,
+			clear_cache = function() end,
+			request = function(method, endpoint, body, done)
+				assert.equal("PATCH", method)
+				assert.equal("/Platform/_apis/git/repositories/api/pullrequests/1", endpoint)
+				assert.same({
+					status = "completed",
+					lastMergeSourceCommit = { commitId = "head" },
+					completionOptions = {
+						mergeStrategy = "squash",
+						deleteSourceBranch = true,
+						mergeCommitMessage = "Subject\n\nBody",
+					},
+				}, body)
+				done({}, nil)
+			end,
+		}
+		local completed = false
+		require("atlas.pulls.providers.azure.api.pullrequests").merge({
+			id = 1,
+			repo_full_name = "Platform/api",
+			source = { commit_hash = "head" },
+		}, { method = "squash", delete_source_branch = true, subject = "Subject", body = "Body" }, function(ok, err)
+			completed = true
+			assert.is_true(ok)
+			assert.is_nil(err)
+		end)
+		assert.is_true(completed)
 	end)
 end)

@@ -72,7 +72,7 @@ local function build(key_for)
 	local out = {}
 	for _, k in ipairs(ORDER) do
 		local key = key_for(k)
-		table.insert(out, { key = key, emoji = GLYPH[k] or GLYPH.fallback, label = key })
+		table.insert(out, { key = key, emoji = M.glyph(k), label = key })
 	end
 	return out
 end

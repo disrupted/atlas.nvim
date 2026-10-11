@@ -1,7 +1,10 @@
 local M = {}
 
 local json = require("atlas.core.json")
-local service = require("atlas.pulls.providers.azure.api.service")
+local service = require("atlas.providers.azure.client")
+local repositories = require("atlas.providers.azure.repositories")
+local mentions = require("atlas.providers.azure.mentions")
+local users = require("atlas.providers.azure.users")
 
 local states = {
 	active = "open",
@@ -42,12 +45,9 @@ local activity_votes = {
 ---@param raw table
 ---@return PullsAuthor
 local function to_author(raw)
-	return {
-		name = raw.displayName,
-		id = raw.id,
-		username = raw.uniqueName,
-		nickname = raw.displayName,
-	}
+	local author = users.to_user(raw) or { name = "Unknown" }
+	author.nickname = author.name
+	return author
 end
 
 ---@param raw_list table[]|nil
@@ -113,8 +113,7 @@ function M.to_pull_request(raw)
 		provider = "azure",
 		project_id = repository.project.id,
 		repository_id = repository.id,
-		workspace = project,
-		repo = repository.name,
+		repo = repositories.to_repository(repository),
 		repo_full_name = project .. "/" .. repository.name,
 		reviewers = M.to_reviewers(raw.reviewers),
 	}
@@ -185,6 +184,23 @@ local function to_activity(raw, thread)
 	}
 end
 
+---@param pr PullRequest
+---@param threads table[]
+---@return table<string, string>
+local function mention_authors(pr, threads)
+	local authors = {}
+	mentions.add(authors, pr.author)
+	for _, reviewer in ipairs(pr.reviewers or {}) do
+		mentions.add(authors, reviewer)
+	end
+	for _, thread in ipairs(threads) do
+		for _, comment in ipairs(thread.comments or {}) do
+			mentions.add(authors, to_author(comment.author))
+		end
+	end
+	return authors
+end
+
 ---@param raw table
 ---@param thread table
 ---@param pr PullRequest
@@ -196,12 +212,12 @@ function M.to_comment(raw, thread, pr)
 		thread_id = tostring(thread.id),
 		author = to_author(raw.author),
 		content_raw = raw.isDeleted and "" or raw.content,
-		deleted = raw.isDeleted,
 		created_on = raw.publishedDate,
-		state = thread_states[thread.status],
+		state = raw.isDeleted and "DELETED" or thread_states[thread.status],
 		reactions = { like = #json.safe_table(raw.usersLiked) },
 		html_url = pr.link.html,
 	}
+	comment.content_display = mentions.resolve(comment.content_raw, mention_authors(pr, { { comments = { raw } } }))
 	local context = json.nilify(thread.threadContext)
 	if context then
 		local path = context.filePath:gsub("^/", "")
@@ -227,11 +243,14 @@ end
 ---@return PullsComment[]
 function M.to_review_comments(raw_list, pr)
 	local comments = {}
+	local authors = mention_authors(pr, raw_list)
 	for _, thread in ipairs(raw_list) do
 		if not thread.isDeleted and json.nilify(thread.threadContext) ~= nil then
 			for _, raw in ipairs(thread.comments) do
 				if raw.commentType == "text" then
-					table.insert(comments, M.to_comment(raw, thread, pr))
+					local comment = M.to_comment(raw, thread, pr)
+					comment.content_display = mentions.resolve(comment.content_raw, authors)
+					table.insert(comments, comment)
 				end
 			end
 		end
@@ -338,11 +357,15 @@ end
 ---@return PullsConversationItem[]
 function M.to_conversation(raw_list, pr)
 	local items = {}
+	local authors = mention_authors(pr, raw_list)
 	for _, thread in ipairs(raw_list) do
 		if not thread.isDeleted and json.nilify(thread.threadContext) == nil then
 			for _, raw in ipairs(thread.comments) do
 				local item = to_conversation_item(raw, thread, pr)
 				if item then
+					if item.kind == "comment" then
+						item.entity.content_display = mentions.resolve(item.entity.content_raw, authors)
+					end
 					table.insert(items, item)
 				end
 			end

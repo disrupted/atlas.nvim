@@ -1,7 +1,7 @@
 local M = {}
 
 local request_scope = require("atlas.core.requests")
-local service = require("atlas.pulls.providers.azure.api.service")
+local service = require("atlas.providers.azure.client")
 
 ---@param on_done fun(projects: table[]|nil, err: string|nil)
 ---@return AtlasRequestScope|nil

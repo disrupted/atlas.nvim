@@ -5,11 +5,11 @@ local function fresh_module()
 	return require(module_name)
 end
 
----@param request fun(method: string, endpoint: string, payload: table|nil, callback: function, ctx: table|nil)
-local function stub_service(request)
-	package.preload["atlas.providers.gitlab.client"] = function()
+---@param fetch_all_pages fun(endpoint: string, callback: function, ctx: table|nil)
+local function stub_service(fetch_all_pages)
+	rawset(package.preload, "atlas.providers.gitlab.client", function()
 		return {
-			request = request,
+			fetch_all_pages = fetch_all_pages,
 			url_encode = function(value)
 				return (tostring(value):gsub("/", "%%2F"))
 			end,
@@ -18,7 +18,7 @@ local function stub_service(request)
 			end,
 			set_memory_cache = function() end,
 		}
-	end
+	end)
 end
 
 describe("gitlab pulls.fetch_commits", function()
@@ -50,8 +50,9 @@ describe("gitlab pulls.fetch_commits", function()
 		assert.equal(0, calls)
 	end)
 
-	it("keeps the full multi-line commit message instead of just the title", function()
-		stub_service(function(_, _, _, callback)
+	it("keeps full commit messages and falls back to the title when absent", function()
+		stub_service(function(endpoint, callback)
+			assert.equal("/projects/group%2Fproject/merge_requests/12/commits", endpoint)
 			callback({
 				{
 					id = "abc123def456",
@@ -61,6 +62,7 @@ describe("gitlab pulls.fetch_commits", function()
 					author_name = "Alice",
 					authored_date = "2024-01-02T03:04:05Z",
 				},
+				{ id = "def456", title = "Title only" },
 			}, nil)
 		end)
 		local api = fresh_module()
@@ -70,30 +72,15 @@ describe("gitlab pulls.fetch_commits", function()
 			commits = c
 		end)
 
-		assert.equal(1, #commits)
+		assert.equal(2, #commits)
 		assert.equal("Fix bug\n\nThis explains why the fix is needed.\nSecond body line.", commits[1].message)
 		assert.equal("abc123def456", commits[1].hash)
 		assert.equal("abc123d", commits[1].short_hash)
-	end)
-
-	it("falls back to the title when the message field is missing", function()
-		stub_service(function(_, _, _, callback)
-			callback({
-				{ id = "abc123", title = "Fix bug" },
-			}, nil)
-		end)
-		local api = fresh_module()
-
-		local commits
-		api.fetch_commits({ id = 12, repo_full_name = "group/project" }, nil, function(c)
-			commits = c
-		end)
-
-		assert.equal("Fix bug", commits[1].message)
+		assert.equal("Title only", commits[2].message)
 	end)
 
 	it("propagates errors from the request", function()
-		stub_service(function(_, _, _, callback)
+		stub_service(function(_, callback)
 			callback(nil, "boom")
 		end)
 		local api = fresh_module()

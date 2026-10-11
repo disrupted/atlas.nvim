@@ -1,9 +1,9 @@
 local M = {}
 
 local json = require("atlas.core.json")
-local service = require("atlas.pulls.providers.azure.api.service")
+local service = require("atlas.providers.azure.client")
 local mapper = require("atlas.pulls.providers.azure.api.mapper")
-local users_api = require("atlas.pulls.providers.azure.api.users")
+local users_api = require("atlas.providers.azure.users")
 local reviews_api = require("atlas.pulls.providers.azure.api.reviews")
 local request_scope = require("atlas.core.requests")
 
@@ -288,10 +288,10 @@ function M.create_pr(opts, on_done)
 	end, { action = "Create PR", repo = opts.repo_slug, head = opts.head, base = opts.base })
 end
 
----@param opts { repo_slug: string, repo_root: string|nil, head: string, base: string, pr: PullRequest|nil }
----@param on_done fun(reviewers: PullsCreatePRReviewer[]|nil, err: string|nil)
+---@param opts { repo_slug: string, pr: PullRequest|nil }
+---@param on_done fun(reviewers: PullsReviewerCandidate[]|nil, err: string|nil)
 ---@return AtlasRequestScope
-function M.fetch_default_reviewers(opts, on_done)
+function M.fetch_reviewer_candidates(opts, on_done)
 	local project = opts.repo_slug:match("^([^/]+)/")
 	local starts = {
 		members = function(done)
@@ -318,7 +318,6 @@ function M.fetch_default_reviewers(opts, on_done)
 					label = member.displayName,
 					provider_id = member.id,
 					selected = false,
-					default = false,
 				}
 				by_id[member.id] = reviewer
 				table.insert(reviewers, reviewer)
@@ -333,7 +332,6 @@ function M.fetch_default_reviewers(opts, on_done)
 					label = current.name,
 					provider_id = current.provider_id,
 					selected = true,
-					default = false,
 				})
 			end
 		end
@@ -343,11 +341,11 @@ function M.fetch_default_reviewers(opts, on_done)
 end
 
 ---@param pr PullRequest
----@param selected PullsCreatePRReviewer[]
----@param original PullsCreatePRReviewer[]
+---@param selected PullsReviewerCandidate[]
+---@param original PullsReviewerCandidate[]
 ---@param on_done fun(ok: boolean, err: string|nil)
 ---@return { cancel: fun() }
-function M.update_reviewers(pr, selected, original, on_done)
+local function update_reviewers(pr, selected, original, on_done)
 	local selected_ids = {}
 	for _, reviewer in ipairs(selected) do
 		selected_ids[reviewer.provider_id] = true
@@ -452,27 +450,58 @@ local function update_pullrequest(pr, fields, on_done)
 end
 
 ---@param pr PullRequest
----@param title string
+---@param opts PullsUpdatePROpts
 ---@param on_done fun(ok: boolean, err: string|nil)
----@return { cancel: fun() }|nil
-function M.update_title(pr, title, on_done)
-	return update_pullrequest(pr, { title = title }, on_done)
-end
-
----@param pr PullRequest
----@param description string
----@param on_done fun(ok: boolean, err: string|nil)
----@return { cancel: fun() }|nil
-function M.update_description(pr, description, on_done)
-	return update_pullrequest(pr, { description = description }, on_done)
-end
-
----@param pr PullRequest
----@param draft boolean
----@param on_done fun(ok: boolean, err: string|nil)
----@return { cancel: fun() }|nil
-function M.set_draft(pr, draft, on_done)
-	return update_pullrequest(pr, { isDraft = draft }, on_done)
+---@return AtlasRequestScope
+function M.update_pr(pr, opts, on_done)
+	local scope = request_scope.new()
+	local fields = {
+		title = opts.title,
+		description = opts.body,
+		targetRefName = opts.base and "refs/heads/" .. opts.base or nil,
+		isDraft = opts.draft,
+	}
+	local function update_fields()
+		if next(fields) == nil then
+			on_done(true, nil)
+			return
+		end
+		scope.run(function(done)
+			return update_pullrequest(pr, fields, done)
+		end, function(ok, err)
+			if ok then
+				if opts.title then
+					pr.title = opts.title
+				end
+				if opts.draft ~= nil then
+					pr.state = opts.draft and "draft" or "open"
+				end
+			end
+			on_done(ok, err)
+		end)
+	end
+	if opts.reviewers then
+		scope.run(function(done)
+			return reviews_api.fetch_reviewers(pr, { force_refresh = true }, done)
+		end, function(current, err)
+			if err then
+				on_done(false, err)
+				return
+			end
+			scope.run(function(done)
+				return update_reviewers(pr, opts.reviewers, current or {}, done)
+			end, function(ok, update_err)
+				if not ok then
+					on_done(false, update_err)
+					return
+				end
+				update_fields()
+			end)
+		end)
+	else
+		update_fields()
+	end
+	return scope
 end
 
 ---@param pr PullRequest
@@ -483,7 +512,7 @@ function M.decline(pr, on_done)
 end
 
 ---@param pr PullRequest
----@param opts { method: "merge"|"squash", delete_branch: boolean }
+---@param opts PullsMergeOpts
 ---@param on_done fun(ok: boolean, err: string|nil)
 ---@return { cancel: fun() }|nil
 function M.merge(pr, opts, on_done)
@@ -492,7 +521,10 @@ function M.merge(pr, opts, on_done)
 		lastMergeSourceCommit = { commitId = pr.source.commit_hash },
 		completionOptions = {
 			mergeStrategy = opts.method == "squash" and "squash" or "noFastForward",
-			deleteSourceBranch = opts.delete_branch,
+			deleteSourceBranch = opts.delete_source_branch,
+			mergeCommitMessage = opts.subject
+					and (opts.subject .. (opts.body and opts.body ~= "" and "\n\n" .. opts.body or ""))
+				or nil,
 		},
 	}, on_done)
 end

@@ -1,21 +1,9 @@
 local M = {}
 
 local json = require("atlas.core.json")
-local service = require("atlas.pulls.providers.azure.api.service")
+local service = require("atlas.providers.azure.client")
 
----@param raw table|nil
----@return IssueUser|nil
-function M.to_user(raw)
-	raw = json.nilify(raw)
-	if not raw then
-		return nil
-	end
-	return {
-		account_id = raw.id,
-		display_name = raw.displayName,
-		username = raw.uniqueName,
-	}
-end
+M.to_user = require("atlas.providers.azure.users").to_user
 
 ---@param raw table
 ---@return AzureIssue
@@ -56,6 +44,7 @@ function M.to_issue_details(raw)
 		table.insert(labels, { name = vim.trim(name) })
 	end
 	return {
+		title = fields["System.Title"],
 		description = fields["System.Description"] or "",
 		description_format = json.safe_table(raw.multilineFieldsFormat)["System.Description"] or "html",
 		assignees = assigned and { assigned } or {},

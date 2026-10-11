@@ -1,3 +1,9 @@
+---@alias AtlasAzureActionId
+---| AtlasPullActionId
+---| "reopen"
+---| "labels"
+---| "open_repo"
+
 local M = {}
 
 local actions = require("atlas.pulls.actions")
@@ -26,24 +32,24 @@ register({
 	end,
 	run = function(ctx, done)
 		local pr = assert(ctx.pr)
-		local options = action_utils.merge_options()
-		local label = options.method == "squash" and "squash merge" or "merge"
-		vim.ui.input({ prompt = string.format("Confirm %s of PR #%s? [y/N]: ", label, pr.id) }, function(input)
-			if not input or not vim.trim(input):lower():match("^y") then
+		require("atlas.pulls.ui.merge").open(pr, {
+			on_cancel = function()
 				done({ changed_pr = false, message = "Merge cancelled" }, nil)
-				return
-			end
-			action_utils.notify(ctx, "loading", "Completing PR...")
-			pullrequests_api.merge(pr, options, function(ok, err)
-				if not ok then
-					action_utils.notify(ctx, "error", err or "Completion failed")
-					done(nil, err or "Completion failed")
-					return
-				end
-				action_utils.notify(ctx, "success", "Completion requested", 1500)
-				done({ changed_pr = true, message = "Completion requested" }, nil)
-			end)
-		end)
+			end,
+			on_submit = function(options, completed)
+				action_utils.notify(ctx, "loading", "Completing PR...")
+				pullrequests_api.merge(pr, options, function(ok, err)
+					if not ok then
+						action_utils.notify(ctx, "error", err or "Completion failed")
+						completed(false)
+						return
+					end
+					completed(true)
+					action_utils.notify(ctx, "success", "Completion requested", 1500)
+					done({ changed_pr = true, message = "Completion requested" }, nil)
+				end)
+			end,
+		})
 	end,
 })
 register(actions.decline)
@@ -67,8 +73,7 @@ register({
 		end)
 	end,
 })
-register(actions.edit_title)
-register(actions.edit_description)
+register(actions.edit_pr)
 register({
 	id = "labels",
 	label = "Edit tags",

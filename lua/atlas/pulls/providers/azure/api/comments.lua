@@ -1,7 +1,7 @@
 local M = {}
 
 local request_scope = require("atlas.core.requests")
-local service = require("atlas.pulls.providers.azure.api.service")
+local service = require("atlas.providers.azure.client")
 local mapper = require("atlas.pulls.providers.azure.api.mapper")
 local changes_api = require("atlas.pulls.providers.azure.api.changes")
 
@@ -10,8 +10,8 @@ local changes_api = require("atlas.pulls.providers.azure.api.changes")
 local function pullrequest_endpoint(pr)
 	return string.format(
 		"/%s/_apis/git/repositories/%s/pullrequests/%s",
-		service.url_encode(pr.workspace),
-		service.url_encode(pr.repo),
+		service.url_encode(pr.repo.owner),
+		service.url_encode(pr.repo.repo_name),
 		tostring(pr.id)
 	)
 end
@@ -121,7 +121,7 @@ function M.add_comment(pr, content, opts, on_done)
 			local comment = mapper.to_comment(result, { id = parent.thread_id }, pr)
 			comment.inline = parent.inline
 			comment.file = parent.file
-			comment.state = parent.state
+			comment.state = parent.state ~= "DELETED" and parent.state or nil
 			comment.outdated = parent.outdated
 			on_done(comment, nil)
 		end, { action = "Reply to pull request comment", repo = pr.repo_full_name, id = pr.id })

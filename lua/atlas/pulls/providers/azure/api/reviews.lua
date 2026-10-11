@@ -2,11 +2,11 @@ local M = {}
 
 local diff_parser = require("atlas.core.git.diff_parser")
 local request_scope = require("atlas.core.requests")
-local service = require("atlas.pulls.providers.azure.api.service")
+local service = require("atlas.providers.azure.client")
 local mapper = require("atlas.pulls.providers.azure.api.mapper")
 local changes = require("atlas.pulls.providers.azure.api.changes")
 local comments_api = require("atlas.pulls.providers.azure.api.comments")
-local users = require("atlas.pulls.providers.azure.api.users")
+local users = require("atlas.providers.azure.users")
 
 ---@param pr PullRequest
 ---@param opts { force_refresh?: boolean }|nil
@@ -16,8 +16,8 @@ function M.fetch_reviewers(pr, opts, on_done)
 	opts = opts or {}
 	local endpoint = string.format(
 		"/%s/_apis/git/repositories/%s/pullrequests/%s/reviewers",
-		service.url_encode(pr.workspace),
-		service.url_encode(pr.repo),
+		service.url_encode(pr.repo.owner),
+		service.url_encode(pr.repo.repo_name),
 		tostring(pr.id)
 	)
 	local cache_key = "reviewers:" .. endpoint
@@ -49,8 +49,8 @@ local function fetch_review(pr, opts, include_hunks, on_done)
 	local commit_hash = (opts or {}).commit_hash or pr.source.commit_hash
 	local endpoint = string.format(
 		"/%s/_apis/git/repositories/%s/pullrequests/%s",
-		service.url_encode(pr.workspace),
-		service.url_encode(pr.repo),
+		service.url_encode(pr.repo.owner),
+		service.url_encode(pr.repo.repo_name),
 		tostring(pr.id)
 	)
 	local cache_key = (include_hunks and "review-threads:" or "review:") .. endpoint .. ":" .. commit_hash
@@ -73,6 +73,9 @@ local function fetch_review(pr, opts, include_hunks, on_done)
 		end
 		local query = service.build_query({ ["$iteration"] = iteration, ["$baseIteration"] = 0 })
 		local starts = {
+			reviewers = function(done)
+				return M.fetch_reviewers(pr, opts, done)
+			end,
 			comments = function(done)
 				return service.request("GET", endpoint .. "/threads" .. query, nil, done, context)
 			end,
@@ -83,7 +86,7 @@ local function fetch_review(pr, opts, include_hunks, on_done)
 			end
 		end
 		scope.all(starts, function(values, errors)
-			local error = errors.comments or errors.files
+			local error = errors.comments or errors.files or errors.reviewers
 			if error then
 				on_done(nil, error)
 				return
@@ -110,7 +113,7 @@ local function fetch_review(pr, opts, include_hunks, on_done)
 				review = { pending = false, commit_hash = commit_hash },
 				comments = comments,
 				tasks = {},
-				reviewers = pr.reviewers or {},
+				reviewers = values.reviewers or {},
 				history = {},
 			}
 			service.set_cache(cache_key, data)
@@ -137,16 +140,6 @@ function M.fetch_threads(pr, opts, on_done)
 end
 
 ---@param pr PullRequest
----@param _opts { force_refresh?: boolean }|nil
----@param on_done fun(context: PullsReviewContext|nil, err: string|nil)
----@return nil
-function M.fetch_review_context(pr, _opts, on_done)
-	local authors = { pr.author }
-	vim.list_extend(authors, pr.reviewers or {})
-	on_done({ mention_candidates = authors }, nil)
-end
-
----@param pr PullRequest
 ---@param vote integer
 ---@param body string
 ---@param on_done fun(ok: boolean, err: string|nil)
@@ -160,8 +153,8 @@ local function set_vote(pr, vote, body, on_done)
 		end
 		local endpoint = string.format(
 			"/%s/_apis/git/repositories/%s/pullrequests/%s/reviewers/%s",
-			service.url_encode(pr.workspace),
-			service.url_encode(pr.repo),
+			service.url_encode(pr.repo.owner),
+			service.url_encode(pr.repo.repo_name),
 			tostring(pr.id),
 			service.url_encode(user.id)
 		)

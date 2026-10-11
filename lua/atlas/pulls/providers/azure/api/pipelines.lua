@@ -7,9 +7,9 @@
 local M = {}
 
 local json = require("atlas.core.json")
-local pipeline_utils = require("atlas.pulls.pipelines")
+local pipeline_utils = require("atlas.pulls.pipelines.utils")
 local request_scope = require("atlas.core.requests")
-local service = require("atlas.pulls.providers.azure.api.service")
+local service = require("atlas.providers.azure.client")
 
 local states = {
 	pending = "INPROGRESS",
@@ -38,7 +38,7 @@ end
 ---@param pr PullRequest
 ---@return string
 local function builds_endpoint(pr)
-	return "/" .. service.url_encode(pr.workspace) .. "/_apis/build/builds"
+	return "/" .. service.url_encode(pr.repo.owner) .. "/_apis/build/builds"
 end
 
 ---@param raw table
@@ -101,7 +101,7 @@ end
 ---@param opts { force_refresh?: boolean }|nil
 ---@param on_done fun(pipelines: PullsPipeline[]|nil, err: string|nil)
 ---@return AtlasRequestScope|nil
-function M.fetch(pr, opts, on_done)
+local function fetch_pr(pr, opts, on_done)
 	---@cast pr AzurePullRequest
 	local cache_key = string.format(
 		"pipelines:%s:%s:%s:%s",
@@ -155,17 +155,6 @@ function M.fetch(pr, opts, on_done)
 	return scope
 end
 
----@param started_at string|nil
----@param finished_at string|nil
----@return number|nil
-local function duration(started_at, finished_at)
-	if not started_at or not finished_at then
-		return nil
-	end
-	return vim.fn.strptime("%Y-%m-%dT%H:%M:%S", finished_at:sub(1, 19))
-		- vim.fn.strptime("%Y-%m-%dT%H:%M:%S", started_at:sub(1, 19))
-end
-
 ---@param pipeline PullsPipeline
 ---@param records table[]
 ---@return PullsPipeline
@@ -215,7 +204,7 @@ local function with_timeline(pipeline, records)
 			provider_state = json.safe_str(raw.result) or raw.state,
 			url = pipeline.url,
 			started_at = json.safe_str(raw.startTime),
-			duration = duration(json.safe_str(raw.startTime), json.safe_str(raw.finishTime)),
+			duration = pipeline_utils.duration(json.safe_str(raw.startTime), json.safe_str(raw.finishTime)),
 			log_ids = {},
 		}
 		jobs_by_id[raw.id] = job
@@ -239,7 +228,7 @@ end
 ---@param opts { force_refresh?: boolean }|nil
 ---@param on_done fun(pipeline: PullsPipeline|nil, err: string|nil)
 ---@return { cancel: fun() }|nil
-function M.fetch_details(pr, pipeline, opts, on_done)
+local function fetch_timeline(pr, pipeline, opts, on_done)
 	local endpoint = builds_endpoint(pr) .. "/" .. pipeline.id .. "/timeline"
 	local cache_key = "pipeline:" .. endpoint
 	if not (opts or {}).force_refresh then
@@ -259,12 +248,93 @@ function M.fetch_details(pr, pipeline, opts, on_done)
 	end, { action = "Fetch build timeline", pipeline_id = pipeline.id })
 end
 
----@param pr PullRequest
+---@param context PullsPipelineContext
+---@param opts { force_refresh?: boolean, pipeline?: PullsPipeline }|nil
+---@param on_done fun(pipelines: PullsPipeline[]|nil, err: string|nil)
+---@return AtlasRequestScope|nil
+function M.fetch(context, opts, on_done)
+	local pr = context.target
+	if type(pr) ~= "table" or not pr.source then
+		on_done(nil, "Azure pipelines require a pull request")
+		return nil
+	end
+	local scope = request_scope.new()
+	local selected = opts and opts.pipeline
+	if selected then
+		scope.run(function(done)
+			return service.request("GET", builds_endpoint(pr) .. "/" .. selected.id, nil, done, {
+				action = "Fetch build",
+				pipeline_id = selected.id,
+			})
+		end, function(result, err)
+			if err then
+				on_done(nil, err)
+				return
+			end
+			scope.run(function(done)
+				return fetch_timeline(pr, to_pipeline(result), opts, done)
+			end, function(pipeline, timeline_err)
+				on_done(pipeline and { pipeline }, timeline_err)
+			end)
+		end)
+		return scope
+	end
+	scope.run(function(done)
+		return fetch_pr(pr, opts, done)
+	end, function(pipelines, err)
+		if err then
+			on_done(nil, err)
+			return
+		end
+		local starts = {}
+		for index, pipeline in ipairs(pipelines) do
+			starts[index] = function(done)
+				return fetch_timeline(pr, pipeline, opts, done)
+			end
+		end
+		scope.all(starts, function(results, errors)
+			for index = 1, #pipelines do
+				if errors[index] then
+					on_done(nil, errors[index])
+					return
+				end
+			end
+			on_done(results, nil)
+		end)
+	end)
+	return scope
+end
+
+---@param context PullsPipelineContext
 ---@param pipeline PullsPipeline
 ---@param job PullsPipelineJob
----@param on_done fun(log: string|nil, err: string|nil)
+---@param on_done fun(job: PullsPipelineJob|nil, err: string|nil)
+---@return { cancel: fun() }|nil
+function M.fetch_job(context, pipeline, job, on_done)
+	return fetch_timeline(context.target, pipeline, { force_refresh = true }, function(updated, err)
+		if err then
+			on_done(nil, err)
+			return
+		end
+		for _, stage in ipairs(updated.stages) do
+			for _, current in ipairs(stage.jobs) do
+				if current.id == job.id then
+					on_done(current, nil)
+					return
+				end
+			end
+		end
+		on_done(nil, "Build job no longer exists")
+	end)
+end
+
+---@param context PullsPipelineContext
+---@param pipeline PullsPipeline
+---@param job PullsPipelineJob
+---@param on_done fun(log: PullsLog|nil, err: string|nil)
 ---@return AtlasRequestScope
-function M.fetch_job_log(pr, pipeline, job, on_done)
+function M.fetch_job_log(context, pipeline, job, on_done)
+	local pr = context.target
 	---@cast job AzurePipelineJob
 	local starts = {}
 	for _, log_id in ipairs(job.log_ids) do
@@ -287,16 +357,17 @@ function M.fetch_job_log(pr, pipeline, job, on_done)
 			end
 			table.insert(logs, table.concat(results[index].value, "\n"))
 		end
-		on_done(table.concat(logs, "\n"), nil)
+		on_done({ raw = table.concat(logs, "\n") }, nil)
 	end)
 	return scope
 end
 
----@param pr PullRequest
+---@param context PullsPipelineContext
 ---@param pipeline PullsPipeline
 ---@param on_done fun(ok: boolean, err: string|nil)
 ---@return { cancel: fun() }|nil
-function M.cancel(pr, pipeline, on_done)
+function M.cancel(context, pipeline, on_done)
+	local pr = context.target
 	return service.request(
 		"PATCH",
 		builds_endpoint(pr) .. "/" .. pipeline.id,
@@ -313,13 +384,14 @@ function M.cancel(pr, pipeline, on_done)
 	)
 end
 
----@param pr PullRequest
+---@param context PullsPipelineContext
 ---@param pipeline PullsPipeline
 ---@param stage AzurePipelineStage
 ---@param action "retry"|"cancel"
 ---@param on_done fun(ok: boolean, err: string|nil)
 ---@return { cancel: fun() }|nil
-function M.update_stage(pr, pipeline, stage, action, on_done)
+function M.update_stage(context, pipeline, stage, action, on_done)
+	local pr = context.target
 	local endpoint = builds_endpoint(pr) .. "/" .. pipeline.id .. "/stages/" .. service.url_encode(stage.ref_name)
 	return service.request("PATCH", endpoint, {
 		state = action,

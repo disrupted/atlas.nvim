@@ -1,6 +1,7 @@
 local M = {}
 
 local picker = require("atlas.ui.picker")
+local utils = require("atlas.issues.actions.utils")
 local notify = require("atlas.core.notify")
 local issues_api = require("atlas.issues.providers.azure.api.issues")
 local projects_api = require("atlas.issues.providers.azure.api.projects")
@@ -53,27 +54,7 @@ local function search_issues(project, context, done)
 					return
 				end
 				---@cast details IssueDetails
-				local assignees = vim.tbl_map(function(user)
-					return "@" .. user.display_name
-				end, details.assignees)
-				local labels = vim.tbl_map(function(label)
-					return label.name
-				end, details.labels)
-				local lines = {
-					"**Status:** " .. issue.status,
-					"**Author:** " .. (issue.reporter and issue.reporter.display_name or "Unknown"),
-					"**Assignees:** " .. (#assignees > 0 and table.concat(assignees, ", ") or "Unassigned"),
-				}
-				if #labels > 0 then
-					table.insert(lines, "**Labels:** " .. table.concat(labels, ", "))
-				end
-				vim.list_extend(lines, { "", "## Description", "" })
-				local description = vim.trim(details.description)
-				vim.list_extend(
-					lines,
-					vim.split(description ~= "" and description or "No description", "\n", { plain = true })
-				)
-				preview_done({ title = item.label, lines = lines })
+				preview_done(utils.issue_preview(issue, details))
 			end)
 		end,
 		fetch = function(query, fetch_done)
