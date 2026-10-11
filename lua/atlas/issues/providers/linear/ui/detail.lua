@@ -3,6 +3,7 @@ local M = {}
 
 local icons = require("atlas.ui.shared.icons")
 local highlights = require("atlas.ui.highlights")
+local utils = require("atlas.ui.shared.utils")
 local helper = require("atlas.issues.ui.presentation")
 
 ---@param issue Issue
@@ -47,19 +48,33 @@ function M.header_fields(issue, details, _loading)
 		value = assignee and assignee.name or "Unassigned",
 		hl = helper.person_hl(assignee),
 	})
-	if issue.parent then
-		table.insert(fields, { label = "Parent", value = issue.parent.key, hl = "AtlasTextMuted" })
-	end
+	table.insert(fields, {
+		label = "Created",
+		value = utils.relative_time_text(issue.created_at),
+		hl = "AtlasTextMuted",
+	})
+	table.insert(fields, {
+		label = "Updated",
+		value = utils.relative_time_text(issue.updated_at),
+		hl = "AtlasTextMuted",
+	})
 	return fields
 end
 
----@param _issue Issue
+---@param issue Issue
 ---@param details IssueDetails|nil
 ---@param _loading boolean
 ---@return IssuesDetailChip[]
-function M.chips(_issue, details, _loading)
+function M.chips(issue, details, _loading)
 	---@cast details LinearIssueDetails|nil
 	local chips = {}
+	local parent_key = issue.parent and issue.parent.key
+	if parent_key then
+		table.insert(chips, {
+			label = string.format("%s %s", icons.get("branch"), parent_key),
+			hl = "AtlasLinearTheme",
+		})
+	end
 	for _, label in ipairs(details and details.labels or {}) do
 		if label.name ~= "" then
 			table.insert(chips, { label = label.name, hl = highlights.chip(label.color) })

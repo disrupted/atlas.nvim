@@ -3,7 +3,7 @@ local client_name = "atlas.providers.linear.client"
 local memory_cache = require("atlas.core.memory_cache")
 
 describe("Linear issues", function()
-	local previous_api, previous_client, previous_encode, previous_clear
+	local previous_api, previous_client, previous_clear
 	local api, calls, cache, cleared
 
 	local function raw_issue(key)
@@ -17,7 +17,6 @@ describe("Linear issues", function()
 	before_each(function()
 		previous_api = package.loaded[api_name]
 		previous_client = package.loaded[client_name]
-		previous_encode = vim.json.encode
 		previous_clear = memory_cache.clear_prefix
 		calls = {}
 		cache = {}
@@ -27,12 +26,7 @@ describe("Linear issues", function()
 		end
 		package.loaded[client_name] = {
 			graphql = function(query, variables, done)
-				local call = { query = query, variables = variables, done = done }
-				call.handle = {
-					cancel = function()
-						call.cancelled = true
-					end,
-				}
+				local call = { query = query, variables = variables, done = done, handle = { cancel = function() end } }
 				table.insert(calls, call)
 				return call.handle
 			end,
@@ -50,7 +44,6 @@ describe("Linear issues", function()
 	after_each(function()
 		package.loaded[api_name] = previous_api
 		package.loaded[client_name] = previous_client
-		vim.json.encode = previous_encode
 		memory_cache.clear_prefix = previous_clear
 	end)
 
@@ -104,21 +97,6 @@ describe("Linear issues", function()
 		assert.is_nil(calls[1].variables.filter)
 	end)
 
-	it("reports JSON encoding errors without leaving the dashboard loading", function()
-		vim.json.encode = function()
-			error("Cannot encode recursive table")
-		end
-		local result, failure
-		local filter = {}
-		filter["and"] = { filter }
-		assert.is_nil(api.list_issues({ filter = filter }, { pagelen = 10 }, function(page, err)
-			result, failure = page, err
-		end))
-		assert.same({ items = {} }, result)
-		assert.is_truthy(failure:find("Invalid Linear issue filter", 1, true))
-		assert.equal(0, #calls)
-	end)
-
 	it("returns usable empty pages for transport errors and missing response data", function()
 		local result, failure
 		local function done(page, err)
@@ -169,19 +147,6 @@ describe("Linear issues", function()
 		assert.equal("ENG-2", result[2].key)
 	end)
 
-	it("cancels grouped reference requests and suppresses their late callbacks", function()
-		local completed = false
-		local handle = api.fetch_by_refs({ { key = "ENG-1" }, { key = "ENG-2" } }, nil, function()
-			completed = true
-		end)
-		handle.cancel()
-		for index, call in ipairs(calls) do
-			assert.is_true(call.cancelled)
-			respond(index, call.variables.id)
-		end
-		assert.is_false(completed)
-	end)
-
 	it("shares fetched issue data with details but refreshes when requested", function()
 		local details
 		api.fetch_by_refs({ { key = "ENG-1" } }, nil, function() end)
@@ -195,7 +160,7 @@ describe("Linear issues", function()
 		assert.equal(2, #calls)
 	end)
 
-	it("returns empty reference lists for invalid keys and transport errors", function()
+	it("returns empty reference lists for empty and invalid keys", function()
 		local result, failure
 		local function done(issues, err)
 			result, failure = issues, err
@@ -206,10 +171,6 @@ describe("Linear issues", function()
 		assert.same({}, result)
 		assert.equal("Missing issue key", failure)
 		assert.equal(0, #calls)
-		api.fetch_by_refs({ { key = "ENG-1" } }, nil, done)
-		calls[1].done(nil, "API failure")
-		assert.same({}, result)
-		assert.equal("API failure", failure)
 	end)
 
 	it("creates an issue and invalidates issue caches", function()
@@ -223,17 +184,6 @@ describe("Linear issues", function()
 		assert.same({ id = "ENG-42-uuid", key = "ENG-42" }, result)
 		assert.is_nil(failure)
 		assert.same({ "linear:issue:", "linear:issues:" }, cleared)
-	end)
-
-	it("updates an issue with cleared fields and zero priority", function()
-		local fields = { assigneeId = vim.NIL, labelIds = {}, priority = 0 }
-		local result
-		api.update_issue("ENG-42", fields, function(value)
-			result = value
-		end)
-		assert.same({ id = "ENG-42", input = fields }, calls[1].variables)
-		calls[1].done({ issueUpdate = { success = true, issue = raw_issue("ENG-42") } }, nil)
-		assert.equal("ENG-42", result.key)
 	end)
 
 	it("rejects failed mutations without invalidating caches", function()

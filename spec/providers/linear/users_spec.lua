@@ -62,16 +62,13 @@ describe("Linear users", function()
 		assert.is_nil(users.to_user({ id = vim.NIL }))
 	end)
 
-	it("reports a missing viewer without caching it", function()
+	it("does not cache failed lookups", function()
 		response = { viewer = vim.NIL }
 		users.fetch_user(function(user, err)
 			assert.is_nil(user)
 			assert.equal("Linear response is missing the current user", err)
 		end)
-		assert.is_nil(cached)
-	end)
 
-	it("forwards GraphQL errors without caching them", function()
 		request_error = "Unauthorized"
 		users.fetch_user(function(user, err)
 			assert.is_nil(user)

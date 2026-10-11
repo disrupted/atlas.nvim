@@ -261,8 +261,12 @@ function M.linear(opts, issues)
 		---@cast issue LinearIssue
 		local priority = issue.priority and issue.priority ~= "" and icons.get(issue.priority, "priority") or ""
 		local parts = {}
-		if issue.team then
-			table.insert(parts, issue.team.name ~= "" and issue.team.name or issue.team.key)
+		local updated = ui_utils.relative_time_text(issue.updated_at)
+		if updated ~= "-" then
+			table.insert(parts, icons.get("updated") .. " " .. updated)
+		end
+		if issue.parent then
+			table.insert(parts, icons.get("branch") .. " " .. issue.parent.key)
 		end
 		if issue.project then
 			table.insert(parts, issue.project.name)

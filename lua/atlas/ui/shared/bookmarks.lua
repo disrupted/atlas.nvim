@@ -55,7 +55,8 @@ local function preview_text(value)
 	for _, v in pairs(value) do
 		if type(v) == "table" then
 			for ek, ev in pairs(v) do
-				table.insert(parts, tostring(ek) .. "=" .. tostring(ev))
+				local text = type(ev) == "table" and vim.json.encode(ev) or tostring(ev)
+				table.insert(parts, tostring(ek) .. "=" .. text)
 			end
 		end
 	end

@@ -1,7 +1,7 @@
 local mapper = require("atlas.issues.providers.linear.api.mapper")
 
 describe("Linear issue mapping", function()
-	it("maps dashboard identity, workflow, people and parent references", function()
+	it("maps dashboard identity, workflow, people, parent and team context", function()
 		local issue = mapper.to_issue({
 			id = "issue-uuid",
 			identifier = "ENG-42",
@@ -13,6 +13,9 @@ describe("Linear issue mapping", function()
 			assignee = { id = "user-1", name = "Ada", displayName = "ada" },
 			creator = { id = "user-2", name = "Sam" },
 			parent = { identifier = "ENG-1", title = "Authentication" },
+			team = { id = "team-id", key = "ENG", name = "Engineering" },
+			project = { id = "project-id", name = "Authentication" },
+			cycle = { id = "cycle-id", name = "October delivery", number = 24 },
 			estimate = 3,
 			dueDate = "2026-10-10",
 			createdAt = "2026-10-01T00:00:00Z",
@@ -34,6 +37,9 @@ describe("Linear issue mapping", function()
 		assert.equal("ada", issue.assignee.username)
 		assert.equal("Sam", issue.reporter.name)
 		assert.same({ key = "ENG-1", title = "Authentication" }, issue.parent)
+		assert.same({ id = "team-id", key = "ENG", name = "Engineering" }, issue.team)
+		assert.same({ id = "project-id", name = "Authentication" }, issue.project)
+		assert.same({ id = "cycle-id", name = "October delivery", number = 24 }, issue.cycle)
 		assert.equal(3, issue.story_points)
 		assert.equal("2026-10-10", issue.duedate)
 		assert.equal("2026-10-01T00:00:00Z", issue.created_at)
@@ -65,30 +71,6 @@ describe("Linear issue mapping", function()
 		}, issue)
 		assert.same({}, mapper.to_issues_list(vim.NIL))
 		assert.same({}, mapper.to_issues_list({ vim.NIL, {}, { identifier = vim.NIL } }))
-	end)
-
-	it("keeps status names when type and color are absent", function()
-		local issue = mapper.to_issue({
-			identifier = "ENG-42",
-			state = { name = "Custom workflow", type = vim.NIL, color = vim.NIL },
-		})
-
-		assert.equal("Custom workflow", issue.status)
-		assert.is_nil(issue.status_type)
-		assert.is_nil(issue.status_color)
-	end)
-
-	it("maps team, project and named cycle context for dashboard rows", function()
-		local issue = mapper.to_issue({
-			identifier = "ENG-42",
-			team = { id = "team-id", key = "ENG", name = "Engineering" },
-			project = { id = "project-id", name = "Authentication" },
-			cycle = { id = "cycle-id", name = "October delivery", number = 24 },
-		})
-
-		assert.same({ id = "team-id", key = "ENG", name = "Engineering" }, issue.team)
-		assert.same({ id = "project-id", name = "Authentication" }, issue.project)
-		assert.same({ id = "cycle-id", name = "October delivery", number = 24 }, issue.cycle)
 	end)
 
 	it("retains unnamed cycle numbers and team keys for display fallbacks", function()

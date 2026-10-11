@@ -272,9 +272,6 @@ local function submit(state, editor)
 				changes[key] = vim.NIL
 			end
 		end
-		if changes.description == "" then
-			changes.description = vim.NIL
-		end
 		return issues.update_issue(state.issue.key, changes, done)
 	end
 
