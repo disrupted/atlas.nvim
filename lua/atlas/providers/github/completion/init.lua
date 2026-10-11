@@ -44,7 +44,7 @@ local function completion_items(users)
 	local items, seen = {}, {}
 	for _, raw in ipairs(users) do
 		local user = users_api.to_user(raw)
-		if user and user.username and not seen[user.username] then
+		if user and user.username and user.username ~= "" and not seen[user.username] then
 			seen[user.username] = true
 			items[#items + 1] = {
 				label = "@" .. user.username,
