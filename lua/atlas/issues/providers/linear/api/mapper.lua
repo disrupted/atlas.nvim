@@ -27,7 +27,8 @@ function M.to_issue(raw)
 	local team = json.safe_table(raw.team)
 	local team_key = json.safe_str(team.key) or ""
 	local team_name = json.safe_str(team.name) or ""
-	local project_name = json.safe_str(json.safe_table(raw.project).name)
+	local project = json.safe_table(raw.project)
+	local project_name = json.safe_str(project.name)
 	local cycle = json.safe_table(raw.cycle)
 	local cycle_name = json.safe_str(cycle.name)
 	local cycle_number = tonumber(json.nilify(cycle.number))
@@ -45,9 +46,17 @@ function M.to_issue(raw)
 		status_type = json.safe_str(state.type),
 		status_color = json.safe_str(state.color),
 		priority = json.safe_str(raw.priorityLabel),
-		team = (team_key ~= "" or team_name ~= "") and { key = team_key, name = team_name } or nil,
-		project = project_name and project_name ~= "" and { name = project_name } or nil,
-		cycle = cycle_number and { name = cycle_name ~= "" and cycle_name or nil, number = cycle_number } or nil,
+		priority_value = tonumber(json.nilify(raw.priority)),
+		team = (team_key ~= "" or team_name ~= "")
+				and { id = json.safe_str(team.id), key = team_key, name = team_name }
+			or nil,
+		project = project_name and project_name ~= "" and { id = json.safe_str(project.id), name = project_name }
+			or nil,
+		cycle = cycle_number and {
+			id = json.safe_str(cycle.id),
+			name = cycle_name ~= "" and cycle_name or nil,
+			number = cycle_number,
+		} or nil,
 		assignee = users.to_user(raw.assignee),
 		reporter = users.to_user(raw.creator),
 		story_points = tonumber(json.nilify(raw.estimate)),
@@ -68,18 +77,29 @@ function M.to_issue_details(raw)
 		return nil
 	end
 	local assignee = users.to_user(raw.assignee)
+	local issue = M.to_issue(raw) or {}
 	local labels = {}
 	for _, label in ipairs(json.safe_table(json.safe_table(raw.labels).nodes)) do
 		label = json.safe_table(label)
 		local name = json.safe_str(label.name)
 		if name and name ~= "" then
-			table.insert(labels, { name = name, color = json.safe_str(label.color) })
+			table.insert(labels, { id = json.safe_str(label.id), name = name, color = json.safe_str(label.color) })
 		end
 	end
 	---@type LinearIssueDetails
 	local details = {
+		id = issue.id,
+		key = issue.key,
 		title = json.safe_str(raw.title),
 		description = json.safe_str(raw.description) or "",
+		team = issue.team,
+		state = issue.status_id
+				and { id = issue.status_id, name = issue.status, type = issue.status_type, color = issue.status_color }
+			or nil,
+		priority_value = issue.priority_value,
+		priority = issue.priority,
+		project = issue.project,
+		cycle = issue.cycle,
 		assignees = assignee and { assignee } or {},
 		labels = labels,
 	}

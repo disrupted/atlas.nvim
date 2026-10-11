@@ -1,9 +1,10 @@
 local api_name = "atlas.issues.providers.linear.api.issues"
 local client_name = "atlas.providers.linear.client"
+local memory_cache = require("atlas.core.memory_cache")
 
-describe("Linear issue reads", function()
-	local previous_api, previous_client, previous_encode
-	local api, calls, cache
+describe("Linear issues", function()
+	local previous_api, previous_client, previous_encode, previous_clear
+	local api, calls, cache, cleared
 
 	local function raw_issue(key)
 		return { id = key .. "-uuid", identifier = key, title = key .. " title", description = "Details" }
@@ -17,8 +18,13 @@ describe("Linear issue reads", function()
 		previous_api = package.loaded[api_name]
 		previous_client = package.loaded[client_name]
 		previous_encode = vim.json.encode
+		previous_clear = memory_cache.clear_prefix
 		calls = {}
 		cache = {}
+		cleared = {}
+		memory_cache.clear_prefix = function(prefix)
+			table.insert(cleared, prefix)
+		end
 		package.loaded[client_name] = {
 			graphql = function(query, variables, done)
 				local call = { query = query, variables = variables, done = done }
@@ -45,6 +51,7 @@ describe("Linear issue reads", function()
 		package.loaded[api_name] = previous_api
 		package.loaded[client_name] = previous_client
 		vim.json.encode = previous_encode
+		memory_cache.clear_prefix = previous_clear
 	end)
 
 	it("passes native filters and pagination as variables and preserves cancellation", function()
@@ -203,5 +210,40 @@ describe("Linear issue reads", function()
 		calls[1].done(nil, "API failure")
 		assert.same({}, result)
 		assert.equal("API failure", failure)
+	end)
+
+	it("creates an issue and invalidates issue caches", function()
+		local fields = { teamId = "team-id", title = "Fix login" }
+		local result, failure
+		api.create_issue(fields, function(value, err)
+			result, failure = value, err
+		end)
+		assert.same({ input = fields }, calls[1].variables)
+		calls[1].done({ issueCreate = { success = true, issue = raw_issue("ENG-42") } }, nil)
+		assert.same({ id = "ENG-42-uuid", key = "ENG-42" }, result)
+		assert.is_nil(failure)
+		assert.same({ "linear:issue:", "linear:issues:" }, cleared)
+	end)
+
+	it("updates an issue with cleared fields and zero priority", function()
+		local fields = { assigneeId = vim.NIL, labelIds = {}, priority = 0 }
+		local result
+		api.update_issue("ENG-42", fields, function(value)
+			result = value
+		end)
+		assert.same({ id = "ENG-42", input = fields }, calls[1].variables)
+		calls[1].done({ issueUpdate = { success = true, issue = raw_issue("ENG-42") } }, nil)
+		assert.equal("ENG-42", result.key)
+	end)
+
+	it("rejects failed mutations without invalidating caches", function()
+		local result, failure
+		api.update_issue("ENG-42", { title = "New title" }, function(value, err)
+			result, failure = value, err
+		end)
+		calls[1].done({ issueUpdate = { success = false } }, nil)
+		assert.is_nil(result)
+		assert.equal("Failed to save Linear issue", failure)
+		assert.same({}, cleared)
 	end)
 end)

@@ -173,7 +173,8 @@ local function select_issue_type(state, editor)
 			title = "Issue type",
 			items = items,
 			format_item = function(item)
-				return (item.icon and item.icon.icon or icons.get("issue")) .. " " .. item.name
+				return (item.icon and item.icon.icon or icons.get("issue")) .. " " .. item.name,
+					item.icon and item.icon.hl_group
 			end,
 			on_select = function(item)
 				if item and not editor.closed and not state.submitting then

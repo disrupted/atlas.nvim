@@ -1,13 +1,56 @@
+---@class LinearTeam
+---@field id string
+---@field key string
+---@field name string
+
+---@class LinearState
+---@field id string
+---@field name string
+---@field type string
+---@field color string
+---@field position number|nil
+
+---@class LinearProject
+---@field id string
+---@field name string
+
+---@class LinearCycle
+---@field id string
+---@field name string|nil
+---@field number number
+
+---@class LinearLabel : IssueLabel
+---@field id string
+
+---@class LinearPriority
+---@field priority number
+---@field label string
+
 ---@class LinearIssue : Issue
 ---@field id string|nil
 ---@field status_type string|nil
 ---@field status_color string|nil
 ---@field priority string|nil
----@field team { key: string, name: string }|nil
----@field project { name: string }|nil
----@field cycle { name: string|nil, number: number }|nil
+---@field priority_value number|nil
+---@field team LinearTeam|nil
+---@field project LinearProject|nil
+---@field cycle LinearCycle|nil
 
 ---@class LinearIssueDetails : IssueDetails
+---@field id string|nil
+---@field key string|nil
+---@field team LinearTeam|nil
+---@field state LinearState|nil
+---@field priority string|nil
+---@field priority_value number|nil
+---@field project LinearProject|nil
+---@field cycle LinearCycle|nil
+---@field labels LinearLabel[]
+
+---@class LinearIssueEditorResult
+---@field id string
+---@field key string
+---@field url string|nil
 
 local config = require("atlas.config")
 local issues_api = require("atlas.issues.providers.linear.api.issues")

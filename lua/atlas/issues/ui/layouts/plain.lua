@@ -294,7 +294,7 @@ function M.linear(opts, issues)
 	local function values(issue, is_child)
 		---@cast issue LinearIssue
 		local icon = utils.type_icon(issue)
-		local priority = icons.get(issue.priority or "", "priority")
+		local priority = issue.priority and issue.priority ~= "" and icons.get(issue.priority, "priority") or ""
 		local title = utils.join({ issue.key .. " " .. issue.title, priority, utils.due_text(issue) })
 
 		return {

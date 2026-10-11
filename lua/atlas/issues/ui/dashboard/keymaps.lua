@@ -162,6 +162,7 @@ function M.register(buf, views)
 			item("issues.create_issue", {
 				desc = "Create issue",
 				index = 6,
+				opts = { nowait = true },
 				callback = function()
 					local issue = selected_issue()
 					actions.run("create_issue", context(issue), controller.apply_action_result)

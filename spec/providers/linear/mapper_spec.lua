@@ -9,6 +9,7 @@ describe("Linear issue mapping", function()
 			url = "https://linear.app/acme/issue/ENG-42/fix-login",
 			state = { id = "state-uuid", name = "In Progress", type = "started", color = "#f2c94c" },
 			priorityLabel = "High",
+			priority = 2,
 			assignee = { id = "user-1", name = "Ada", displayName = "ada" },
 			creator = { id = "user-2", name = "Sam" },
 			parent = { identifier = "ENG-1", title = "Authentication" },
@@ -29,6 +30,7 @@ describe("Linear issue mapping", function()
 		assert.equal("#f2c94c", issue.status_color)
 		assert.same({ icon = "", hl_group = "AtlasColor_f2c94c" }, issue.icon)
 		assert.equal("High", issue.priority)
+		assert.equal(2, issue.priority_value)
 		assert.equal("ada", issue.assignee.username)
 		assert.equal("Sam", issue.reporter.name)
 		assert.same({ key = "ENG-1", title = "Authentication" }, issue.parent)
@@ -79,14 +81,14 @@ describe("Linear issue mapping", function()
 	it("maps team, project and named cycle context for dashboard rows", function()
 		local issue = mapper.to_issue({
 			identifier = "ENG-42",
-			team = { key = "ENG", name = "Engineering" },
-			project = { name = "Authentication" },
-			cycle = { name = "October delivery", number = 24 },
+			team = { id = "team-id", key = "ENG", name = "Engineering" },
+			project = { id = "project-id", name = "Authentication" },
+			cycle = { id = "cycle-id", name = "October delivery", number = 24 },
 		})
 
-		assert.same({ key = "ENG", name = "Engineering" }, issue.team)
-		assert.same({ name = "Authentication" }, issue.project)
-		assert.same({ name = "October delivery", number = 24 }, issue.cycle)
+		assert.same({ id = "team-id", key = "ENG", name = "Engineering" }, issue.team)
+		assert.same({ id = "project-id", name = "Authentication" }, issue.project)
+		assert.same({ id = "cycle-id", name = "October delivery", number = 24 }, issue.cycle)
 	end)
 
 	it("retains unnamed cycle numbers and team keys for display fallbacks", function()
@@ -114,16 +116,20 @@ describe("Linear issue mapping", function()
 
 	it("maps supplemental details and ignores empty labels", function()
 		local details = mapper.to_issue_details({
+			identifier = "ENG-42",
 			title = "Fix login",
+			priority = 0,
 			description = "A **Markdown** description",
 			assignee = { id = "user-1", name = "Ada" },
-			labels = { nodes = { vim.NIL, { name = "Bug", color = "#ff0000" }, { name = "" } } },
+			labels = { nodes = { vim.NIL, { id = "label-id", name = "Bug", color = "#ff0000" }, { name = "" } } },
 		})
 
 		assert.equal("Fix login", details.title)
+		assert.equal("ENG-42", details.key)
+		assert.equal(0, details.priority_value)
 		assert.equal("A **Markdown** description", details.description)
 		assert.equal("Ada", details.assignees[1].name)
-		assert.same({ { name = "Bug", color = "#ff0000" } }, details.labels)
+		assert.same({ { id = "label-id", name = "Bug", color = "#ff0000" } }, details.labels)
 		assert.same(
 			{ description = "", assignees = {}, labels = {} },
 			mapper.to_issue_details({

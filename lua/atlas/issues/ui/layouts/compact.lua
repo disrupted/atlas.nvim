@@ -259,7 +259,7 @@ function M.linear(opts, issues)
 
 	local function values(issue)
 		---@cast issue LinearIssue
-		local priority = icons.get(issue.priority or "", "priority")
+		local priority = issue.priority and issue.priority ~= "" and icons.get(issue.priority, "priority") or ""
 		local parts = {}
 		if issue.team then
 			table.insert(parts, issue.team.name ~= "" and issue.team.name or issue.team.key)

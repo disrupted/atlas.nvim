@@ -84,6 +84,8 @@ local SECTIONS = {
 		duplicate = { icon = "" },
 	},
 	priority = {
+		["no priority"] = { icon = "", hl_group = "AtlasTextMuted" },
+		urgent = { icon = "", hl_group = "AtlasLogError" },
 		highest = { icon = "", hl_group = "AtlasLogError" },
 		blocker = { icon = "", hl_group = "AtlasLogError" },
 		high = { icon = "", hl_group = "AtlasLogError" },
