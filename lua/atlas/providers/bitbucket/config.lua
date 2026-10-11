@@ -1,0 +1,3 @@
+---@class AtlasBitbucketConfig : AtlasProviderConfig
+---@field user string
+---@field token string

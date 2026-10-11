@@ -1,0 +1,3 @@
+---@class AtlasGitLabConfig : AtlasProviderConfig
+---@field base_url string
+---@field token string
