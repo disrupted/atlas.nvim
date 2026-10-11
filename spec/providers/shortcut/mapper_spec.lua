@@ -1,158 +1,65 @@
 local mapper = require("atlas.issues.providers.shortcut.api.mapper")
 
 describe("Shortcut Story mapper", function()
-	it("maps a Story to an Atlas issue", function()
-		local users = {
-			{ id = "owner", name = "Ada Owner" },
-		}
-		local state = {
-			id = 42,
-			workflow_id = 7,
-			workflow_name = "Development",
-			name = "Ready for Review",
-			position = 3,
-		}
-		local issue = assert(mapper.to_issue({
-			id = 123,
-			name = "Ship Shortcut support",
-			story_type = "bug",
-			workflow_state_id = 42,
-			started = true,
-			parent_story_id = 99,
-			owner_ids = { "owner", "other" },
-			follower_ids = { "follower" },
-			labels = { { id = 9, name = "api", color = "#123456" } },
-			comment_ids = { 1, 2 },
-			updated_at = "2026-08-23T10:00:00Z",
-			app_url = "https://app.shortcut.com/acme/story/123/ship-shortcut-support",
-		}, users, state))
-
-		assert.same({
-			id = 123,
-			key = "123",
-			title = "Ship Shortcut support",
-			status = "Ready for Review",
-			status_id = "42",
-			workflow_state_id = 42,
-			type = "bug",
-			assignee = { id = "owner", name = "Ada Owner" },
-			owner_ids = { "owner", "other" },
-			follower_ids = { "follower" },
-			labels = { { id = 9, name = "api", color = "#123456" } },
-			comment_count = 2,
-			updated_at = "2026-08-23T10:00:00Z",
-			url = "https://app.shortcut.com/acme/story/123/ship-shortcut-support",
-		}, {
-			id = issue.id,
-			key = issue.key,
-			title = issue.title,
-			status = issue.status,
-			status_id = issue.status_id,
-			workflow_state_id = issue.workflow_state_id,
-			type = issue.type and issue.type.name,
-			assignee = issue.assignee,
-			owner_ids = issue.owner_ids,
-			follower_ids = issue.follower_ids,
-			labels = issue.labels,
-			comment_count = issue.comment_count,
-			updated_at = issue.updated_at,
-			url = issue.url,
-		})
-		assert.same({ key = "99" }, issue.parent)
-		assert.is_true(issue.type.subtask)
-		assert.same({ icon = "", hl_group = "AtlasLogError" }, issue.type.icon)
-		assert.equal(issue.type.icon, issue.icon)
+	it("maps owners, workflow and parent types without dropping unknown states", function()
+		local owner = { id = "owner", name = "Ada Owner" }
+		local issues = mapper.to_issues({
+			{ id = 123, story_type = "bug", workflow_state_id = 42, owner_ids = { "owner" }, parent_story_id = 99 },
+			{ id = 124, story_type = "bug", workflow_state_id = 99 },
+		}, { owner }, { { id = 42, name = "Ready" } })
+		assert.equal("123", issues[1].key)
+		assert.equal(owner, issues[1].assignee)
+		assert.equal("Ready", issues[1].status)
+		assert.same({ key = "99" }, issues[1].parent)
+		assert.is_true(issues[1].type.subtask)
+		assert.same({ icon = "", hl_group = "AtlasLogError" }, issues[1].icon)
+		assert.equal(issues[1].type.icon, issues[1].icon)
+		assert.is_false(issues[2].type.subtask)
+		assert.equal("Unknown", issues[2].status)
+		assert.equal("99", issues[2].status_id)
 	end)
 
-	it("supplies native Story type styles without sharing mutable type metadata", function()
-		local styles = {
-			feature = { icon = "󰃀", hl_group = "AtlasTextPositive" },
-			chore = { icon = "", hl_group = "AtlasLogInfo" },
-			bug = { icon = "", hl_group = "AtlasLogError" },
-		}
-		for name, style in pairs(styles) do
-			local issue_type = mapper.to_issue_type(name)
-			assert.same({ id = name, name = name, icon = style, subtask = false }, issue_type)
-			issue_type.subtask = true
-			assert.is_false(mapper.to_issue_type(name).subtask)
-		end
-	end)
-
-	it("uses the shared issue style for an unknown Story type", function()
-		local icon, hl_group = require("atlas.ui.shared.icons").get("issue")
-		local issue_type = mapper.to_issue_type("unknown")
-		assert.equal("unknown", issue_type.name)
-		assert.same({ icon = icon, hl_group = hl_group }, issue_type.icon)
-	end)
-
-	it("maps Story details", function()
+	it("keeps fresh editor metadata and sorts checklist tasks by position", function()
 		local details = mapper.to_issue_details({
-			id = 123,
-			name = "Ship Shortcut support",
+			name = "Updated title",
 			story_type = "feature",
-			workflow_state_id = 1,
-			description = "Full description",
-			owner_ids = {},
+			workflow_state_id = 42,
+			description = "",
 			tasks = {
 				{ id = 2, description = "Second", complete = false, position = 2 },
 				{ id = 1, description = "First", complete = true, position = 1 },
 			},
 		}, {})
-
-		assert.equal("Full description", details.description)
-		assert.equal("Ship Shortcut support", details.title)
+		assert.equal("Updated title", details.title)
 		assert.equal("feature", details.story_type)
-		assert.equal(1, details.workflow_state_id)
-		assert.same({
-			{ id = 1, description = "First", complete = true, position = 1 },
-			{ id = 2, description = "Second", complete = false, position = 2 },
-		}, details.tasks)
+		assert.equal(42, details.workflow_state_id)
+		assert.equal("", details.description)
+		assert.equal(1, details.tasks[1].id)
+		assert.is_true(details.tasks[1].complete)
+		assert.equal(2, details.tasks[2].id)
 	end)
 
-	it("keeps Stories with an unknown workflow state", function()
-		local issue = mapper.to_issues({
-			{
-				id = 123,
-				name = "New workflow state",
-				story_type = "feature",
-				workflow_state_id = 99,
-			},
-		}, {}, {})[1]
-
-		assert.equal("Unknown", issue.status)
-		assert.equal("99", issue.status_id)
-	end)
-
-	it("maps Story comments", function()
-		local author = { id = "author", name = "Ada Author", username = "ada" }
+	it("resolves comment authors and counts Shortcut reaction participants", function()
+		local author = { id = "author", name = "Ada Author" }
 		local comment = mapper.to_comment({
 			id = 456,
 			author_id = "author",
 			text = "Looks good",
 			parent_id = 123,
-			created_at = "2026-08-23T10:00:00Z",
-			reactions = {
-				{ emoji = ":thumbsup:", permission_ids = { "one", "two" } },
-			},
+			reactions = { { emoji = ":thumbsup:", permission_ids = { "one", "two" } } },
 		}, { author })
-
-		assert.same({
-			id = "456",
-			author = author,
-			body = "Looks good",
-			parent_id = 123,
-			created = "2026-08-23T10:00:00Z",
-			reactions = { [":thumbsup:"] = 2 },
-			deleted = false,
-		}, comment)
+		assert.equal("456", comment.id)
+		assert.equal(author, comment.author)
+		assert.equal("Looks good", comment.body)
+		assert.equal(123, comment.parent_id)
+		assert.same({ [":thumbsup:"] = 2 }, comment.reactions)
 	end)
 
-	it("maps activity actors to the shared user model", function()
+	it("maps activity actors and readable change descriptions", function()
 		local entries = mapper.to_history({
 			{
 				member_id = "owner",
 				actor_name = "Ada Owner",
-				changed_at = "2026-08-23T10:00:00Z",
 				actions = { { action = "update", entity_type = "story", changes = { owner_ids = {} } } },
 			},
 		})

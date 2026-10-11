@@ -128,6 +128,7 @@ return {
 			fetch_issues = M.fetch_issues,
 			fetch_by_refs = stories.fetch_by_refs,
 			fetch_issue = M.fetch_issue,
+			-- fetch_links = nil,
 		},
 		comments = {
 			reaction_options = emojis.shortcut(),
@@ -141,6 +142,7 @@ return {
 		actions = require("atlas.issues.providers.shortcut.actions.registry"),
 		ui = {
 			detail = require("atlas.issues.providers.shortcut.ui.detail"),
+			-- repository = nil,
 		},
 	},
 }

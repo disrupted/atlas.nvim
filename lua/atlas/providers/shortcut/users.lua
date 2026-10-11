@@ -1,4 +1,7 @@
-local M = {}
+local M = {
+	-- list_members = nil,
+	-- get_assignable_users = nil,
+}
 
 local json = require("atlas.core.json")
 local service = require("atlas.providers.shortcut.client")

@@ -4,20 +4,21 @@ local icons = require("atlas.ui.shared.icons")
 local json = require("atlas.core.json")
 
 local TYPE_ICONS = {
-	feature = { icon = "󰃀", hl_group = "AtlasTextPositive" },
-	chore = { icon = "", hl_group = "AtlasLogInfo" },
-	bug = { icon = "", hl_group = "AtlasLogError" },
+	feature = "story",
+	chore = "task",
+	bug = "bug",
 }
 
 ---@param story_type string
 ---@return IssueType
 function M.to_issue_type(story_type)
-	local style = TYPE_ICONS[story_type]
-	if not style then
-		local icon, hl_group = icons.get("issue")
-		style = { icon = icon, hl_group = hl_group }
-	end
-	return { id = story_type, name = story_type, icon = style, subtask = false }
+	local icon, hl_group = icons.get(TYPE_ICONS[story_type] or "issue")
+	return {
+		id = story_type,
+		name = story_type,
+		icon = { icon = icon, hl_group = hl_group },
+		subtask = false,
+	}
 end
 
 ---@param users AtlasUser[]

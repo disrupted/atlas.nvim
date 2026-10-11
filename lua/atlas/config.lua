@@ -154,7 +154,15 @@
 ---@field issues AtlasIssuesConfig|nil
 ---@field keymaps AtlasKeymapsConfig|nil  -- see core/keymaps.lua for type
 
+local icons = require("atlas.ui.shared.icons")
+
 local M = {}
+
+local issue_type_icons = {}
+for _, name in ipairs({ "epic", "story", "task", "bug", "subtask" }) do
+	local icon, hl_group = icons.get(name)
+	issue_type_icons[name] = { icon = icon, hl_group = hl_group }
+end
 
 ---@type AtlasConfig
 local defaults = {
@@ -220,13 +228,7 @@ local defaults = {
 		jira = {
 			project_config = {
 				story_points_field = "customfield_10016",
-				issue_types = {
-					epic = { icon = "", hl_group = "AtlasJiraEpic" },
-					story = { icon = "󰃀", hl_group = "AtlasTextPositive" },
-					task = { icon = "", hl_group = "AtlasLogInfo" },
-					bug = { icon = "", hl_group = "AtlasLogError" },
-					subtask = { icon = "󰩊", hl_group = "AtlasLogInfo" },
-				},
+				issue_types = issue_type_icons,
 				status_icons = {
 					new = "●",
 					indeterminate = "",
