@@ -2,9 +2,19 @@ local service = require("atlas.providers.jira.client")
 local users_api = require("atlas.providers.jira.users")
 local url_encode = require("atlas.core.utils").url_encode
 
+---@param user AtlasUser|PullsAuthor
+---@return string|nil
+local function format_mention(user)
+	if user.id and user.id ~= "" then
+		return service.is_server() and "[~" .. user.id .. "]"
+			or string.format("[@%s](atlas-mention:%s)", user.name, user.id)
+	end
+end
+
 ---@type AtlasCompletionSource
 local users = {
 	triggers = { "@" },
+	format_mention = format_mention,
 
 	complete = function(context, query, done)
 		local issue_key = context.issue and context.issue.key
@@ -39,11 +49,11 @@ local users = {
 			local items = {}
 			for _, raw_user in ipairs(result) do
 				local user = users_api.to_user(raw_user)
-				if user and user.id and user.id ~= "" and raw_user.active ~= false then
+				local mention = user and format_mention(user)
+				if user and mention and raw_user.active ~= false then
 					table.insert(items, {
 						label = "@" .. user.name,
-						insert_text = is_server and "[~" .. user.id .. "]"
-							or string.format("[@%s](atlas-mention:%s)", user.name, user.id),
+						insert_text = mention,
 						filter_text = user.name .. " " .. (user.username or ""),
 						detail = user.username,
 					})
