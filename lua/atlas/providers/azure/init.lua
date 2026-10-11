@@ -24,6 +24,8 @@ return {
 	capabilities = {
 		users = require("atlas.providers.azure.users"),
 		repository = require("atlas.providers.azure.repositories"),
+		-- notifications = nil,
 		completion = require("atlas.providers.azure.completion"),
+		-- actions = nil,
 	},
 }

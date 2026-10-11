@@ -3,6 +3,10 @@
 ---@field project string
 ---@field description_format string|nil
 
+---@class AzureIssueDetails : IssueDetails
+--- Azure work-item formats: https://devblogs.microsoft.com/devops/markdown-support-arrives-for-work-items/
+---@field description_format string|nil Format of the displayed description.
+
 ---@class AzureIssueComment : IssueComment
 ---@field body_format string
 
@@ -45,6 +49,7 @@ return {
 			fetch_issues = issues_api.list_issues,
 			fetch_by_refs = issues_api.fetch_by_refs,
 			fetch_issue = issues_api.fetch_issue,
+			-- fetch_links = nil,
 		},
 		comments = {
 			fetch_activity = history_api.fetch,
@@ -58,6 +63,7 @@ return {
 		actions = require("atlas.issues.providers.azure.actions.registry"),
 		ui = {
 			detail = require("atlas.issues.providers.azure.ui.detail"),
+			-- repository = nil,
 		},
 	},
 }

@@ -21,7 +21,7 @@ end
 ---@param project string
 ---@param item_types table[]
 ---@param issue AzureIssue|nil
----@param details IssueDetails|nil
+---@param details AzureIssueDetails|nil
 ---@param on_done fun(issue: Issue|nil, err: string|nil)
 ---@return AtlasForm
 local function open_editor(project, item_types, issue, details, on_done)
@@ -157,7 +157,7 @@ end
 
 ---@param project string
 ---@param issue AzureIssue|nil
----@param details IssueDetails|nil
+---@param details AzureIssueDetails|nil
 ---@param on_done fun(issue: Issue|nil, err: string|nil)
 ---@return { cancel: fun() }|nil
 local function load_types(project, issue, details, on_done)
@@ -196,6 +196,7 @@ function M.edit(issue, on_done)
 			on_done(nil, err)
 			return
 		end
+		---@cast details AzureIssueDetails
 		scope.run(function(done)
 			return load_types(issue.project, issue, details, done)
 		end, on_done)

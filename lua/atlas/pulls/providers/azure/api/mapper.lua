@@ -3,7 +3,6 @@ local M = {}
 local json = require("atlas.core.json")
 local service = require("atlas.providers.azure.client")
 local repositories = require("atlas.providers.azure.repositories")
-local mentions = require("atlas.providers.azure.mentions")
 local users = require("atlas.providers.azure.users")
 
 local states = {
@@ -189,13 +188,13 @@ end
 ---@return table<string, string>
 local function mention_authors(pr, threads)
 	local authors = {}
-	mentions.add(authors, pr.author)
+	users.add_mention_name(authors, pr.author)
 	for _, reviewer in ipairs(pr.reviewers or {}) do
-		mentions.add(authors, reviewer)
+		users.add_mention_name(authors, reviewer)
 	end
 	for _, thread in ipairs(threads) do
 		for _, comment in ipairs(thread.comments or {}) do
-			mentions.add(authors, to_author(comment.author))
+			users.add_mention_name(authors, to_author(comment.author))
 		end
 	end
 	return authors
@@ -217,7 +216,8 @@ function M.to_comment(raw, thread, pr)
 		reactions = { like = #json.safe_table(raw.usersLiked) },
 		html_url = pr.link.html,
 	}
-	comment.content_display = mentions.resolve(comment.content_raw, mention_authors(pr, { { comments = { raw } } }))
+	comment.content_display =
+		users.resolve_mentions(comment.content_raw, mention_authors(pr, { { comments = { raw } } }))
 	local context = json.nilify(thread.threadContext)
 	if context then
 		local path = context.filePath:gsub("^/", "")
@@ -249,7 +249,7 @@ function M.to_review_comments(raw_list, pr)
 			for _, raw in ipairs(thread.comments) do
 				if raw.commentType == "text" then
 					local comment = M.to_comment(raw, thread, pr)
-					comment.content_display = mentions.resolve(comment.content_raw, authors)
+					comment.content_display = users.resolve_mentions(comment.content_raw, authors)
 					table.insert(comments, comment)
 				end
 			end
@@ -364,7 +364,7 @@ function M.to_conversation(raw_list, pr)
 				local item = to_conversation_item(raw, thread, pr)
 				if item then
 					if item.kind == "comment" then
-						item.entity.content_display = mentions.resolve(item.entity.content_raw, authors)
+						item.entity.content_display = users.resolve_mentions(item.entity.content_raw, authors)
 					end
 					table.insert(items, item)
 				end

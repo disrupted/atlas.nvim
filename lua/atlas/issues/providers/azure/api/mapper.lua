@@ -35,7 +35,7 @@ function M.to_issue(raw)
 end
 
 ---@param raw table
----@return IssueDetails
+---@return AzureIssueDetails
 function M.to_issue_details(raw)
 	local fields = raw.fields
 	local assigned = M.to_user(fields["System.AssignedTo"])

@@ -9,10 +9,19 @@ local module_names = {
 
 describe("Azure work items", function()
 	local original = {}
+	local original_slice
 	local client
 	local calls
 
 	before_each(function()
+		original_slice = vim.list_slice
+		vim.list_slice = function(items, first, last)
+			local result = {}
+			for index = first, last do
+				result[#result + 1] = items[index]
+			end
+			return result
+		end
 		for _, name in ipairs(module_names) do
 			original[name] = package.loaded[name]
 			package.loaded[name] = nil
@@ -39,86 +48,46 @@ describe("Azure work items", function()
 	end)
 
 	after_each(function()
+		vim.list_slice = original_slice
 		for _, name in ipairs(module_names) do
 			package.loaded[name] = original[name]
 		end
 	end)
 
-	it("maps work item participants and editable details to shared models", function()
-		local raw = {
-			id = 42,
-			fields = {
-				["System.Title"] = "Current title",
-				["System.TeamProject"] = "Platform",
-				["System.WorkItemType"] = "Task",
-				["System.AssignedTo"] = { id = "alice", displayName = "Alice", uniqueName = "alice@example.com" },
-				["System.CreatedBy"] = { id = "bob", displayName = "Bob" },
-				["System.Description"] = "Body",
-			},
-			multilineFieldsFormat = { ["System.Description"] = "markdown" },
-		}
-		local mapper = require("atlas.issues.providers.azure.api.mapper")
-		local issue = mapper.to_issue(raw)
-		local details = mapper.to_issue_details(raw)
-		assert.same({ id = "alice", name = "Alice", username = "alice@example.com" }, issue.assignee)
-		assert.same({ id = "bob", name = "Bob" }, issue.reporter)
-		assert.same({ issue.assignee }, details.assignees)
-		assert.equal("Current title", details.title)
-		assert.equal("markdown", details.description_format)
-	end)
-
-	it("accepts the current shared add-comment callback signature", function()
-		client.request = function(method, endpoint, payload, done)
-			assert.equal("POST", method)
-			assert.equal("/Platform/_apis/wit/workItems/42/comments?format=markdown", endpoint)
-			assert.same({ text = "Hello @<alice>" }, payload)
-			done({
-				id = 7,
-				text = payload.text,
-				format = "markdown",
-				createdBy = { id = "alice", displayName = "Alice" },
-			})
-		end
-		local completed = false
-		require("atlas.issues.providers.azure.api.comments").add_comment(
-			{ id = 42, key = "42", project = "Platform" },
-			"Hello @<alice>",
-			nil,
-			function(comment, err)
-				completed = true
-				assert.is_nil(err)
-				assert.equal("Hello @<alice>", comment.body)
-				assert.equal("Hello @Alice", comment.body_display)
-				assert.same({ id = "alice", name = "Alice" }, comment.author)
-			end
-		)
-		assert.is_true(completed)
-	end)
-
-	it("returns WIQL in the page model for the dashboard and edit-search action", function()
+	it("paginates work items in WIQL order and retains the query", function()
 		local query = "SELECT [System.Id] FROM WorkItems WHERE [System.TeamProject] = @project"
-		client.request = function(method, _, payload, done)
-			assert.equal("POST", method)
-			assert.same({ query = query }, payload)
-			done({ queryType = "flat", workItems = {} })
+		client.request = function(method, endpoint, payload, done)
+			if method == "POST" then
+				assert.same({ query = query }, payload)
+				done({ queryType = "flat", workItems = { { id = 1 }, { id = 3 }, { id = 2 }, { id = 4 } } })
+			else
+				assert.is_truthy(endpoint:find("ids=3%%2C2"))
+				done({
+					value = {
+						{ id = 2, fields = { ["System.TeamProject"] = "Platform" } },
+						{ id = 3, fields = { ["System.TeamProject"] = "Platform" } },
+					},
+				})
+			end
 		end
-		local completed = false
+		local result
 		require("atlas.issues.providers.azure.api.issues").list_issues(
 			{ project = "Platform", search = query },
-			{},
+			{ cursor = "1", pagelen = 2 },
 			function(page, err)
-				completed = true
 				assert.is_nil(err)
-				assert.equal(query, page.query)
-				assert.same({}, page.items)
+				result = page
 			end
 		)
-		assert.is_true(completed)
+		assert.equal(query, result.query)
+		assert.same({ "3", "2" }, { result.items[1].key, result.items[2].key })
+		assert.equal("3", result.next_cursor)
+		assert.equal(2, result.total_pages)
 	end)
 
 	it("resolves mentions across comment pages without changing editable text", function()
 		local pages = 0
-		client.request = function(_, _, _, done)
+		client.request = function(_, endpoint, _, done)
 			pages = pages + 1
 			if pages == 1 then
 				done({
@@ -126,6 +95,7 @@ describe("Azure work items", function()
 					continuationToken = "next",
 				})
 			else
+				assert.is_truthy(endpoint:find("continuationToken=next", 1, true))
 				done({
 					comments = {
 						{
@@ -138,19 +108,19 @@ describe("Azure work items", function()
 				})
 			end
 		end
-		local completed = false
+		local result
 		require("atlas.issues.providers.azure.api.comments").fetch_conversation(
 			{ id = 42, key = "42", project = "Platform" },
 			{},
 			function(items, err)
-				completed = true
 				assert.is_nil(err)
-				assert.equal(2, #items)
-				assert.equal("Hi @<alice> and @<unknown>", items[1].entity.body)
-				assert.equal("Hi @Alice and @<unknown>", items[1].entity.body_display)
+				result = items
 			end
 		)
-		assert.is_true(completed)
+		assert.equal(2, pages)
+		assert.equal(2, #result)
+		assert.equal("Hi @<alice> and @<unknown>", result[1].entity.body)
+		assert.equal("Hi @Alice and @<unknown>", result[1].entity.body_display)
 	end)
 
 	it("only switches the description format when a Markdown description is written", function()

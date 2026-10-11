@@ -1,7 +1,6 @@
 local client = require("atlas.providers.azure.client")
 local users_api = require("atlas.providers.azure.users")
 local requests = require("atlas.core.requests")
-local mentions = require("atlas.providers.azure.mentions")
 
 ---@param user AtlasUser|PullsAuthor
 ---@return string|nil
@@ -74,10 +73,10 @@ local users = {
 						return
 					end
 					local authors = {}
-					mentions.add(authors, item.reporter)
-					mentions.add(authors, item.assignee)
+					users_api.add_mention_name(authors, item.reporter)
+					users_api.add_mention_name(authors, item.assignee)
 					for _, entry in ipairs(conversation or {}) do
-						mentions.add(authors, entry.entity and entry.entity.author)
+						users_api.add_mention_name(authors, entry.entity and entry.entity.author)
 					end
 					finish(authors)
 				end)
@@ -114,13 +113,13 @@ local users = {
 					return
 				end
 				local authors = {}
-				mentions.add(authors, users_api.to_user(values.pull.createdBy))
+				users_api.add_mention_name(authors, users_api.to_user(values.pull.createdBy))
 				for _, reviewer in ipairs(values.pull.reviewers or {}) do
-					mentions.add(authors, users_api.to_user(reviewer))
+					users_api.add_mention_name(authors, users_api.to_user(reviewer))
 				end
 				for _, thread in ipairs(values.threads.value or {}) do
 					for _, comment in ipairs(thread.comments or {}) do
-						mentions.add(authors, users_api.to_user(comment.author))
+						users_api.add_mention_name(authors, users_api.to_user(comment.author))
 					end
 				end
 				finish(authors)

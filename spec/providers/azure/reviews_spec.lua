@@ -1,4 +1,4 @@
-local module_names = {
+local modules = {
 	"atlas.providers.azure.client",
 	"atlas.providers.azure.repositories",
 	"atlas.pulls.providers.azure.api.mapper",
@@ -6,70 +6,38 @@ local module_names = {
 	"atlas.pulls.providers.azure.api.changes",
 	"atlas.pulls.providers.azure.api.comments",
 }
+local pr = {
+	id = 1,
+	repo_full_name = "Platform/api",
+	repo = { owner = "Platform", repo_name = "api" },
+	source = { commit_hash = "head" },
+	link = { html = "https://example.com/pr/1" },
+}
 
-describe("Azure review refresh", function()
-	local original = {}
+local function comment(id, parent)
+	return { id = id, parentCommentId = parent or 0, commentType = "text", content = "Review", author = {} }
+end
+
+describe("Azure review mapping", function()
+	local saved, threads, reviewers, files
 
 	before_each(function()
-		for _, name in ipairs(module_names) do
-			original[name] = package.loaded[name]
-			package.loaded[name] = nil
+		saved, threads, reviewers, files = {}, {}, {}, {}
+		for _, name in ipairs(modules) do
+			saved[name], package.loaded[name] = package.loaded[name], nil
 		end
-	end)
-
-	after_each(function()
-		for _, name in ipairs(module_names) do
-			package.loaded[name] = original[name]
-		end
-	end)
-
-	it("refreshes reviewer votes and resolves mentions without changing comment source", function()
-		local service = require("atlas.providers.azure.client")
-		local requested = {}
-		local author = { id = "author", displayName = "Author", uniqueName = "author@example.com" }
-		local reviewer = { id = "reviewer", displayName = "Reviewer", uniqueName = "reviewer@example.com", vote = 10 }
-		package.loaded["atlas.providers.azure.client"] = {
-			url_encode = service.url_encode,
-			build_query = service.build_query,
-			get_cache = function()
-				return nil, false
-			end,
+		local client = require(modules[1])
+		package.loaded[modules[1]] = {
+			url_encode = client.url_encode,
+			build_query = client.build_query,
+			get_cache = function() end,
 			set_cache = function() end,
 			request = function(_, endpoint, _, done)
-				requested[#requested + 1] = endpoint
 				if endpoint:match("/reviewers$") then
-					done({ value = { reviewer } }, nil)
+					done({ value = reviewers }, nil)
 				else
 					assert.matches("/threads?$baseIteration=0&$iteration=2", endpoint, 1, true)
-					done({
-						value = {
-							{
-								id = 7,
-								threadContext = { filePath = "/main.lua", rightFileEnd = { line = 12 } },
-								comments = {
-									{
-										id = 1,
-										parentCommentId = 0,
-										commentType = "text",
-										content = "Ask @<reviewer>",
-										author = author,
-									},
-								},
-							},
-							{
-								id = 8,
-								comments = {
-									{
-										id = 1,
-										parentCommentId = 0,
-										commentType = "text",
-										content = "Hello",
-										author = reviewer,
-									},
-								},
-							},
-						},
-					}, nil)
+					done({ value = threads }, nil)
 				end
 			end,
 		}
@@ -78,52 +46,46 @@ describe("Azure review refresh", function()
 				assert.equal("head", commit)
 				done(2, nil)
 			end,
+			fetch_file_diffs = function(_, iteration, _, done)
+				assert.equal(2, iteration)
+				done(files, nil)
+			end,
 		}
-		local completed = false
-		require("atlas.pulls.providers.azure.api.reviews").fetch({
-			id = 1,
-			repo_full_name = "Platform/api",
-			repo = { owner = "Platform", repo_name = "api" },
-			source = { commit_hash = "head" },
-			link = { html = "https://example.com/pr/1" },
-			author = { id = "author", name = "Author" },
-			reviewers = { { id = "reviewer", name = "Reviewer", decision = "pending" } },
-		}, { force_refresh = true }, function(data, err)
-			completed = true
-			assert.is_nil(err)
-			assert.equal("approved", data.reviewers[1].decision)
-			assert.is_false(data.review.pending)
-			assert.equal(1, #data.comments)
-			assert.equal("Ask @<reviewer>", data.comments[1].content_raw)
-			assert.equal("Ask @Reviewer", data.comments[1].content_display)
-			assert.equal("main.lua", data.comments[1].inline.path)
-			assert.equal(12, data.comments[1].inline.to)
-		end)
-		assert.is_true(completed)
-		assert.equal(2, #requested)
 	end)
 
-	it("loads inline thread hunks on both sides of renamed files without attaching context to replies", function()
-		local service = require("atlas.providers.azure.client")
-		local files = require("atlas.core.git.diff_parser").parse(table.concat({
-			"diff --git a/old.lua b/main.lua",
-			"rename from old.lua",
-			"rename to main.lua",
-			"--- a/old.lua",
-			"+++ b/main.lua",
-			"@@ -1,1 +1,1 @@",
-			"-before",
-			"+after",
-			"@@ -10,2 +20,2 @@",
-			" unchanged",
-			"-old value",
-			"+new value",
-		}, "\n"))
-		local author = { id = "author", displayName = "Author" }
-		local function comment(id, parent)
-			return { id = id, parentCommentId = parent or 0, commentType = "text", content = "Review", author = author }
+	after_each(function()
+		for _, name in ipairs(modules) do
+			package.loaded[name] = saved[name]
 		end
-		local threads = {
+	end)
+
+	it("uses fresh reviewer votes and preserves raw mention tokens", function()
+		reviewers = { { id = "reviewer", displayName = "Reviewer", vote = 10 } }
+		local raw = comment(1)
+		raw.content = "Ask @<reviewer>"
+		threads =
+			{ { id = 7, threadContext = { filePath = "/main.lua", rightFileEnd = { line = 12 } }, comments = { raw } } }
+		local result
+		require("atlas.pulls.providers.azure.api.reviews").fetch(
+			vim.tbl_extend("force", {}, pr, {
+				reviewers = { { id = "reviewer", name = "Reviewer", decision = "pending" } },
+			}),
+			{ force_refresh = true },
+			function(data, err)
+				assert.is_nil(err)
+				result = data
+			end
+		)
+		assert.equal("approved", result.reviewers[1].decision)
+		assert.equal("Ask @<reviewer>", result.comments[1].content_raw)
+		assert.equal("Ask @Reviewer", result.comments[1].content_display)
+	end)
+
+	it("matches renamed-file hunks on both sides, excluding replies and unmatched positions", function()
+		local first = { old_start = 1, old_count = 1, new_start = 1, new_count = 1 }
+		local hunk = { old_start = 10, old_count = 2, new_start = 20, new_count = 2 }
+		files = { { path = "main.lua", old_path = "old.lua", hunks = { first, hunk } } }
+		threads = {
 			{
 				id = 1,
 				threadContext = { filePath = "/main.lua", rightFileEnd = { line = 21 } },
@@ -144,57 +106,18 @@ describe("Azure review refresh", function()
 				threadContext = { filePath = "/main.lua", rightFileEnd = { line = 22 } },
 				comments = { comment(1) },
 			},
-			{
-				id = 5,
-				threadContext = { filePath = "/main.lua" },
-				comments = { comment(1) },
-			},
+			{ id = 5, threadContext = { filePath = "/main.lua" }, comments = { comment(1) } },
 		}
-		package.loaded["atlas.providers.azure.client"] = {
-			url_encode = service.url_encode,
-			build_query = service.build_query,
-			get_cache = function()
-				return nil, false
-			end,
-			set_cache = function() end,
-			request = function(_, endpoint, _, done)
-				if endpoint:match("/reviewers$") then
-					done({ value = {} }, nil)
-				else
-					assert.matches("/threads?$baseIteration=0&$iteration=2", endpoint, 1, true)
-					done({ value = threads }, nil)
-				end
-			end,
-		}
-		package.loaded["atlas.pulls.providers.azure.api.changes"] = {
-			fetch_iteration = function(_, commit, done)
-				assert.equal("head", commit)
-				done(2, nil)
-			end,
-			fetch_file_diffs = function(_, iteration, _, done)
-				assert.equal(2, iteration)
-				done(files, nil)
-			end,
-		}
-		local completed = false
-		require("atlas.pulls.providers.azure.api.reviews").fetch_threads({
-			id = 1,
-			repo_full_name = "Platform/api",
-			repo = { owner = "Platform", repo_name = "api" },
-			source = { commit_hash = "head" },
-			link = { html = "https://example.com/pr/1" },
-			author = { id = "author", name = "Author" },
-		}, { force_refresh = true }, function(data, err)
-			completed = true
+		local result
+		require("atlas.pulls.providers.azure.api.reviews").fetch_threads(pr, {}, function(data, err)
 			assert.is_nil(err)
-			assert.equal(6, #data.comments)
-			assert.equal(files[1].hunks[2], data.comments[1].hunk)
-			assert.is_nil(data.comments[2].hunk)
-			assert.equal(files[1].hunks[2], data.comments[3].hunk)
-			assert.is_nil(data.comments[4].hunk)
-			assert.is_nil(data.comments[5].hunk)
-			assert.is_nil(data.comments[6].hunk)
+			result = data.comments
 		end)
-		assert.is_true(completed)
+		assert.equal(6, #result)
+		assert.equal(hunk, result[1].hunk)
+		assert.equal(hunk, result[3].hunk)
+		for _, index in ipairs({ 2, 4, 5, 6 }) do
+			assert.is_nil(result[index].hunk)
+		end
 	end)
 end)

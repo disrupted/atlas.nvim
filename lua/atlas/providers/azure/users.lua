@@ -20,6 +20,25 @@ function M.to_user(raw)
 	}
 end
 
+---@param authors table<string, string>
+---@param user AtlasUser|nil
+function M.add_mention_name(authors, user)
+	if user and user.id and user.name then
+		authors[user.id] = user.name
+	end
+end
+
+---@param text string
+---@param authors table<string, string>
+---@return string
+function M.resolve_mentions(text, authors)
+	return (
+		text:gsub("@<([^>]+)>", function(id)
+			return authors[id] and ("@" .. authors[id]) or ("@<" .. id .. ">")
+		end)
+	)
+end
+
 ---@param on_done fun(user: AtlasUser|nil, err: string|nil)
 ---@return { cancel: fun() }|nil
 function M.fetch_user(on_done)

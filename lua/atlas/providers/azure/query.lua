@@ -1,5 +1,7 @@
 local M = {}
 
+local utils = require("atlas.core.utils")
+
 local API_STATES = { open = "active", merged = "completed", declined = "abandoned" }
 local FIELDS = { "project", "repository", "scope" }
 
@@ -55,25 +57,7 @@ end
 ---@param input string
 ---@return AtlasAzurePullsViewConfig|nil, string|nil
 function M.parse(input)
-	local tokens, current = {}, {}
-	local quoted = false
-	for i = 1, #input do
-		local char = input:sub(i, i)
-		if char == '"' then
-			quoted = not quoted
-			table.insert(current, char)
-		elseif char:match("%s") and not quoted then
-			if #current > 0 then
-				table.insert(tokens, table.concat(current))
-				current = {}
-			end
-		else
-			table.insert(current, char)
-		end
-	end
-	if #current > 0 then
-		table.insert(tokens, table.concat(current))
-	end
+	local tokens = utils.split_tokens(input)
 
 	---@type AtlasAzurePullsViewConfig
 	local view = { name = "Search", layout = "compact", project = "", _states = { "open" }, extra_params = {} }

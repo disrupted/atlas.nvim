@@ -141,7 +141,7 @@ end
 
 ---@param ref IssueRef
 ---@param opts IssuesFetchOpts|nil
----@param on_done fun(details: IssueDetails|nil, err: string|nil)
+---@param on_done fun(details: AzureIssueDetails|nil, err: string|nil)
 ---@return AtlasRequestScope
 function M.fetch_issue(ref, opts, on_done)
 	local scope = request_scope.new()

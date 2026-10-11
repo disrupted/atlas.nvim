@@ -147,7 +147,7 @@ register({
 				done(nil, err)
 				return
 			end
-			---@cast details IssueDetails
+			---@cast details AzureIssueDetails
 			local names = vim.tbl_map(function(label)
 				return label.name
 			end, details.labels)

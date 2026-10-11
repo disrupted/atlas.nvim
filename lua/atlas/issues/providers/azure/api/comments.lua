@@ -5,7 +5,7 @@ local M = {}
 local json = require("atlas.core.json")
 local requests = require("atlas.core.requests")
 local mapper = require("atlas.issues.providers.azure.api.mapper")
-local mentions = require("atlas.providers.azure.mentions")
+local users = require("atlas.providers.azure.users")
 local markdown = require("atlas.issues.providers.azure.markdown")
 local service = require("atlas.providers.azure.client")
 local emojis = require("atlas.ui.shared.emojis")
@@ -34,13 +34,13 @@ local function to_comment(raw)
 	end
 	local author = mapper.to_user(raw.createdBy)
 	local authors = {}
-	mentions.add(authors, author)
+	users.add_mention_name(authors, author)
 	return {
 		id = tostring(raw.id),
 		self = raw.url,
 		author = author,
 		body = raw.text or "",
-		body_display = mentions.resolve(raw.text or "", authors),
+		body_display = users.resolve_mentions(raw.text or "", authors),
 		body_format = (raw.format or "html"):lower(),
 		created = raw.createdDate,
 		updated = raw.modifiedDate,
@@ -92,13 +92,13 @@ function M.fetch_conversation(issue, opts, on_done)
 						return
 					end
 					local authors = {}
-					mentions.add(authors, issue.reporter)
-					mentions.add(authors, issue.assignee)
+					users.add_mention_name(authors, issue.reporter)
+					users.add_mention_name(authors, issue.assignee)
 					for _, item in ipairs(items) do
-						mentions.add(authors, item.entity.author)
+						users.add_mention_name(authors, item.entity.author)
 					end
 					for _, item in ipairs(items) do
-						item.entity.body_display = mentions.resolve(item.entity.body, authors)
+						item.entity.body_display = users.resolve_mentions(item.entity.body, authors)
 					end
 					service.set_cache(cache_key, items)
 					on_done(items, nil)

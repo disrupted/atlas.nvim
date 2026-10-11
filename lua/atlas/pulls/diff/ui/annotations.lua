@@ -124,9 +124,7 @@ function M.selection(view, file, side, lines, position)
 	end
 
 	local inline = position(last)
-	local end_offset = vim.fn.strutf16len(lines[last], true) + 1
-	inline.from_offset = inline.from and end_offset or nil
-	inline.to_offset = inline.to and end_offset or nil
+	inline.end_column = vim.fn.strutf16len(lines[last], true) + 1
 	if first ~= last then
 		local start = position(first)
 		if (start.to ~= nil) ~= (inline.to ~= nil) then

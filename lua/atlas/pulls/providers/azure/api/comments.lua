@@ -139,9 +139,9 @@ function M.add_comment(pr, content, opts, on_done)
 	body.threadContext = {
 		filePath = "/" .. position.path,
 		leftFileStart = inline and inline.from and { line = inline.start_from or inline.from, offset = 1 } or nil,
-		leftFileEnd = inline and inline.from and { line = inline.from, offset = inline.from_offset or 1 } or nil,
+		leftFileEnd = inline and inline.from and { line = inline.from, offset = inline.end_column or 1 } or nil,
 		rightFileStart = inline and inline.to and { line = inline.start_to or inline.to, offset = 1 } or nil,
-		rightFileEnd = inline and inline.to and { line = inline.to, offset = inline.to_offset or 1 } or nil,
+		rightFileEnd = inline and inline.to and { line = inline.to, offset = inline.end_column or 1 } or nil,
 	}
 	local scope = request_scope.new()
 	scope.run(function(done)

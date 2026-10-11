@@ -53,7 +53,7 @@ local function search_issues(project, context, done)
 					preview_done({ title = issue.key, lines = { err } })
 					return
 				end
-				---@cast details IssueDetails
+				---@cast details AzureIssueDetails
 				preview_done(utils.issue_preview(issue, details))
 			end)
 		end,

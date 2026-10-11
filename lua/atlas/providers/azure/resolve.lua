@@ -1,14 +1,7 @@
 local M = {}
 
 local url = require("atlas.providers.url")
-
----@param value string
----@return string
-local function encode(value)
-	return (value:gsub("([^%w%-_.~])", function(char)
-		return string.format("%%%02X", string.byte(char))
-	end))
-end
+local utils = require("atlas.core.utils")
 
 ---@param value string
 ---@param parsed AtlasParsedUrl|nil
@@ -65,8 +58,12 @@ function M.resolve(value, parsed)
 	end
 
 	local full_name = project .. "/" .. repo
-	local web_url =
-		string.format("https://dev.azure.com/%s/%s/_git/%s", encode(organization), encode(project), encode(repo))
+	local web_url = string.format(
+		"https://dev.azure.com/%s/%s/_git/%s",
+		utils.url_encode(organization),
+		utils.url_encode(project),
+		utils.url_encode(repo)
+	)
 	local id = number and assert(tonumber(number)) or nil
 	return {
 		provider = "azure",
