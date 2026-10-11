@@ -1,6 +1,15 @@
+---@class AtlasDiffImageDocument
+---@field file AtlasDiffFile
+---@field binary boolean
+---@field contents { old: { binary_content?: string }, new: { binary_content?: string } }
+
+---@class AtlasDiffImageView
+---@field result { root: string, base_revision: string, head_revision: string }
+---@field document AtlasDiffImageDocument|nil
+---@field left { buf: integer, win?: integer }
+---@field right { buf: integer, win?: integer }
 local M = {}
 
-local namespace = vim.api.nvim_create_namespace("atlas.diff.images")
 local directory
 local states = setmetatable({}, { __mode = "k" })
 
@@ -20,7 +29,7 @@ function M.supports_file(path)
 	return image ~= nil and image.supports_file(path)
 end
 
----@param document AtlasDiffDocument|nil
+---@param document AtlasDiffImageDocument|nil
 ---@return boolean
 local function supports(document)
 	if not document or not document.binary then
@@ -56,7 +65,7 @@ local function image_file(root, revision, file, content)
 	return path
 end
 
----@param document AtlasDiffDocument|nil
+---@param document AtlasDiffImageDocument|nil
 ---@param win integer
 function M.configure_window(document, win)
 	local options = vim.wo[win][0]
@@ -72,7 +81,7 @@ function M.configure_window(document, win)
 	end
 end
 
----@param view AtlasDiffNativeView
+---@param view AtlasDiffImageView
 function M.clear(view)
 	local state = states[view]
 	states[view] = nil
@@ -81,9 +90,6 @@ function M.clear(view)
 	end
 	for buf in pairs(state.buffers) do
 		state.image.placement.clean(buf)
-		if vim.api.nvim_buf_is_valid(buf) then
-			vim.api.nvim_buf_clear_namespace(buf, namespace, 0, -1)
-		end
 	end
 end
 
@@ -99,14 +105,14 @@ local function clear_buffer(buf)
 	vim.bo[buf].readonly = true
 end
 
----@param view AtlasDiffNativeView
+---@param view AtlasDiffImageView
 function M.attach(view)
 	M.clear(view)
 	local document = view.document
 	if not supports(document) then
 		return
 	end
-	---@cast document AtlasDiffDocument
+	---@cast document AtlasDiffImageDocument
 	local image = image_module()
 	local state = { image = image, buffers = {} }
 	states[view] = state
@@ -117,16 +123,14 @@ function M.attach(view)
 
 	local function attach_image(pane, revision, file, content)
 		local buf, win = pane.buf, pane.win
-		local function valid()
-			return current()
-				and pane.buf == buf
-				and pane.win == win
-				and win ~= nil
-				and vim.api.nvim_win_is_valid(win)
-				and vim.api.nvim_buf_is_valid(buf)
-				and vim.api.nvim_win_get_buf(win) == buf
-		end
-		if not valid() or content.binary_content == nil or not image.supports_file(file) then
+		if
+			content.binary_content == nil
+			or not image.supports_file(file)
+			or not win
+			or not vim.api.nvim_win_is_valid(win)
+			or not vim.api.nvim_buf_is_valid(buf)
+			or vim.api.nvim_win_get_buf(win) ~= buf
+		then
 			return
 		end
 		local path = image_file(view.result.root, revision, file, content.binary_content)
@@ -135,22 +139,17 @@ function M.attach(view)
 		end
 		state.buffers[buf] = true
 		clear_buffer(buf)
-		vim.api.nvim_buf_set_extmark(buf, namespace, 0, 0, {
-			virt_text = { { "Loading image…", "AtlasTextMuted" } },
-		})
-		image.buf.attach(buf, {
-			src = path,
+		-- Keep the diff's buffer and window options.
+		image.placement.new(buf, path, {
 			inline = true,
+			conceal = true,
+			auto_resize = true,
 			on_update_pre = function(placement)
-				if not valid() then
-					placement:close()
-				elseif #placement:state().wins == 0 then
+				-- Snacks hides extmarks itself; terminals without placeholders also need deletion.
+				if #placement:state().wins == 0 then
 					placement:del()
-				end
-			end,
-			on_update = function()
-				if valid() then
-					vim.api.nvim_buf_clear_namespace(buf, namespace, 0, -1)
+				else
+					placement:show()
 				end
 			end,
 		})

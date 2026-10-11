@@ -96,7 +96,6 @@ local function select_user(state, editor, field)
 	local unassigned = { id = "__unassigned__", name = "Unassigned" }
 	picker.search({
 		title = field == "assignee" and "Assignee" or "Reporter",
-		size = { width = 0.3, height = 0.3 },
 		format_item = function(user)
 			return user.name
 		end,
@@ -174,7 +173,7 @@ local function select_issue_type(state, editor)
 			title = "Issue type",
 			items = items,
 			format_item = function(item)
-				return icons.issues_type(item.name) .. " " .. item.name
+				return (item.icon and item.icon.icon or icons.get("issue")) .. " " .. item.name
 			end,
 			on_select = function(item)
 				if item and not editor.closed and not state.submitting then
@@ -209,7 +208,9 @@ end
 ---@return AtlasFormMetaRow[]
 local function render_meta(state)
 	local type_name = state.issue_type and state.issue_type.name
-	local type_icon, type_hl = icons.issues_type(type_name)
+	local type_style = state.issue_type and state.issue_type.icon
+	local type_icon = type_style and type_style.icon or icons.get("issue")
+	local type_hl = type_style and type_style.hl_group or "AtlasTextMuted"
 	local assignee = state.assignee and state.assignee.name
 	local reporter = state.reporter and state.reporter.name
 
@@ -217,7 +218,7 @@ local function render_meta(state)
 		{
 			{
 				key = "Project:",
-				value = icons.issues_provider("jira", "provider") .. " " .. state.project_key,
+				value = icons.provider_icon("jira", "issues") .. " " .. state.project_key,
 				hl = "AtlasJiraKey",
 			},
 			{
@@ -230,13 +231,13 @@ local function render_meta(state)
 		{
 			{
 				key = "Assignee:",
-				value = icons.general("user") .. " " .. (assignee or "Unassigned"),
+				value = icons.get("user") .. " " .. (assignee or "Unassigned"),
 				hl = presentation.person_hl(assignee),
 				loading = state.loading.assignee,
 			},
 			{
 				key = "Reporter:",
-				value = icons.general("user") .. " " .. (reporter or "None"),
+				value = icons.get("user") .. " " .. (reporter or "None"),
 				hl = presentation.person_hl(reporter),
 				loading = state.loading.reporter,
 			},

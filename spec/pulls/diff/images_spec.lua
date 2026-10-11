@@ -1,8 +1,8 @@
-describe("pulls.diff.atlas.images", function()
+describe("pulls.diff.images", function()
 	local original_vim, original_io, original_loaded, original_preload
-	local images, snacks, image, view, pending, attached, cleaned, cleared, writes, keys
+	local images, snacks, image, view, pending, attached, cleaned, writes, keys
 	local buffers, windows
-	local modules = { "atlas.pulls.diff.atlas.images", "snacks", "snacks.image" }
+	local modules = { "atlas.pulls.diff.images", "snacks", "snacks.image" }
 
 	before_each(function()
 		original_vim, original_io = vim, io
@@ -11,7 +11,7 @@ describe("pulls.diff.atlas.images", function()
 			original_loaded[name], original_preload[name] = package.loaded[name], package.preload[name]
 			package.loaded[name], package.preload[name] = nil, nil
 		end
-		pending, attached, cleaned, cleared, writes, keys = {}, {}, {}, {}, {}, {}
+		pending, attached, cleaned, writes, keys = {}, {}, {}, {}, {}
 		buffers = { [1] = {}, [2] = {} }
 		windows = { [11] = 1, [12] = 2 }
 		snacks = { config = { image = { enabled = true } } }
@@ -31,10 +31,8 @@ describe("pulls.diff.atlas.images", function()
 				clean = function(buf)
 					cleaned[#cleaned + 1] = buf
 				end,
-			},
-			buf = {
-				attach = function(buf, options)
-					attached[#attached + 1] = { buf = buf, options = options }
+				new = function(buf, src, options)
+					attached[#attached + 1] = { buf = buf, src = src, options = options }
 				end,
 			},
 		}
@@ -42,9 +40,6 @@ describe("pulls.diff.atlas.images", function()
 		package.loaded["snacks.image"] = image
 		_G.vim = {
 			api = {
-				nvim_create_namespace = function()
-					return 5
-				end,
 				nvim_buf_is_valid = function(buf)
 					return buffers[buf] ~= nil
 				end,
@@ -63,10 +58,6 @@ describe("pulls.diff.atlas.images", function()
 						.. text[1]
 						.. lines[end_row + 1]:sub(end_col + 1)
 					buffers[buf].lines = lines
-				end,
-				nvim_buf_set_extmark = function() end,
-				nvim_buf_clear_namespace = function(buf)
-					cleared[#cleared + 1] = buf
 				end,
 			},
 			fn = {
@@ -120,7 +111,7 @@ describe("pulls.diff.atlas.images", function()
 				},
 			},
 		}
-		images = require("atlas.pulls.diff.atlas.images")
+		images = require("atlas.pulls.diff.images")
 	end)
 
 	after_each(function()
@@ -151,11 +142,13 @@ describe("pulls.diff.atlas.images", function()
 		assert.same({ "/repo:base:old.png", "/repo:head:new.png" }, keys)
 		assert.equals(1, attached[1].buf)
 		assert.equals(2, attached[2].buf)
-		assert.equals(view.document.contents.old.binary_content, writes[attached[1].options.src])
-		assert.equals(view.document.contents.new.binary_content, writes[attached[2].options.src])
+		assert.equals(view.document.contents.old.binary_content, writes[attached[1].src])
+		assert.equals(view.document.contents.new.binary_content, writes[attached[2].src])
 		assert.same({ "" }, buffers[1].lines)
 		assert.same({ "" }, buffers[2].lines)
 		assert.is_true(attached[1].options.inline)
+		assert.is_true(attached[1].options.conceal)
+		assert.is_true(attached[1].options.auto_resize)
 	end)
 
 	it("shows only the new revision for an added image", function()
@@ -178,7 +171,7 @@ describe("pulls.diff.atlas.images", function()
 		assert.equals(1, #attached)
 		assert.equals(2, attached[1].buf)
 		assert.same({ "/repo:base:old.png" }, keys)
-		assert.equals(view.document.contents.old.binary_content, writes[attached[1].options.src])
+		assert.equals(view.document.contents.old.binary_content, writes[attached[1].src])
 	end)
 
 	it("restores the window columns when switching from images to text", function()
@@ -224,6 +217,33 @@ describe("pulls.diff.atlas.images", function()
 		assert.is_nil(buffers[2].lines)
 	end)
 
+	it("hides terminal placements and shows them again when their pane returns", function()
+		images.attach(view)
+		pending[1]()
+		local deleted, shown, visible = 0, 0, true
+		local placement = {
+			state = function()
+				return { wins = visible and { 11 } or {} }
+			end,
+			del = function()
+				deleted = deleted + 1
+			end,
+			show = function()
+				shown = shown + 1
+			end,
+		}
+		attached[1].options.on_update_pre(placement)
+		assert.equals(0, deleted)
+		assert.equals(1, shown)
+		visible = false
+		attached[1].options.on_update_pre(placement)
+		assert.equals(1, deleted)
+		assert.equals(1, shown)
+		visible = true
+		attached[1].options.on_update_pre(placement)
+		assert.equals(2, shown)
+	end)
+
 	it("cleans tracked buffers after the document and image config are cleared", function()
 		images.attach(view)
 		pending[1]()
@@ -231,11 +251,7 @@ describe("pulls.diff.atlas.images", function()
 		snacks.config.image.enabled = false
 		images.clear(view)
 		table.sort(cleaned)
-		table.sort(cleared)
 		assert.same({ 1, 2 }, cleaned)
-		assert.same({ 1, 2 }, cleared)
-		attached[1].options.on_update()
-		assert.equals(2, #cleared)
 		images.clear(view)
 		assert.equals(2, #cleaned)
 	end)
