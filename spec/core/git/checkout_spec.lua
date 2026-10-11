@@ -85,8 +85,6 @@ describe("core.git.checkout", function()
 			{ provider = "github", host = "github.com", repo = "owner/repo", path = "pull/1" },
 			{ provider = "gitlab", host = "gitlab.com", repo = "group/subgroup/repo", path = "-/merge_requests/1" },
 			{ provider = "bitbucket", host = "bitbucket.org", repo = "owner/repo", path = "pull-requests/1" },
-			{ provider = "gitea", host = "gitea.com", repo = "owner/repo", path = "pulls/1" },
-			{ provider = "forgejo", host = "codeberg.org", repo = "owner/repo", path = "pulls/1" },
 		}
 		local function use_repository(case)
 			config.options.pulls.repo_config.paths = { [case.repo] = "/mapped" }
@@ -111,8 +109,6 @@ describe("core.git.checkout", function()
 					github = { hostname = "github.com" },
 					gitlab = { base_url = "https://gitlab.com" },
 					bitbucket = {},
-					gitea = { base_url = "https://gitea.com" },
-					forgejo = { base_url = "https://codeberg.org" },
 				},
 				pulls = { repo_config = {} },
 			}

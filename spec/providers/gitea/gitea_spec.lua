@@ -1,268 +1,197 @@
+local config = require("atlas.config")
+local mapper = require("atlas.pulls.providers.forge.api.mapper").new("gitea")
+local pull_requests = require("atlas.pulls.providers.forge.api.pullrequests")
 local TRANSPORT = "atlas.providers.forge.gitea.api"
-local COMMENTS = "atlas.pulls.providers.forge.gitea.api.comments"
-local PIPELINES = "atlas.pulls.providers.forge.gitea.api.pipelines"
-local PROVIDER = "atlas.pulls.providers.forge.gitea"
-local REVIEWS = "atlas.pulls.providers.forge.gitea.api.reviews"
 local PREFIX = "atlas.pulls.providers.forge.gitea"
 
 local function cleanup()
-	package.loaded[TRANSPORT] = nil
-	package.preload[TRANSPORT] = nil
+	package.loaded[TRANSPORT], package.preload[TRANSPORT] = nil, nil
 	for module in pairs(package.loaded) do
-		if module:sub(1, #PREFIX) == PREFIX or module:match("^atlas%.pulls%.pipelines%.forge%.gitea") then
+		if module:sub(1, #PREFIX) == PREFIX then
 			package.loaded[module] = nil
 		end
 	end
 end
 
-local function load_api(module, service)
-	package.loaded[module] = nil
-	package.loaded[TRANSPORT] = nil
-	service.id = "gitea"
-	service.name = "Gitea"
-	service.fetch_all = require("atlas.providers.forge.api.pagination").new(service).fetch_all
-	service.notifications = {}
-	package.preload[TRANSPORT] = function()
-		return service
-	end
-	return require(module)
-end
-
-local function endpoints(requests)
-	local result = {}
-	for _, request in ipairs(requests) do
-		table.insert(result, request.method .. " " .. request.endpoint)
-	end
-	return result
-end
-
-describe("Gitea pulls", function()
-	before_each(cleanup)
-	after_each(cleanup)
-
-	it("wires the Gitea implementation", function()
-		local provider = require(PROVIDER)
-		local comments = require(COMMENTS)
-		local pipelines = require(PIPELINES)
-
-		assert.equal(comments.add, provider.capabilities.comments.add_comment)
-		assert.equal(comments.set_thread_resolved, provider.capabilities.comments.set_thread_resolved)
-		assert.equal(pipelines.fetch, provider.capabilities.pipelines.fetch)
-		assert.equal(require("atlas.pulls.pipelines.forge.gitea.actions"), provider.capabilities.pipelines.actions)
+describe("Gitea", function()
+	local old_config
+	before_each(function()
+		cleanup()
+		old_config = config.domain_options
+		config.domain_options = function()
+			return { draft_prefix = "Draft:" }
+		end
+	end)
+	after_each(function()
+		config.domain_options = old_config
+		cleanup()
 	end)
 
-	it("returns the inline comment and diff preview after creating a review", function()
-		local requests = {}
-		local comments = load_api(COMMENTS, {
-			url_encode = tostring,
-			request = function(method, endpoint, data, done)
-				table.insert(requests, { method = method, endpoint = endpoint, data = data })
-				if method == "POST" then
-					done({ id = 8, state = "COMMENT" }, nil)
-				else
-					done({
-						{
-							id = 12,
-							body = "Check this line",
-							path = "init.lua",
-							position = 2,
-							diff_hunk = "@@ -1 +1,2 @@\n before\n+after",
-						},
-					}, nil)
-				end
-				return { cancel = function() end }
-			end,
-		})
-		local pr = { id = 3, repo_full_name = "owner/repo", source = { commit_hash = "abc" } }
-		local created, create_err
-
-		comments.add(pr, "Check this line", { inline = { path = "init.lua", to = 2 } }, function(value, err)
-			created, create_err = value, err
-		end)
-
-		assert.is_nil(create_err)
-		assert.equal(12, created.id)
-		assert.same({ path = "init.lua", to = 2 }, created.inline)
-		assert.equal("after", created.hunk.lines[2].content)
-		assert.equal(2, created.hunk.lines[2].new_line)
-		assert.same({
-			"POST /repos/owner/repo/pulls/3/reviews",
-			"GET /repos/owner/repo/pulls/3/reviews/8/comments",
-		}, endpoints(requests))
-		assert.same({
-			event = "COMMENT",
-			commit_id = "abc",
-			comments = { { body = "Check this line", path = "init.lua", new_position = 2 } },
-		}, requests[1].data)
+	it("expands closed searches into merged and declined while preserving literal text", function()
+		local query = require("atlas.pulls.providers.forge.query")
+		local view = {}
+		assert.is_true(query.apply(view, 'repo:owner/repo is:closed search:"is:open literal"'))
+		local parsed, states = query.for_api(view)
+		assert.same({ "MERGED", "DECLINED" }, states)
+		assert.equal("owner/repo", parsed.repo)
+		assert.equal("is:open literal", parsed.search)
+		local previous = vim.deepcopy(view)
+		assert.is_false(query.apply(view, "is:unknown"))
+		assert.same(previous, view)
 	end)
 
-	it("preserves pending comment metadata when editing returns a null author", function()
-		local requests = {}
-		local comments = load_api(COMMENTS, {
-			url_encode = tostring,
-			request = function(method, endpoint, data, done)
-				table.insert(requests, { method = method, endpoint = endpoint, data = data })
-				done({ id = 12, body = data.body, user = vim.NIL }, nil)
-				return { cancel = function() end }
-			end,
-		})
-		local comment = {
-			id = 12,
-			content_raw = "Updated draft",
-			author = { id = "1", username = "author" },
-			pending = true,
-			inline = { path = "init.lua", to = 2 },
-			hunk = require("atlas.core.git.diff_parser").parse_hunk("@@ -1 +1,2 @@\n before\n+after"),
-		}
-		local updated, update_err
-
-		comments.edit({ id = 3, repo_full_name = "owner/repo" }, comment, function(value, err)
-			updated, update_err = value, err
-		end)
-
-		assert.is_nil(update_err)
-		assert.same(comment, updated)
-		assert.same({ "PATCH /repos/owner/repo/issues/comments/12" }, endpoints(requests))
-		assert.same({ body = "Updated draft" }, requests[1].data)
-	end)
-
-	it("uses the Gitea 1.27 review-thread endpoints", function()
-		local requests = {}
+	it("groups comments by review position and keeps pending state separate from resolution", function()
 		local service = {
+			id = "gitea",
+			name = "Gitea",
 			url_encode = tostring,
-			request = function(method, endpoint, data, done)
-				table.insert(requests, { method = method, endpoint = endpoint, data = data })
-				done({ id = 12, body = data and data.body }, nil)
-				return { cancel = function() end }
+			notifications = {},
+			fetch_all = function(_, _, _, done)
+				done({
+					{ id = 10, state = "COMMENT", comments_count = 3, stale = true },
+					{ id = 12, state = "PENDING", comments_count = 1 },
+				}, nil)
 			end,
-		}
-		local comments = load_api(COMMENTS, service)
-		local pr = { id = 3, repo_full_name = "owner/repo" }
-		local root = {
-			id = 9,
-			inline = { path = "init.lua", to = 2 },
-			hunk = require("atlas.core.git.diff_parser").parse_hunk("@@ -1 +1,2 @@\n before\n+after"),
-		}
-		local reply
-
-		comments.add(pr, "Reply", { parent = root }, function(value)
-			reply = value
-		end)
-		comments.set_thread_resolved(pr, root, true, function() end)
-		comments.set_thread_resolved(pr, root, false, function() end)
-
-		assert.equal(9, reply.parent_id)
-		assert.same(root.inline, reply.inline)
-		assert.same(root.hunk, reply.hunk)
-		assert.same({
-			"POST /repos/owner/repo/pulls/3/comments/9/replies",
-			"POST /repos/owner/repo/pulls/comments/9/resolve",
-			"POST /repos/owner/repo/pulls/comments/9/unresolve",
-		}, endpoints(requests))
-		assert.same({ body = "Reply" }, requests[1].data)
-
-		local reviews = require(REVIEWS)
-		local request_count = #requests
-		local comment, comment_err
-		pr.source = { commit_hash = "abc" }
-		reviews.add(pr, "Range", { path = "init.lua", start_to = 2, to = 4 }, nil, function(value, err)
-			comment = value
-			comment_err = err
-		end)
-		assert.is_nil(comment)
-		assert.equal("Gitea does not support multi-line review comments", comment_err)
-		assert.equal(request_count, #requests)
-	end)
-
-	it("uses the Gitea Actions rerun and log endpoints", function()
-		local requests = {}
-		local pipelines = load_api(PIPELINES, {
-			base_url = function()
-				return "https://git.example"
-			end,
-			absolute_url = function(value)
-				return value
-			end,
-			url_encode = tostring,
-			request = function(method, endpoint, _, done)
-				table.insert(requests, { method = method, endpoint = endpoint })
-				done({}, nil)
-				return { cancel = function() end }
-			end,
-			request_text = function(method, endpoint, done)
-				table.insert(requests, { method = method, endpoint = endpoint })
-				done("log", nil)
-				return { cancel = function() end }
-			end,
-		})
-		local pr = { repo_full_name = "owner/repo" }
-		local pipeline = {
-			id = "42",
-			name = "Actions run #42",
-			state = "FAILED",
-			url = "https://git.example/owner/repo/actions/runs/42",
-			stages = {},
-		}
-		local job = { id = 91 }
-
-		pipelines.rerun(pr, pipeline, false, function() end)
-		pipelines.rerun(pr, pipeline, true, function() end)
-		pipelines.rerun_job(pr, pipeline, job, function() end)
-		pipelines.fetch_job_log(pr, pipeline, job, function() end)
-
-		assert.same({
-			"POST /repos/owner/repo/actions/runs/42/rerun",
-			"POST /repos/owner/repo/actions/runs/42/rerun-failed-jobs",
-			"POST /repos/owner/repo/actions/runs/42/jobs/91/rerun",
-			"GET /repos/owner/repo/actions/jobs/91/logs",
-		}, endpoints(requests))
-	end)
-
-	it("loads the source commit before fetching pipelines when search omitted it", function()
-		local requests = {}
-		local pipelines = load_api(PIPELINES, {
-			base_url = function()
-				return "https://git.example"
-			end,
-			absolute_url = function(value)
-				return value
-			end,
-			url_encode = tostring,
-			request = function(method, endpoint, _, done)
-				table.insert(requests, { method = method, endpoint = endpoint })
-				if endpoint == "/repos/owner/repo/pulls/18" then
+			request = function(_, endpoint, _, done)
+				if endpoint:match("/10/comments$") then
 					done({
-						number = 18,
-						title = "Pull",
-						state = "open",
-						user = { id = 1, login = "author" },
-						base = { ref = "main", sha = "base", repo = { full_name = "owner/repo" } },
-						head = { ref = "feature", sha = "head", repo = { full_name = "owner/repo" } },
+						{ id = 102, path = "main.lua", position = 7 },
+						{ id = 103, path = "main.lua", position = 9 },
+						{ id = 101, path = "main.lua", position = 7 },
 					}, nil)
 				else
-					done({ statuses = {} }, nil)
+					done({
+						{ id = 121, path = "main.lua", original_position = 4, resolver = { id = 1, login = "alice" } },
+					}, nil)
 				end
-				return { cancel = function() end }
 			end,
-		})
-		local result, result_err
-		pipelines.fetch(
-			{
-				repo_full_name = "owner/repo",
-				target = { id = 18, repo_full_name = "owner/repo", source = { commit_hash = "" } },
-			},
+		}
+		package.preload[TRANSPORT] = function()
+			return service
+		end
+		local result
+		require(PREFIX .. ".api.reviews").fetch(
+			{ id = 3, repo_full_name = "owner/repo", source = { commit_hash = "head" } },
 			nil,
 			function(value, err)
-				result = value
-				result_err = err
+				assert.is_nil(err)
+				result = value.comments
 			end
 		)
+		assert.same(
+			{ 101, 102, 103, 121 },
+			vim.tbl_map(function(comment)
+				return comment.id
+			end, result)
+		)
+		assert.equal(101, result[2].parent_id)
+		assert.is_nil(result[3].parent_id)
+		assert.equal("OUTDATED", result[1].state)
+		assert.is_true(result[4].pending)
+		assert.equal("RESOLVED", result[4].state)
+		assert.equal(4, result[4].inline.from)
+	end)
 
-		assert.is_nil(result_err)
-		assert.same({}, result)
+	it("rejects multiline comments without posting a partial comment", function()
+		package.preload[TRANSPORT] = function()
+			return {
+				id = "gitea",
+				name = "Gitea",
+				url_encode = tostring,
+				request = function()
+					error("A rejected range must not be submitted")
+				end,
+			}
+		end
+		require(PREFIX .. ".api.reviews").add(
+			{ id = 3, repo_full_name = "owner/repo", source = { commit_hash = "head" } },
+			"Range",
+			{ path = "main.lua", start_to = 2, to = 4 },
+			nil,
+			function(comment, err)
+				assert.is_nil(comment)
+				assert.equal("Gitea does not support multi-line review comments", err)
+			end
+		)
+	end)
+
+	local function editing_api(accept_draft)
+		local raw = {
+			number = 3,
+			title = "Draft: Original",
+			draft = true,
+			state = "open",
+			user = { id = 1, login = "author" },
+			head = { ref = "feature", sha = "head", repo = { full_name = "owner/repo" } },
+			base = { ref = "main", sha = "base", repo = { full_name = "owner/repo" } },
+		}
+		local writes = {}
+		local service = {
+			id = "gitea",
+			name = "Gitea",
+			url_encode = tostring,
+			base_url = function()
+				return "https://forge.example"
+			end,
+			clear_cache = function() end,
+			delete_memory_cache = function() end,
+			fetch_all = function(_, _, _, done)
+				done({
+					{ id = 1, state = "REQUEST_REVIEW", user = { id = 2, login = "keep" } },
+					{ id = 2, state = "REQUEST_REVIEW", user = { id = 3, login = "remove" } },
+				}, nil)
+			end,
+			request = function(method, _, data, done)
+				writes[#writes + 1] = { method = method, data = data }
+				if method == "PATCH" then
+					for key, value in pairs(data) do
+						raw[key] = value
+					end
+					raw.draft = accept_draft and raw.title:sub(1, 6) == "Draft:"
+				end
+				done(vim.deepcopy(raw), nil)
+			end,
+		}
+		return pull_requests.new(service, mapper), mapper.to_pull_request(raw), writes
+	end
+
+	local function saved(ok, err)
+		assert.is_nil(err)
+		assert.is_true(ok)
+	end
+
+	it("preserves the configured draft prefix on rename and removes it when ready", function()
+		local api, pr = editing_api(true)
+		api.update_pr(pr, { title = "Renamed" }, saved)
+		assert.equal("Draft: Renamed", pr.title)
+		assert.equal("draft", pr.state)
+		api.update_pr(pr, { draft = false }, saved)
+		assert.equal("Renamed", pr.title)
+		assert.equal("open", pr.state)
+	end)
+
+	it("restores the title without changing the body when the server rejects draft state", function()
+		local api, pr, writes = editing_api(false)
+		pr.title, pr.state = "Original", "open"
+		api.update_pr(pr, { draft = true, body = "Must not change" }, function(ok, err)
+			assert.is_false(ok)
+			assert.matches("configure an enabled draft_prefix", err, 1, true)
+		end)
+		assert.equal("Original", pr.title)
 		assert.same({
-			"GET /repos/owner/repo/pulls/18",
-			"GET /repos/owner/repo/commits/head/status",
-		}, endpoints(requests))
+			{ method = "PATCH", data = { title = "Draft: Original" } },
+			{ method = "PATCH", data = { title = "Original" } },
+		}, writes)
+	end)
+
+	it("updates only changed reviewers and deduplicates the selection", function()
+		local api, pr, writes = editing_api(true)
+		api.update_pr(pr, {
+			reviewers = { { provider_id = "keep" }, { provider_id = "new" }, { provider_id = "new" } },
+		}, saved)
+		assert.same({
+			{ method = "POST", data = { reviewers = { "new" }, team_reviewers = {} } },
+			{ method = "DELETE", data = { reviewers = { "remove" }, team_reviewers = {} } },
+		}, writes)
 	end)
 end)

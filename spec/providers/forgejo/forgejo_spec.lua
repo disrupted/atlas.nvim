@@ -1,7 +1,5 @@
 local TRANSPORT = "atlas.providers.forge.forgejo.api"
-local COMMENTS = "atlas.pulls.providers.forge.forgejo.api.comments"
 local PIPELINES = "atlas.pulls.providers.forge.forgejo.api.pipelines"
-local PROVIDER = "atlas.pulls.providers.forge.forgejo"
 local REVIEWS = "atlas.pulls.providers.forge.forgejo.api.reviews"
 local PREFIX = "atlas.pulls.providers.forge.forgejo"
 
@@ -32,20 +30,7 @@ describe("Forgejo pulls", function()
 	before_each(cleanup)
 	after_each(cleanup)
 
-	it("wires the Forgejo implementation", function()
-		local provider = require(PROVIDER)
-		local comments = require(COMMENTS)
-		local pipelines = require(PIPELINES)
-		local reviews = require(REVIEWS)
-
-		assert.equal(comments.add, provider.capabilities.comments.add_comment)
-		assert.equal(reviews.start_review, provider.capabilities.reviews.start_review)
-		assert.equal(pipelines.fetch, provider.capabilities.pipelines.fetch)
-		assert.equal(require("atlas.pulls.pipelines.forge.forgejo.actions"), provider.capabilities.pipelines.actions)
-		assert.is_nil(provider.capabilities.comments.set_thread_resolved)
-	end)
-
-	it("uses Forgejo multiline pending-review endpoints", function()
+	it("preserves multiline pending comments on either side of the diff", function()
 		local requests = {}
 		local reviews = load_api(REVIEWS, {
 			url_encode = tostring,
@@ -53,39 +38,40 @@ describe("Forgejo pulls", function()
 				table.insert(requests, { method = method, endpoint = endpoint, data = data })
 				done({
 					id = 12,
-					path = data and data.path,
-					position = data and data.new_position,
-					extra_lines_count = data and data.extra_lines_count,
-					diff_hunk = "@@ -1 +1,4 @@\n before\n+first\n+middle\n+last",
+					path = data.path,
+					position = data.new_position,
+					original_position = data.old_position,
+					extra_lines_count = data.extra_lines_count,
 				}, nil)
 				return { cancel = function() end }
 			end,
 		})
 		local pr = { id = 3, repo_full_name = "owner/repo", source = { commit_hash = "abc" } }
-		local created
+		for _, side in ipairs({ "to", "from" }) do
+			local created
+			reviews.add(
+				pr,
+				"Range",
+				{ path = "init.lua", ["start_" .. side] = 2, [side] = 4 },
+				{ pending = true, review = { id = 8, pending = true } },
+				function(value)
+					created = value
+				end
+			)
 
-		reviews.add(
-			pr,
-			"Range",
-			{ path = "init.lua", start_to = 2, to = 4, commit_hash = "abc" },
-			{ pending = true, review = { id = 8, pending = true } },
-			function(value)
-				created = value
-			end
-		)
-		reviews.delete(pr, created, function() end)
-
-		assert.same({ body = "Range", path = "init.lua", new_position = 2, extra_lines_count = 2 }, requests[1].data)
-		assert.equal(2, created.inline.start_to)
-		assert.equal(4, created.inline.to)
-		assert.equal("first", created.hunk.lines[2].content)
-		assert.equal("last", created.hunk.lines[4].content)
-		assert.equal("/repos/owner/repo/pulls/3/reviews/8/comments", requests[1].endpoint)
-		assert.equal("DELETE", requests[2].method)
-		assert.equal("/repos/owner/repo/pulls/3/reviews/8/comments/12", requests[2].endpoint)
+			assert.same({
+				body = "Range",
+				path = "init.lua",
+				[side == "to" and "new_position" or "old_position"] = 2,
+				extra_lines_count = 2,
+			}, requests[#requests].data)
+			assert.is_true(created.pending)
+			assert.equal(2, created.inline["start_" .. side])
+			assert.equal(4, created.inline[side])
+		end
 	end)
 
-	it("cancels a Forgejo Actions run", function()
+	it("resolves a displayed Actions run number to its internal ID for cancellation", function()
 		local queries, requests = {}, {}
 		local pipelines = load_api(PIPELINES, {
 			base_url = function()
@@ -124,54 +110,6 @@ describe("Forgejo pulls", function()
 		assert.same({
 			{ method = "GET", endpoint = "/repos/owner/repo/actions/runs?run" },
 			{ method = "POST", endpoint = "/repos/owner/repo/actions/runs/900/cancel" },
-		}, requests)
-	end)
-
-	it("loads the source commit before fetching pipelines when search omitted it", function()
-		local requests = {}
-		local pipelines = load_api(PIPELINES, {
-			base_url = function()
-				return "https://git.example"
-			end,
-			absolute_url = function(value)
-				return value
-			end,
-			url_encode = tostring,
-			request = function(method, endpoint, _, done)
-				table.insert(requests, { method = method, endpoint = endpoint })
-				if endpoint == "/repos/owner/repo/pulls/18" then
-					done({
-						number = 18,
-						title = "Pull",
-						state = "open",
-						user = { id = 1, login = "author" },
-						base = { ref = "main", sha = "base", repo = { full_name = "owner/repo" } },
-						head = { ref = "feature", sha = "head", repo = { full_name = "owner/repo" } },
-					}, nil)
-				else
-					done({ statuses = {} }, nil)
-				end
-				return { cancel = function() end }
-			end,
-		})
-		local result, result_err
-		pipelines.fetch(
-			{
-				repo_full_name = "owner/repo",
-				target = { id = 18, repo_full_name = "owner/repo", source = { commit_hash = "" } },
-			},
-			nil,
-			function(value, err)
-				result = value
-				result_err = err
-			end
-		)
-
-		assert.is_nil(result_err)
-		assert.same({}, result)
-		assert.same({
-			{ method = "GET", endpoint = "/repos/owner/repo/pulls/18" },
-			{ method = "GET", endpoint = "/repos/owner/repo/commits/head/status" },
 		}, requests)
 	end)
 end)

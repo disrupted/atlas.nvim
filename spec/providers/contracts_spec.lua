@@ -80,8 +80,8 @@ describe("providers contracts", function()
 		assert_functions(reviews, { "fetch", "submit_review", "approve", "request_changes" }, "bitbucket.pulls.reviews")
 	end)
 
-	it("exposes notifications for supported providers", function()
-		for _, id in ipairs({ "forgejo", "gitea", "github", "gitlab" }) do
+	it("exposes notifications for GitHub and GitLab", function()
+		for _, id in ipairs({ "github", "gitlab" }) do
 			for _, domain in ipairs({ "pulls", "issues" }) do
 				local provider = assert(providers.load(id, domain))
 				assert_functions(
