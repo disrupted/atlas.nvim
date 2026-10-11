@@ -7,5 +7,4 @@ return {
 	files = require("atlas.pulls.providers.forge.api.files").new(service),
 	mapper = mapper,
 	pullrequests = require("atlas.pulls.providers.forge.api.pullrequests").new(service, mapper),
-	repositories = require("atlas.pulls.providers.forge.api.repositories").new(service),
 }

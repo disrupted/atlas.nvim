@@ -52,14 +52,14 @@ function M.new(provider_id, api)
 			end
 			local assignees, labels = {}, {}
 			for _, user in ipairs(details.assignees or {}) do
-				assignees[#assignees + 1] = "@" .. tostring(user.account_id or user.display_name)
+				assignees[#assignees + 1] = "@" .. tostring(user.username or user.name)
 			end
 			for _, label in ipairs(details.labels or {}) do
 				labels[#labels + 1] = label.name
 			end
 			local lines = {
 				"**Status:** " .. tostring(issue.status or "Open"),
-				"**Author:** " .. (issue.reporter and issue.reporter.display_name or "Unknown"),
+				"**Author:** " .. (issue.reporter and issue.reporter.name or "Unknown"),
 				"**Assignees:** " .. (#assignees > 0 and table.concat(assignees, ", ") or "Unassigned"),
 			}
 			if #labels > 0 then
@@ -137,6 +137,15 @@ function M.new(provider_id, api)
 		end)
 	end
 
+	function actions.browse_repositories(ctx, done)
+		select_repository("Browse Repository", false, function(repo)
+			require("atlas.ui.repository").open(repo, ctx.provider)
+			done(nil, nil)
+		end, function()
+			done(nil, nil)
+		end)
+	end
+
 	function actions.can_edit()
 		local state = require("atlas.issues.state")
 		return state.provider ~= nil and state.provider.id == provider_id and state.search_view() ~= nil,
@@ -147,17 +156,22 @@ function M.new(provider_id, api)
 		local state = require("atlas.issues.state")
 		local view = state.search_view()
 		if actions.can_edit() then
-			search_prompt.edit(provider_id, "issues", query.resolve(view) .. " ", function(value)
-				if not actions.can_edit() or state.search_view() ~= view then
-					return
+			search_prompt.edit(
+				provider_id,
+				"issues",
+				(state.query ~= "" and state.query or query.resolve(view)) .. " ",
+				function(value)
+					if not actions.can_edit() or state.search_view() ~= view then
+						return
+					end
+					local ok, err = query.apply(view, value)
+					if not ok then
+						require("atlas.core.notify").error(err)
+						return
+					end
+					require("atlas.issues.ui.dashboard.controller").refresh_view()
 				end
-				local ok, err = query.apply(view, value)
-				if not ok then
-					require("atlas.core.notify").error(err)
-					return
-				end
-				require("atlas.issues.ui.dashboard.controller").refresh_view()
-			end)
+			)
 		end
 		done(nil, nil)
 	end

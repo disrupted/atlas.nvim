@@ -280,27 +280,6 @@ function M.fetch(pr, _opts, on_done)
 end
 
 ---@param pr PullRequest
----@param _opts { force_refresh: boolean|nil }|nil
----@param on_done fun(context: PullsReviewContext|nil, err: string|nil)
-function M.fetch_context(pr, _opts, on_done)
-	local candidates, seen = {}, {}
-	---@param value PullsAuthor|PullsReviewer
-	local function add(value)
-		local key = value.id
-		if key ~= "" and not seen[key] then
-			seen[key] = true
-			table.insert(candidates, value)
-		end
-	end
-
-	add(pr.author)
-	for _, value in ipairs(pr.reviewers or {}) do
-		add(value)
-	end
-	on_done({ mention_candidates = candidates }, nil)
-end
-
----@param pr PullRequest
 ---@param review PullsReview
 ---@param on_done fun(ok: boolean, err: string|nil)
 ---@return { cancel: fun() }|nil

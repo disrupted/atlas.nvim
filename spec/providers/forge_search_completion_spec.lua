@@ -1,5 +1,5 @@
 local MODULE = "atlas.providers.forge.completion.search"
-local PROMPT = "atlas.commands.search.prompt"
+local PROMPT = "atlas.ui.prompt"
 
 for _, provider in ipairs({ "gitea", "forgejo" }) do
 	for _, domain in ipairs({ "pulls", "issues" }) do

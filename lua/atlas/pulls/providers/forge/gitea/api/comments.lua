@@ -255,6 +255,8 @@ function M.edit(pr, comment, on_done)
 			return
 		end
 		local updated = mapper.to_comment(raw)
+		updated.pending = comment.pending
+		updated.outdated = comment.outdated
 		on_done(vim.tbl_extend("force", {}, comment, updated), nil)
 	end)
 end

@@ -1,5 +1,5 @@
 local M = {}
-local prompt = require("atlas.commands.search.prompt")
+local prompt = require("atlas.ui.prompt")
 
 local QUALIFIERS = {
 	pulls = { "repo:", "is:", "type:", "search:", "param." },

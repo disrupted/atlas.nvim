@@ -60,7 +60,7 @@ local function new(service, mapper)
 		end
 	end
 
-	---@param values PullsCreatePRReviewer[]|nil
+	---@param values PullsReviewerCandidate[]|nil
 	---@return string[]
 	local function reviewer_logins(values)
 		local result, seen = {}, {}
@@ -181,7 +181,7 @@ local function new(service, mapper)
 		return cache_scope()
 			.. ":list:"
 			.. vim.json.encode({
-				version = 2,
+				version = 3,
 				global = global,
 				repo = view.repo,
 				search = view.search,
@@ -190,25 +190,6 @@ local function new(service, mapper)
 				pagelen = pagelen,
 				page = page,
 			})
-	end
-
-	function M.fetch_user(on_done)
-		local cache_key = cache_scope() .. ":user"
-		local cached, ok = service.get_cache(cache_key)
-		if ok then
-			on_done(cached, nil)
-			return nil
-		end
-		return service.request("GET", "/user", nil, function(raw, err)
-			if err then
-				on_done(nil, err)
-				return
-			end
-			local user = mapper.author(raw)
-			local result = { id = user.id, name = user.name, username = user.username }
-			service.set_cache(cache_key, result)
-			on_done(result, nil)
-		end)
 	end
 
 	---@param view AtlasGiteaPullsSearchConfig|AtlasForgejoPullsSearchConfig
@@ -389,8 +370,8 @@ local function new(service, mapper)
 	end
 
 	---@param opts { repo_slug: string, repo_root: string|nil, head: string, base: string, pr: PullRequest|nil }
-	---@param on_done fun(reviewers: PullsCreatePRReviewer[]|nil, err: string|nil)
-	function M.fetch_default_reviewers(opts, on_done)
+	---@param on_done fun(reviewers: PullsReviewerCandidate[]|nil, err: string|nil)
+	function M.fetch_reviewer_candidates(opts, on_done)
 		if provider == "forgejo" and not opts.pr then
 			on_done({}, nil)
 			return nil
@@ -412,7 +393,7 @@ local function new(service, mapper)
 				end)
 			end,
 			current_user = function(done)
-				return M.fetch_user(done)
+				return service.users.fetch_user(done)
 			end,
 		}
 		if opts.pr then
@@ -456,7 +437,6 @@ local function new(service, mapper)
 						label = "@" .. mapped.username,
 						provider_id = mapped.username,
 						selected = selected[mapped.username] == true,
-						default = false,
 					})
 				end
 			end
@@ -529,61 +509,7 @@ local function new(service, mapper)
 		return requests
 	end
 
-	function M.update_title(pr, title, on_done)
-		if without_draft_prefix(title) == "" then
-			on_done(false, "Title cannot be empty")
-			return nil
-		end
-		local draft = pr.state == "draft"
-		return patch_title_checked(
-			pr,
-			with_draft_state(title, draft),
-			draft,
-			provider_name .. " did not preserve the draft state; configure an enabled draft_prefix",
-			on_done
-		)
-	end
-
-	---@param pr PullRequest
-	---@param draft boolean
-	---@param on_done fun(ok: boolean, err: string|nil)
-	function M.set_draft(pr, draft, on_done)
-		local title = without_draft_prefix(pr.title)
-		if title == "" then
-			on_done(false, "Title cannot be empty")
-			return nil
-		end
-		return patch_title_checked(
-			pr,
-			with_draft_state(title, draft),
-			draft,
-			provider_name .. " did not change the draft state; configure an enabled draft_prefix",
-			on_done
-		)
-	end
-
-	---@param pr PullRequest
-	---@param description string
-	---@param on_done fun(ok: boolean, err: string|nil)
-	function M.update_description(pr, description, on_done)
-		local endpoint = pull_endpoint(pr)
-		if not endpoint then
-			on_done(false, invalid_repository)
-			return nil
-		end
-		return service.request("PATCH", endpoint, { body = description }, function(raw, err)
-			if err then
-				on_done(false, err)
-				return
-			end
-			copy_gitea_mutation_metadata(pr, raw)
-			service.delete_memory_cache(detail_cache_key(pr))
-			invalidate_list_cache()
-			on_done(true, nil)
-		end)
-	end
-
-	function M.update_reviewers(pr, selected, original, on_done)
+	local function update_reviewers(pr, selected, original, on_done)
 		local endpoint = pull_endpoint(pr)
 		if not endpoint then
 			on_done(false, invalid_repository)
@@ -634,27 +560,6 @@ local function new(service, mapper)
 	end
 
 	---@param slug string
-	---@param on_done fun(users: PullsAuthor[]|nil, err: string|nil)
-	function M.list_assignees(slug, on_done)
-		local endpoint = repo_endpoint(slug)
-		if not endpoint then
-			on_done(nil, invalid_repository)
-			return nil
-		end
-		return service.request("GET", endpoint .. "/assignees", nil, function(raw, err)
-			if err then
-				on_done(nil, err)
-				return
-			end
-			local result = {}
-			for _, value in ipairs(raw) do
-				table.insert(result, mapper.author(value))
-			end
-			on_done(result, nil)
-		end)
-	end
-
-	---@param slug string
 	---@param on_done fun(labels: table[]|nil, err: string|nil)
 	function M.list_labels(slug, on_done)
 		local endpoint = repo_endpoint(slug)
@@ -666,45 +571,120 @@ local function new(service, mapper)
 	end
 
 	---@param pr PullRequest
-	---@param assignees string[]
+	---@param opts PullsUpdatePROpts
 	---@param on_done fun(ok: boolean, err: string|nil)
-	function M.update_assignees(pr, assignees, on_done)
+	function M.update_pr(pr, opts, on_done)
 		local endpoint = pull_endpoint(pr)
 		if not endpoint then
 			on_done(false, invalid_repository)
 			return nil
 		end
-		return service.request("PATCH", endpoint, { assignees = assignees }, function(raw, err)
-			if err then
-				on_done(false, err)
-				return
-			end
-			copy_gitea_mutation_metadata(pr, raw)
-			service.delete_memory_cache(detail_cache_key(pr))
-			invalidate_list_cache()
-			on_done(true, nil)
-		end)
-	end
-
-	---@param pr PullRequest
-	---@param labels integer[]
-	---@param on_done fun(ok: boolean, err: string|nil)
-	function M.update_labels(pr, labels, on_done)
-		local endpoint = pull_endpoint(pr)
-		if not endpoint then
-			on_done(false, invalid_repository)
-			return nil
+		local title
+		local draft = opts.draft
+		if draft == nil then
+			draft = pr.state == "draft"
 		end
-		return service.request("PATCH", endpoint, { labels = labels }, function(raw, err)
+		if opts.title ~= nil or opts.draft ~= nil then
+			title = with_draft_state(opts.title or pr.title, draft)
+			if without_draft_prefix(title) == "" then
+				on_done(false, "Title cannot be empty")
+				return nil
+			end
+		end
+		local requests = request_scope.new()
+		local starts = {}
+		if opts.labels ~= nil then
+			starts.labels = function(done)
+				return M.list_labels(pr.repo_full_name, done)
+			end
+		end
+		if opts.reviewers ~= nil then
+			starts.reviews = function(done)
+				return M.review_data(pr, {}, done)
+			end
+		end
+		requests.all(starts, function(values, errors)
+			local err = errors.labels or errors.reviews
 			if err then
 				on_done(false, err)
 				return
 			end
-			copy_gitea_mutation_metadata(pr, raw)
-			service.delete_memory_cache(detail_cache_key(pr))
-			invalidate_list_cache()
-			on_done(true, nil)
+			local payload = { body = opts.body, base = opts.base }
+			if opts.assignees ~= nil then
+				payload.assignees = vim.tbl_map(function(user)
+					return user.username
+				end, opts.assignees)
+			end
+			if opts.labels ~= nil then
+				local ids = {}
+				for _, label in ipairs(values.labels) do
+					ids[label.name] = label.id
+				end
+				payload.labels = {}
+				for _, name in ipairs(opts.labels) do
+					if not ids[name] then
+						on_done(false, "Unknown label: " .. name)
+						return
+					end
+					table.insert(payload.labels, ids[name])
+				end
+			end
+			local function save_reviewers()
+				if opts.reviewers == nil then
+					on_done(true, nil)
+					return
+				end
+				local original = {}
+				for _, reviewer in ipairs(values.reviews.reviewers) do
+					if reviewer.decision == "pending" then
+						table.insert(original, reviewer)
+					end
+				end
+				requests.run(function(done)
+					return update_reviewers(pr, opts.reviewers, original, done)
+				end, on_done)
+			end
+			local function save_fields()
+				if next(payload) == nil then
+					save_reviewers()
+					return
+				end
+				requests.run(function(done)
+					return service.request("PATCH", endpoint, payload, done)
+				end, function(raw, patch_err)
+					if patch_err then
+						on_done(false, patch_err)
+						return
+					end
+					copy_gitea_mutation_metadata(pr, raw)
+					service.delete_memory_cache(detail_cache_key(pr))
+					invalidate_list_cache()
+					save_reviewers()
+				end)
+			end
+			if title == nil or (title == pr.title and (pr.state == "draft") == draft) then
+				save_fields()
+				return
+			end
+			-- Drafts are configured title prefixes on the server. Verify before
+			-- updating other fields so a rejected prefix can be restored safely.
+			requests.run(function(done)
+				return patch_title_checked(
+					pr,
+					title,
+					draft,
+					provider_name .. " did not apply the draft state; configure an enabled draft_prefix",
+					done
+				)
+			end, function(ok, title_err)
+				if not ok then
+					on_done(false, title_err)
+					return
+				end
+				save_fields()
+			end)
 		end)
+		return requests
 	end
 
 	---@param pr PullRequest
@@ -804,7 +784,7 @@ local function new(service, mapper)
 	end
 
 	---@param pr PullRequest
-	---@param opts { method: "merge"|"squash", delete_branch: boolean }
+	---@param opts PullsMergeOpts
 	---@param on_done fun(ok: boolean, err: string|nil)
 	function M.merge(pr, opts, on_done)
 		local endpoint = pull_endpoint(pr)
@@ -817,10 +797,12 @@ local function new(service, mapper)
 			return nil
 		end
 		local payload = {
-			delete_branch_after_merge = opts.delete_branch == true,
+			Do = opts.method,
+			MergeTitleField = opts.subject,
+			MergeMessageField = opts.body,
+			delete_branch_after_merge = opts.delete_source_branch == true,
 			head_commit_id = vim.trim(pr.source.commit_hash) ~= "" and pr.source.commit_hash or nil,
 		}
-		payload[provider == "gitea" and "do" or "Do"] = opts.method
 		return service.request("POST", endpoint .. "/merge", payload, function(_, err)
 			if not err then
 				service.delete_memory_cache(detail_cache_key(pr))

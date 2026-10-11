@@ -56,6 +56,7 @@ function factory.new(service)
 				local login = account and account.login or ""
 				table.insert(commits, {
 					hash = hash,
+					repo_full_name = pr.repo_full_name,
 					short_hash = hash:sub(1, 7),
 					message = commit.message or "",
 					author_name = author.name or (account and (account.full_name or account.login)) or "",

@@ -1,4 +1,3 @@
-local icons = require("atlas.ui.shared.icons")
 local request_scope = require("atlas.core.requests")
 
 local M = {}
@@ -14,18 +13,6 @@ function M.new(service)
 		local subject = raw.subject
 		local repository = raw.repository
 		local subject_type = subject.type:lower()
-		local icon, icon_hl
-		if subject_type == "pull" then
-			icon, icon_hl = icons.pulls("pr")
-		elseif subject_type == "issue" then
-			icon, icon_hl = icons.issues("issue")
-		elseif subject_type == "commit" then
-			icon, icon_hl = icons.pulls("commit")
-		elseif subject_type == "repository" then
-			icon, icon_hl = icons.pulls("repo")
-		else
-			icon, icon_hl = icons.general("info")
-		end
 
 		local repo = repository.full_name
 		local state = subject.state or ""
@@ -40,8 +27,7 @@ function M.new(service)
 			title = subject.title,
 			subtitle = subtitle ~= "" and subtitle or nil,
 			timestamp = raw.updated_at,
-			icon = icon,
-			icon_hl = icon_hl,
+			kind = subject_type == "pull" and "pr" or subject_type == "issue" and "issue" or nil,
 			unread = raw.unread == true,
 			url = url ~= "" and url or nil,
 			_raw = raw,

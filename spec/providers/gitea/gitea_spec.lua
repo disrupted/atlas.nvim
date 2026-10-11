@@ -9,7 +9,7 @@ local function cleanup()
 	package.loaded[TRANSPORT] = nil
 	package.preload[TRANSPORT] = nil
 	for module in pairs(package.loaded) do
-		if module:sub(1, #PREFIX) == PREFIX then
+		if module:sub(1, #PREFIX) == PREFIX or module:match("^atlas%.pulls%.pipelines%.forge%.gitea") then
 			package.loaded[module] = nil
 		end
 	end
@@ -47,11 +47,8 @@ describe("Gitea pulls", function()
 
 		assert.equal(comments.add, provider.capabilities.comments.add_comment)
 		assert.equal(comments.set_thread_resolved, provider.capabilities.comments.set_thread_resolved)
-		assert.equal(pipelines.fetch_details, provider.capabilities.pipelines.fetch_details)
-		assert.equal(
-			require("atlas.pulls.providers.forge.gitea.actions.pipelines"),
-			provider.capabilities.pipelines.actions
-		)
+		assert.equal(pipelines.fetch, provider.capabilities.pipelines.fetch)
+		assert.equal(require("atlas.pulls.pipelines.forge.gitea.actions"), provider.capabilities.pipelines.actions)
 	end)
 
 	it("uses the Gitea 1.27 review-thread endpoints", function()
@@ -176,9 +173,8 @@ describe("Gitea pulls", function()
 		local result, result_err
 		pipelines.fetch(
 			{
-				id = 18,
 				repo_full_name = "owner/repo",
-				source = { commit_hash = "" },
+				target = { id = 18, repo_full_name = "owner/repo", source = { commit_hash = "" } },
 			},
 			nil,
 			function(value, err)

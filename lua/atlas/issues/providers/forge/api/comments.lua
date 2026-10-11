@@ -19,8 +19,9 @@ function M.new(service, mapper)
 
 	---@param issue GiteaIssue|ForgejoIssue
 	---@param body string
+	---@param _opts { parent?: IssueComment }|nil
 	---@param on_done fun(comment: IssueComment|nil, err: string|nil)
-	function api.add(issue, body, on_done)
+	function api.add(issue, body, _opts, on_done)
 		local base, number = endpoint(issue)
 		if not base or vim.trim(body) == "" then
 			on_done(nil, not base and ("Invalid " .. provider_name .. " issue key") or "Comment cannot be empty")

@@ -9,7 +9,7 @@ local function cleanup()
 	package.loaded[TRANSPORT] = nil
 	package.preload[TRANSPORT] = nil
 	for module in pairs(package.loaded) do
-		if module:sub(1, #PREFIX) == PREFIX then
+		if module:sub(1, #PREFIX) == PREFIX or module:match("^atlas%.pulls%.pipelines%.forge%.forgejo") then
 			package.loaded[module] = nil
 		end
 	end
@@ -40,11 +40,8 @@ describe("Forgejo pulls", function()
 
 		assert.equal(comments.add, provider.capabilities.comments.add_comment)
 		assert.equal(reviews.start_review, provider.capabilities.reviews.start_review)
-		assert.equal(pipelines.fetch_details, provider.capabilities.pipelines.fetch_details)
-		assert.equal(
-			require("atlas.pulls.providers.forge.forgejo.actions.pipelines"),
-			provider.capabilities.pipelines.actions
-		)
+		assert.equal(pipelines.fetch, provider.capabilities.pipelines.fetch)
+		assert.equal(require("atlas.pulls.pipelines.forge.forgejo.actions"), provider.capabilities.pipelines.actions)
 		assert.is_nil(provider.capabilities.comments.set_thread_resolved)
 	end)
 
@@ -118,7 +115,7 @@ describe("Forgejo pulls", function()
 			stages = {},
 		}
 
-		pipelines.cancel(pr, pipeline, function() end)
+		pipelines.cancel({ repo_full_name = pr.repo_full_name, target = pr }, pipeline, function() end)
 
 		assert.same({ run_number = "42", head_sha = "abc", limit = 1 }, queries[1])
 		assert.same({
@@ -157,9 +154,8 @@ describe("Forgejo pulls", function()
 		local result, result_err
 		pipelines.fetch(
 			{
-				id = 18,
 				repo_full_name = "owner/repo",
-				source = { commit_hash = "" },
+				target = { id = 18, repo_full_name = "owner/repo", source = { commit_hash = "" } },
 			},
 			nil,
 			function(value, err)

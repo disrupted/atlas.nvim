@@ -34,6 +34,10 @@ function M.new(provider_id)
 		return vim.trim(client.config().base_url or ""):gsub("/+$", "")
 	end
 
+	function client.hostname()
+		return client.base_url():match("^https?://([^/]+)") or (provider_id == "gitea" and "gitea.com" or nil)
+	end
+
 	function client.cache_ttl()
 		return client.config().cache_ttl or 300
 	end

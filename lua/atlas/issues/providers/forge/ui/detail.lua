@@ -4,14 +4,15 @@ local icons = require("atlas.ui.shared.icons")
 local utils = require("atlas.ui.shared.utils")
 local helper = require("atlas.issues.ui.presentation")
 local spinner = require("atlas.ui.components.spinner")
+local highlights = require("atlas.ui.highlights")
 
----@param assignees IssueUser[]
+---@param assignees AtlasUser[]
 ---@return string, string|table[]
 local function assignees_display(assignees)
 	local parts, spans = {}, {}
 	local cursor = 0
 	for _, assignee in ipairs(assignees) do
-		local login = tostring(assignee.account_id or assignee.display_name or "")
+		local login = tostring(assignee.username or assignee.name or "")
 		if login ~= "" then
 			if #parts > 0 then
 				table.insert(parts, ", ")
@@ -53,98 +54,71 @@ local function tabs()
 	}
 end
 
----@param provider_id ForgeProviderId
----@return IssuesProviderDetail
-function M.new(provider_id)
-	local provider_name = provider_id == "gitea" and "Gitea" or "Forgejo"
-
-	---@param hex string|nil
-	---@return string
-	local function label_hl(hex)
-		local clean = tostring(hex or ""):lower():gsub("[^0-9a-f]", "")
-		if #clean ~= 6 then
-			return "AtlasChipActive"
-		end
-		local name = "Atlas" .. provider_name .. "IssueLabel_" .. clean
-		local r = tonumber(clean:sub(1, 2), 16) or 0
-		local g = tonumber(clean:sub(3, 4), 16) or 0
-		local b = tonumber(clean:sub(5, 6), 16) or 0
-		local foreground = (0.299 * r + 0.587 * g + 0.114 * b) / 255 > 0.6 and "#1e1e2e" or "#ffffff"
-		vim.api.nvim_set_hl(0, name, { fg = foreground, bg = "#" .. clean, bold = true })
-		return name
+---@param issue Issue
+---@param details IssueDetails|nil
+---@param loading boolean
+---@return IssuesDetailHeaderField[]
+function M.header_fields(issue, details, loading)
+	local reporter = issue.reporter and tostring(issue.reporter.name or "") or ""
+	if reporter == "" then
+		reporter = "Unknown"
 	end
 
-	---@type IssuesProviderDetail
-	local detail = {}
-
-	---@param issue Issue
-	---@param details IssueDetails|nil
-	---@param loading boolean
-	---@return IssuesDetailHeaderField[]
-	function detail.header_fields(issue, details, loading)
-		local reporter = issue.reporter and tostring(issue.reporter.display_name or "") or ""
-		if reporter == "" then
-			reporter = "Unknown"
-		end
-
-		local assignees = details and details.assignees or (issue.assignee and { issue.assignee } or {})
-		local assignee_text, assignee_hl = assignees_display(assignees)
-		if loading and details == nil then
-			assignee_text = spinner.with_text("Loading...")
-			assignee_hl = "AtlasTextMuted"
-		end
-
-		local fields = {
-			{
-				label = "Status",
-				value = tostring(issue.status or "Open"),
-				hl = "Atlas" .. provider_name .. (issue.status_id == "closed" and "IssueClosedChip" or "IssueOpenChip"),
-			},
-			{
-				label = "Author",
-				value = string.format("%s %s", icons.general("user"), reporter),
-				hl = helper.person_hl(reporter),
-			},
-			{ label = "Assignees", value = assignee_text, hl = assignee_hl },
-		}
-
-		local milestone = details and details.milestone
-		if milestone and tostring(milestone.title or "") ~= "" then
-			table.insert(fields, { label = "Milestone", value = milestone.title, hl = "AtlasTextMuted" })
-		end
-		if tostring(issue.created_at or "") ~= "" then
-			table.insert(fields, {
-				label = "Opened",
-				value = utils.relative_time_text(issue.created_at) or issue.created_at,
-				hl = "AtlasTextMuted",
-			})
-		end
-		if issue.duedate then
-			table.insert(fields, { label = "Due", value = issue.duedate, hl = "AtlasTextWarning" })
-		end
-		return fields
+	local assignees = details and details.assignees or (issue.assignee and { issue.assignee } or {})
+	local assignee_text, assignee_hl = assignees_display(assignees)
+	if loading and details == nil then
+		assignee_text = spinner.with_text("Loading...")
+		assignee_hl = "AtlasTextMuted"
 	end
 
-	---@param _issue Issue
-	---@param details IssueDetails|nil
-	---@param loading boolean
-	---@return IssuesDetailChip[]
-	function detail.chips(_issue, details, loading)
-		if loading then
-			return { { label = spinner.with_text("Loading..."), hl = "AtlasTextMuted" } }
-		end
-		local chips = {}
-		for _, label in ipairs(details and details.labels or {}) do
-			if tostring(label.name or "") ~= "" then
-				table.insert(chips, { label = label.name, hl = label_hl(label.color) })
-			end
-		end
-		return chips
+	local fields = {
+		{
+			label = "Status",
+			value = tostring(issue.status or "Open"),
+			hl = issue.status_id == "closed" and "AtlasIssueClosedChip" or "AtlasIssueOpenChip",
+		},
+		{
+			label = "Author",
+			value = string.format("%s %s", icons.general("user"), reporter),
+			hl = helper.person_hl(reporter),
+		},
+		{ label = "Assignees", value = assignee_text, hl = assignee_hl },
+	}
+
+	local milestone = details and details.milestone
+	if milestone and tostring(milestone.title or "") ~= "" then
+		table.insert(fields, { label = "Milestone", value = milestone.title, hl = "AtlasTextMuted" })
 	end
-
-	detail.tabs = tabs
-
-	return detail
+	if tostring(issue.created_at or "") ~= "" then
+		table.insert(fields, {
+			label = "Opened",
+			value = utils.relative_time_text(issue.created_at) or issue.created_at,
+			hl = "AtlasTextMuted",
+		})
+	end
+	if issue.duedate then
+		table.insert(fields, { label = "Due", value = issue.duedate, hl = "AtlasTextWarning" })
+	end
+	return fields
 end
+
+---@param _issue Issue
+---@param details IssueDetails|nil
+---@param loading boolean
+---@return IssuesDetailChip[]
+function M.chips(_issue, details, loading)
+	if loading then
+		return { { label = spinner.with_text("Loading..."), hl = "AtlasTextMuted" } }
+	end
+	local chips = {}
+	for _, label in ipairs(details and details.labels or {}) do
+		if tostring(label.name or "") ~= "" then
+			table.insert(chips, { label = label.name, hl = highlights.chip(label.color) })
+		end
+	end
+	return chips
+end
+
+M.tabs = tabs
 
 return M

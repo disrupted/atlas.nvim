@@ -30,6 +30,7 @@ local pagination_factory = require("atlas.providers.forge.api.pagination")
 ---@field config fun(): AtlasGiteaConfig|AtlasForgejoConfig
 ---@field get_auth fun(): string, string|nil
 ---@field base_url fun(): string
+---@field hostname fun(): string|nil
 ---@field cache_ttl fun(): number
 ---@field get_cache fun(key: string): any|nil, boolean
 ---@field set_cache fun(key: string, value: any)
@@ -53,6 +54,8 @@ local pagination_factory = require("atlas.providers.forge.api.pagination")
 ---@field name ForgeProviderName
 ---@field fetch_all fun(endpoint: string, params: table<string, any>|nil, opts: ForgePaginationOpts|nil, on_done: fun(values: table[]|nil, err: string|nil), ctx: ForgeRequestContext|nil): AtlasRequestScope
 ---@field notifications AtlasNotificationsCapability
+---@field users AtlasUsersCapability
+---@field repository ForgeRepositoriesApi
 
 ---@param provider_id ForgeProviderId
 ---@return ForgeService
@@ -63,6 +66,8 @@ function M.new(provider_id)
 	service.name = provider_id == "gitea" and "Gitea" or "Forgejo"
 	service.fetch_all = pagination_factory.new(service).fetch_all
 	service.notifications = notifications_factory.new(service)
+	service.users = require("atlas.providers.forge.users").new(service)
+	service.repository = require("atlas.providers.forge.repositories").new(service)
 	return service
 end
 

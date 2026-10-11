@@ -29,7 +29,6 @@ local M = {}
 ---@field content_version integer|nil
 
 ---@class ForgeIssuesApi
----@field fetch_user fun(on_done: fun(user: IssueUser|nil, err: string|nil)): ForgeRequestHandle|nil
 ---@field search_repositories fun(term: string, on_done: fun(repositories: string[]|nil, err: string|nil)): ForgeRequestHandle|nil
 ---@field list fun(view: AtlasGiteaIssuesViewConfig|AtlasForgejoIssuesViewConfig, opts: IssuesFetchOpts, on_done: fun(page: IssuesPage, err: string|nil)): ForgeRequestHandle|AtlasRequestScope|nil
 ---@field get fun(ref: GiteaIssue|ForgejoIssue|IssueRef|string, opts: IssuesFetchOpts|nil, on_done: fun(details: GiteaIssueDetails|ForgejoIssueDetails|nil, err: string|nil)): ForgeRequestHandle|nil
@@ -43,7 +42,6 @@ local M = {}
 ---@field update_assignees fun(issue: GiteaIssue|ForgejoIssue, assignees: string[], on_done: fun(ok: boolean, err: string|nil)): ForgeRequestHandle|nil
 ---@field update_milestone fun(issue: GiteaIssue|ForgejoIssue, milestone: integer|nil, on_done: fun(ok: boolean, err: string|nil)): ForgeRequestHandle|nil
 ---@field list_labels fun(slug: string, on_done: fun(labels: (GiteaIssueLabel|ForgejoIssueLabel)[]|nil, err: string|nil)): AtlasRequestScope|nil
----@field list_assignees fun(slug: string, on_done: fun(users: IssueUser[]|nil, err: string|nil)): ForgeRequestHandle|nil
 ---@field list_milestones fun(slug: string, on_done: fun(milestones: (GiteaIssueMilestone|ForgejoIssueMilestone)[]|nil, err: string|nil)): AtlasRequestScope|nil
 ---@field update_labels fun(issue: GiteaIssue|ForgejoIssue, labels: (integer|string)[], on_done: fun(ok: boolean, err: string|nil)): ForgeRequestHandle|nil
 ---@field check_subscription fun(issue: GiteaIssue|ForgejoIssue, on_done: fun(subscribed: boolean|nil, err: string|nil)): ForgeRequestHandle|nil
@@ -104,27 +102,6 @@ function M.new(service, mapper)
 		return string.format("%s/issues/%d", base, number), number, repo_full_name, key
 	end
 
-	---@param on_done fun(user: IssueUser|nil, err: string|nil)
-	function api.fetch_user(on_done)
-		local cache_key = cache_scope() .. ":user"
-		local cached, ok = service.get_cache(cache_key)
-		if ok then
-			on_done(cached, nil)
-			return nil
-		end
-		return service.request("GET", "/user", nil, function(raw, err)
-			if err then
-				on_done(nil, err)
-				return
-			end
-			local result = mapper.to_user(raw)
-			if result then
-				service.set_cache(cache_key, result)
-			end
-			on_done(result, nil)
-		end)
-	end
-
 	---@param view AtlasGiteaIssuesViewConfig|AtlasForgejoIssuesViewConfig
 	---@param opts IssuesFetchOpts
 	---@param on_done fun(page: IssuesPage, err: string|nil)
@@ -163,7 +140,7 @@ function M.new(service, mapper)
 
 		local function fetch(done)
 			local request_endpoint = endpoint .. service.query(params)
-			local cache_key = cache_scope() .. ":list:v2:" .. request_endpoint
+			local cache_key = cache_scope() .. ":list:v3:" .. request_endpoint
 			if not opts.force_refresh then
 				local cached, ok = service.get_cache(cache_key)
 				if ok then
@@ -201,12 +178,12 @@ function M.new(service, mapper)
 
 		if base and has_scoped_filter then
 			local requests = request_scope.new()
-			requests.run(api.fetch_user, function(user, err)
-				if err then
-					on_done({ items = {} }, err)
+			requests.run(service.users.fetch_user, function(user, err)
+				if err or not user then
+					on_done({ items = {} }, err or "Failed to resolve current user")
 					return
 				end
-				local login = user.account_id
+				local login = user.username
 				params.assigned_by = scope == "assigned" and login or nil
 				params.created_by = scope == "created" and login or nil
 				params.mentioned_by = scope == "mentioned" and login or nil
@@ -495,27 +472,6 @@ function M.new(service, mapper)
 				})
 			end
 			on_done(labels, nil)
-		end)
-	end
-
-	---@param slug string
-	---@param on_done fun(users: IssueUser[]|nil, err: string|nil)
-	function api.list_assignees(slug, on_done)
-		local base = repo_endpoint(slug)
-		if not base then
-			on_done(nil, "Invalid " .. provider_name .. " repository")
-			return nil
-		end
-		return service.request("GET", base .. "/assignees", nil, function(raw, err)
-			if err then
-				on_done(nil, err)
-				return
-			end
-			local users = {}
-			for _, value in ipairs(raw) do
-				table.insert(users, mapper.to_user(value))
-			end
-			on_done(users, nil)
 		end)
 	end
 

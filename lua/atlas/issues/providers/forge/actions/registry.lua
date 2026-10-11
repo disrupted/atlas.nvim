@@ -6,7 +6,7 @@ local picker = require("atlas.ui.picker")
 local notify = require("atlas.core.notify")
 local config = require("atlas.config")
 
----@class ForgeIssueActionsRegistry : IssuesActionsCapability
+---@class ForgeIssueActionsRegistry : AtlasActionsCapability
 ---@field items AtlasIssueAction[]
 ---@field find fun(id: string): AtlasIssueAction|nil
 
@@ -43,7 +43,8 @@ end
 ---@return ForgeIssueActionsRegistry
 function M.new(provider_id, api)
 	local provider_name = provider_id == "gitea" and "Gitea" or "Forgejo"
-	local create_issue = require("atlas.issues.create.forge.issue").new(provider_id, api)
+	local editor = require("atlas.issues.providers.forge.ui.editor").new(provider_id, api)
+	local users_api = require("atlas.providers.forge." .. provider_id .. ".api").users
 	local search = require("atlas.issues.providers.forge.actions.search").new(provider_id, api)
 	local set_locked_api = api.set_locked
 	---@type ForgeIssueActionsRegistry
@@ -88,18 +89,17 @@ function M.new(provider_id, api)
 				return configured
 			end
 		end
-
-		local info = require("atlas.core.git").local_repository()
-		return info and info.provider == provider_id and info.repo_full_name or nil
 	end
 
 	---@param issue GiteaIssue|ForgejoIssue
 	---@param done fun(result: IssuesActionResult|nil, err: string|nil)
 	---@param run fun(details: GiteaIssueDetails|ForgejoIssueDetails)
 	local function with_details(issue, done, run)
-		api.get(issue, {}, function(details, err)
+		api.get(issue, { force_refresh = true }, function(details, err)
 			if err or not details then
-				done(nil, err or ("Failed to load " .. provider_name .. " issue"))
+				err = err or ("Failed to load " .. provider_name .. " issue")
+				notify.error(err)
+				done(nil, err)
 				return
 			end
 			---@cast details GiteaIssueDetails|ForgejoIssueDetails
@@ -145,8 +145,9 @@ function M.new(provider_id, api)
 		---@cast issue GiteaIssue|ForgejoIssue
 		notify.loading("Loading assignees...")
 		with_details(issue, done, function(details)
-			api.list_assignees(issue_slug(issue), function(users, err)
+			users_api.get_assignable_users(issue_slug(issue), nil, function(users, err)
 				if err then
+					notify.error(err)
 					done(nil, err)
 					return
 				end
@@ -154,10 +155,10 @@ function M.new(provider_id, api)
 				local selected, current_logins = {}, {}
 				local by_login = {}
 				for _, item in ipairs(users) do
-					by_login[item.account_id] = item
+					by_login[item.username] = item
 				end
 				for _, assignee in ipairs(details.assignees) do
-					local login = assignee.account_id
+					local login = assignee.username
 					if by_login[login] then
 						table.insert(selected, by_login[login])
 						table.insert(current_logins, login)
@@ -167,16 +168,16 @@ function M.new(provider_id, api)
 					items = users,
 					selected = selected,
 					key = function(item)
-						return item.account_id
+						return item.username
 					end,
 					format_item = function(item)
-						return string.format("%s %s (@%s)", icons.general("user"), item.display_name, item.account_id)
+						return string.format("%s %s (@%s)", icons.general("user"), item.name, item.username)
 					end,
 					title = "Assignees for " .. issue.key,
 					on_done = function(values)
 						local logins = {}
 						for _, item in ipairs(values) do
-							table.insert(logins, item.account_id)
+							table.insert(logins, item.username)
 						end
 						if same_values(logins, current_logins) then
 							done(nil, nil)
@@ -185,6 +186,7 @@ function M.new(provider_id, api)
 						notify.loading("Updating assignees...")
 						api.update_assignees(issue, logins, function(ok, update_err)
 							if not ok then
+								notify.error(update_err)
 								done(nil, update_err)
 								return
 							end
@@ -205,6 +207,7 @@ function M.new(provider_id, api)
 		with_details(issue, done, function(details)
 			api.list_labels(issue_slug(issue), function(labels, err)
 				if err then
+					notify.error(err)
 					done(nil, err)
 					return
 				end
@@ -241,6 +244,7 @@ function M.new(provider_id, api)
 						notify.loading("Updating labels...")
 						api.update_labels(issue, ids, function(ok, update_err)
 							if not ok then
+								notify.error(update_err)
 								done(nil, update_err)
 								return
 							end
@@ -261,6 +265,7 @@ function M.new(provider_id, api)
 		with_details(issue, done, function(details)
 			api.list_milestones(issue_slug(issue), function(milestones, err)
 				if err then
+					notify.error(err)
 					done(nil, err)
 					return
 				end
@@ -286,6 +291,7 @@ function M.new(provider_id, api)
 						notify.loading("Updating milestone...")
 						api.update_milestone(issue, choice.id, function(ok, update_err)
 							if not ok then
+								notify.error(update_err)
 								done(nil, update_err)
 								return
 							end
@@ -303,12 +309,13 @@ function M.new(provider_id, api)
 	local function toggle_subscription(ctx, done)
 		local issue = assert(ctx.issue)
 		---@cast issue GiteaIssue|ForgejoIssue
-		local login = ctx.current_user and ctx.current_user.account_id or nil
+		local login = ctx.current_user and ctx.current_user.username or nil
 		local function update(subscribed, user_login)
 			local next_state = not subscribed
 			notify.loading(next_state and "Subscribing..." or "Unsubscribing...")
 			api.set_subscription(issue, user_login, next_state, function(ok, err)
 				if not ok then
+					notify.error(err)
 					done(nil, err)
 					return
 				end
@@ -322,12 +329,14 @@ function M.new(provider_id, api)
 				update(subscribed, login)
 				return
 			end
-			api.fetch_user(function(user, err)
-				if err then
+			users_api.fetch_user(function(user, err)
+				if err or not user then
+					err = err or "Failed to resolve current user"
+					notify.error(err)
 					done(nil, err)
 					return
 				end
-				update(subscribed, user.account_id)
+				update(subscribed, user.username)
 			end)
 		end
 
@@ -337,6 +346,7 @@ function M.new(provider_id, api)
 		end
 		api.check_subscription(issue, function(subscribed, err)
 			if err then
+				notify.error(err)
 				done(nil, err)
 				return
 			end
@@ -370,6 +380,7 @@ function M.new(provider_id, api)
 			notify.loading("Closing " .. issue.key .. "...")
 			api.set_state(issue, "closed", function(ok, err)
 				if not ok then
+					notify.error(err)
 					done(nil, err)
 					return
 				end
@@ -396,6 +407,7 @@ function M.new(provider_id, api)
 			notify.loading("Reopening " .. issue.key .. "...")
 			api.set_state(issue, "open", function(ok, err)
 				if not ok then
+					notify.error(err)
 					done(nil, err)
 					return
 				end
@@ -411,21 +423,10 @@ function M.new(provider_id, api)
 		icon = icons.action("transition"),
 		hidden = true,
 		is_available = has_issue,
+		confirmation = true,
 		run = function(ctx, done)
 			local action = ctx.issue.status_id == "closed" and "reopen" or "close"
-			local verb = action == "reopen" and "Reopen" or "Close"
-			vim.ui.input({ prompt = string.format("%s issue %s? [y/N]: ", verb, ctx.issue.key) }, function(input)
-				if input == nil or vim.trim(input):lower() ~= "y" then
-					done(nil, nil)
-					return
-				end
-				local target = registry.find(action)
-				if not target then
-					done(nil, "Unknown action: " .. action)
-					return
-				end
-				target.run(ctx, done)
-			end)
+			return registry.find(action).run(ctx, done)
 		end,
 	})
 
@@ -448,6 +449,7 @@ function M.new(provider_id, api)
 			notify.loading("Pinning " .. issue.key .. "...")
 			api.set_pinned(issue, true, function(ok, err)
 				if not ok then
+					notify.error(err)
 					done(nil, err)
 					return
 				end
@@ -477,6 +479,7 @@ function M.new(provider_id, api)
 			notify.loading("Unpinning " .. issue.key .. "...")
 			api.set_pinned(issue, false, function(ok, err)
 				if not ok then
+					notify.error(err)
 					done(nil, err)
 					return
 				end
@@ -499,6 +502,7 @@ function M.new(provider_id, api)
 			notify.loading((locked and "Locking " or "Unlocking ") .. issue.key .. "...")
 			set_locked_api(issue, locked, reason, function(ok, err)
 				if not ok then
+					notify.error(err)
 					done(nil, err)
 					return
 				end
@@ -558,16 +562,8 @@ function M.new(provider_id, api)
 		is_available = has_issue,
 		run = function(ctx, done)
 			local issue = assert(ctx.issue)
-			---@cast issue GiteaIssue|ForgejoIssue
-			with_details(issue, done, function(details)
-				create_issue.open({
-					repo_slug = issue_slug(issue),
-					issue = issue,
-					details = details,
-					on_done = function(result, err)
-						done(result and { issue_key = issue.key } or nil, err)
-					end,
-				})
+			return editor.edit(issue, function(result, err)
+				done(result and { issue_key = issue.key } or nil, err)
 			end)
 		end,
 	})
@@ -616,24 +612,19 @@ function M.new(provider_id, api)
 		id = "delete_issue",
 		label = "Delete Issue",
 		icon = icons.action("delete"),
+		confirmation = true,
 		is_available = has_issue,
 		run = function(ctx, done)
 			local issue = assert(ctx.issue)
-			---@cast issue GiteaIssue|ForgejoIssue
-			vim.ui.input({ prompt = string.format("Delete issue %s? [y/N]: ", issue.key) }, function(input)
-				if input == nil or vim.trim(input):lower() ~= "y" then
-					done(nil, nil)
+			notify.loading("Deleting " .. issue.key .. "...")
+			return api.delete(issue, function(ok, err)
+				if not ok then
+					notify.error(err)
+					done(nil, err)
 					return
 				end
-				notify.loading("Deleting " .. issue.key .. "...")
-				api.delete(issue, function(ok, err)
-					if not ok then
-						done(nil, err)
-						return
-					end
-					notify.success("Deleted " .. issue.key, { timeout = 1200 })
-					done({ issue_key = issue.key, removed = true }, nil)
-				end)
+				notify.success("Deleted " .. issue.key, { timeout = 1200 })
+				done({ issue_key = issue.key, removed = true }, nil)
 			end)
 		end,
 	})
@@ -642,34 +633,43 @@ function M.new(provider_id, api)
 		id = "create_issue",
 		label = "Create Issue",
 		icon = icons.action("create"),
-		is_available = function(ctx)
-			return #create_repositories(ctx) > 0, "Could not determine repository"
-		end,
 		run = function(ctx, done)
-			local repositories = create_repositories(ctx)
 			local function open(slug)
-				create_issue.open({
-					repo_slug = slug,
-					on_done = function(result, err)
-						done(result and { issue_key = result.key } or nil, err)
-					end,
-				})
+				editor.open(slug, function(result, err)
+					done(result and { issue_key = result.key } or nil, err)
+				end)
 			end
-			if #repositories == 1 then
-				open(repositories[1])
+			local slug = context_slug(ctx)
+			if slug then
+				open(slug)
 				return
 			end
-			picker.select({
-				title = "Create issue in:",
-				items = repositories,
-				on_select = function(slug)
-					if slug then
-						open(slug)
-					else
-						done(nil, nil)
-					end
-				end,
-			})
+			return require("atlas.core.git").local_repository(nil, function(target, err)
+				if target and target.provider == provider_id then
+					open(target.repo_full_name)
+					return
+				end
+				local repositories = create_repositories(ctx)
+				if #repositories == 0 then
+					local message = err or "Could not determine " .. provider_name .. " repository"
+					notify.error(message)
+					done(nil, message)
+				elseif #repositories == 1 then
+					open(repositories[1])
+				else
+					picker.select({
+						title = "Create issue in:",
+						items = repositories,
+						on_select = function(selected)
+							if selected then
+								open(selected)
+							else
+								done(nil, nil)
+							end
+						end,
+					})
+				end
+			end)
 		end,
 	})
 
@@ -688,6 +688,13 @@ function M.new(provider_id, api)
 	})
 	register({ id = "open_repo", label = "Open Repo", icon = icons.action("search"), run = search.open_repo })
 
+	register(actions.browse_repository)
+	register({
+		id = "browse_repositories",
+		label = "Browse Repository",
+		icon = icons.general("overview"),
+		run = search.browse_repositories,
+	})
 	register(actions.manage_templates)
 	register(actions.browse_issue)
 	register(actions.copy_issue_key)
@@ -702,38 +709,6 @@ function M.new(provider_id, api)
 			end
 		end
 		return nil
-	end
-
-	function registry.is_available(action_id, ctx)
-		local action = registry.find(action_id)
-		return action ~= nil and (action.is_available == nil or action.is_available(ctx) == true)
-	end
-
-	function registry.run(action_id, ctx, on_done)
-		local action = registry.find(action_id)
-		if not action then
-			local err = string.format("Unknown action: %s", action_id)
-			notify.warn(err)
-			on_done(nil, err)
-			return false
-		end
-		local available, err = true, nil
-		if action.is_available then
-			available, err = action.is_available(ctx)
-		end
-		if not available then
-			err = err or "Action is not available"
-			notify.warn(err)
-			on_done(nil, err)
-			return false
-		end
-		action.run(ctx, function(result, run_err)
-			if run_err then
-				notify.error(run_err)
-			end
-			on_done(result, run_err)
-		end)
-		return true
 	end
 
 	return registry

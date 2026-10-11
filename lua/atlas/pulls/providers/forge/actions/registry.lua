@@ -1,7 +1,4 @@
 local actions = require("atlas.pulls.actions")
-local action_utils = require("atlas.pulls.actions.utils")
-local logger = require("atlas.core.logger")
-local notes = require("atlas.pulls.notes")
 local picker = require("atlas.ui.picker")
 local core_notify = require("atlas.core.notify")
 local icons = require("atlas.ui.shared.icons")
@@ -70,33 +67,6 @@ function M.new(provider_id, pullrequests, repositories)
 			return
 		end
 		core_notify.show(level, message, { timeout = duration })
-	end
-
-	---@param values table[]|nil
-	---@param key fun(value: table): string
-	---@return table<string, boolean>
-	local function selected_set(values, key)
-		local result = {}
-		for _, value in ipairs(values or {}) do
-			local id = key(value)
-			if id ~= "" then
-				result[id] = true
-			end
-		end
-		return result
-	end
-
-	---@param ctx AtlasPullActionContext
-	---@param on_done fun(details: GiteaPullRequestDetails|ForgejoPullRequestDetails|nil, err: string|nil)
-	---@return { cancel: fun() }|nil
-	local function with_details(ctx, on_done)
-		if ctx.details then
-			local details = ctx.details
-			---@cast details GiteaPullRequestDetails|ForgejoPullRequestDetails
-			on_done(details, nil)
-			return nil
-		end
-		return pullrequests.get(assert(ctx.pr), { force_refresh = false }, on_done)
 	end
 
 	---@param opts { title: string, include_all: boolean, on_select: fun(repo: string), on_cancel: fun() }
@@ -247,48 +217,7 @@ function M.new(provider_id, pullrequests, repositories)
 		run = actions.request_changes.run,
 	})
 
-	register({
-		id = "merge",
-		label = "Merge PR",
-		icon = icons.action("merge"),
-		is_available = function(ctx)
-			local ok, err = has_repository(ctx)
-			if not ok then
-				return false, err
-			end
-			if ctx.pr.state == "draft" then
-				return false, "PR is a draft"
-			end
-			if ctx.pr.state ~= "open" then
-				return false, "PR is not open"
-			end
-			return true, nil
-		end,
-		run = function(ctx, done)
-			local pr = assert(ctx.pr)
-			local options = action_utils.merge_options()
-			vim.ui.input({
-				prompt = string.format("Confirm %s merge PR #%s? [y/N]: ", options.method, tostring(pr.id)),
-			}, function(input)
-				local answer = vim.trim(tostring(input or "")):lower()
-				if answer ~= "y" and answer ~= "yes" then
-					done({ changed_pr = false, message = "Merge cancelled" }, nil)
-					return
-				end
-				notify(ctx, "loading", "Merging PR...")
-				pullrequests.merge(pr, options, function(ok, err)
-					if not ok then
-						notify(ctx, "error", "Merge failed: " .. err)
-						done(nil, err)
-						return
-					end
-					notes.clear_for_pull_request(pr)
-					notify(ctx, "success", "Merge succeeded", 1200)
-					done({ changed_pr = true, message = "Merged" }, nil)
-				end)
-			end)
-		end,
-	})
+	register(actions.merge)
 
 	register({
 		id = "update_branch",
@@ -310,168 +239,9 @@ function M.new(provider_id, pullrequests, repositories)
 		end,
 	})
 
-	register(actions.edit_title)
-	register(actions.edit_description)
+	register(actions.edit_pr)
 	register(actions.ready_for_review)
 	register(actions.convert_to_draft)
-
-	register({
-		id = "edit_assignees",
-		label = "Edit assignees",
-		icon = icons.action("user"),
-		is_available = has_repository,
-		run = function(ctx, done)
-			local pr = assert(ctx.pr)
-			notify(ctx, "loading", "Loading assignees...")
-			with_details(ctx, function(details, details_err)
-				if details_err or not details then
-					local err = details_err or ("Failed to load " .. provider_name .. " pull request")
-					notify(ctx, "error", "Failed to load pull request: " .. err)
-					done(nil, err)
-					return
-				end
-				pullrequests.list_assignees(pr.repo_full_name, function(users, err)
-					if err then
-						notify(ctx, "error", "Failed to load assignees: " .. err)
-						done(nil, err)
-						return
-					end
-					local original_set = selected_set(details.assignees, function(user)
-						return user.username
-					end)
-					local items, selected = {}, {}
-					for _, user in ipairs(users) do
-						if user.username ~= "unknown" then
-							table.insert(items, user)
-							if original_set[user.username] then
-								table.insert(selected, user)
-							end
-						end
-					end
-					if #items == 0 then
-						done({ changed_pr = false, message = "No assignees available" }, nil)
-						return
-					end
-					notify(ctx, "success", "Assignees loaded", 1200)
-					picker.multi_select({
-						items = items,
-						selected = selected,
-						key = function(user)
-							return user.username
-						end,
-						format_item = function(user)
-							return "@" .. user.username .. (user.name ~= user.username and (" — " .. user.name) or "")
-						end,
-						title = string.format("Assignees for PR #%s", tostring(pr.id)),
-						on_done = function(chosen)
-							local logins = {}
-							for _, user in ipairs(chosen) do
-								table.insert(logins, user.username)
-							end
-							local chosen_set = selected_set(chosen, function(user)
-								return user.username
-							end)
-							if vim.deep_equal(chosen_set, original_set) then
-								done({ changed_pr = false, message = "No changes" }, nil)
-								return
-							end
-							notify(ctx, "loading", "Updating assignees...")
-							pullrequests.update_assignees(pr, logins, function(ok, update_err)
-								if not ok then
-									notify(ctx, "error", update_err)
-									done(nil, update_err)
-									return
-								end
-								notify(ctx, "success", "Assignees updated", 1200)
-								done({ changed_pr = true, message = "Assignees updated" }, nil)
-							end)
-						end,
-					})
-				end)
-			end)
-		end,
-	})
-
-	register({
-		id = "labels",
-		label = "Edit labels",
-		icon = icons.action("label"),
-		is_available = has_repository,
-		run = function(ctx, done)
-			local pr = assert(ctx.pr)
-			notify(ctx, "loading", "Loading labels...")
-			with_details(ctx, function(details, details_err)
-				if details_err or not details then
-					local err = details_err or ("Failed to load " .. provider_name .. " pull request")
-					notify(ctx, "error", "Failed to load pull request: " .. err)
-					done(nil, err)
-					return
-				end
-				pullrequests.list_labels(pr.repo_full_name, function(raw_labels, err)
-					if err then
-						notify(ctx, "error", "Failed to load labels: " .. err)
-						done(nil, err)
-						return
-					end
-					local original_set = {}
-					for _, id in ipairs(details.label_ids or {}) do
-						original_set[tostring(id)] = true
-					end
-					local items, selected = {}, {}
-					for _, label in ipairs(raw_labels) do
-						local id = tostring(label.id or "")
-						local name = tostring(label.name or "")
-						if id:match("^%d+$") and name ~= "" then
-							local item = { id = id, name = name }
-							table.insert(items, item)
-							if original_set[id] then
-								table.insert(selected, item)
-							end
-						end
-					end
-					if #items == 0 then
-						done({ changed_pr = false, message = "No labels available" }, nil)
-						return
-					end
-					notify(ctx, "success", "Labels loaded", 1200)
-					picker.multi_select({
-						items = items,
-						selected = selected,
-						key = function(label)
-							return label.id
-						end,
-						format_item = function(label)
-							return label.name
-						end,
-						title = string.format("Labels for PR #%s", tostring(pr.id)),
-						on_done = function(chosen)
-							local chosen_set = selected_set(chosen, function(label)
-								return label.id
-							end)
-							if vim.deep_equal(chosen_set, original_set) then
-								done({ changed_pr = false, message = "No changes" }, nil)
-								return
-							end
-							local ids = {}
-							for _, label in ipairs(chosen) do
-								table.insert(ids, assert(tonumber(label.id)))
-							end
-							notify(ctx, "loading", "Updating labels...")
-							pullrequests.update_labels(pr, ids, function(ok, update_err)
-								if not ok then
-									notify(ctx, "error", update_err)
-									done(nil, update_err)
-									return
-								end
-								notify(ctx, "success", "Labels updated", 1200)
-								done({ changed_pr = true, message = "Labels updated" }, nil)
-							end)
-						end,
-					})
-				end)
-			end)
-		end,
-	})
 
 	register(actions.decline)
 
@@ -503,8 +273,6 @@ function M.new(provider_id, pullrequests, repositories)
 			end)
 		end,
 	})
-
-	register(actions.edit_reviewers)
 
 	register({
 		id = "search",
@@ -538,6 +306,26 @@ function M.new(provider_id, pullrequests, repositories)
 						provider_id,
 						{ initial_view = { name = "Search", layout = "compact", repo = repo } }
 					)
+					done(nil, nil)
+				end,
+				on_cancel = function()
+					done(nil, nil)
+				end,
+			})
+		end,
+	})
+
+	register(actions.browse_repository)
+	register({
+		id = "browse_repositories",
+		label = "Browse Repository",
+		icon = icons.general("overview"),
+		run = function(ctx, done)
+			select_repository({
+				title = "Browse Repository",
+				include_all = false,
+				on_select = function(repo)
+					require("atlas.ui.repository").open(repo, ctx.provider)
 					done(nil, nil)
 				end,
 				on_cancel = function()
@@ -635,7 +423,7 @@ function M.new(provider_id, pullrequests, repositories)
 					update(current, user)
 					return
 				end
-				pullrequests.fetch_user(function(current_user, err)
+				ctx.provider.capabilities.users.fetch_user(function(current_user, err)
 					local username = current_user and current_user.username or ""
 					if err or username == "" then
 						local message = tostring(err or ("Missing current " .. provider_name .. " user"))
@@ -678,40 +466,6 @@ function M.new(provider_id, pullrequests, repositories)
 			end
 		end
 		return nil
-	end
-
-	function registry.is_available(id, ctx)
-		local action = registry.find(id)
-		return action ~= nil and (action.is_available == nil or action.is_available(ctx) == true)
-	end
-
-	function registry.run(id, ctx, on_done)
-		local action = registry.find(id)
-		if action == nil then
-			local err = string.format("Unknown action: %s", id)
-			logger.logerror(provider_id .. ".pulls.action.unknown", { action_id = id })
-			on_done(nil, err)
-			return false
-		end
-
-		local available, available_err = true, nil
-		if action.is_available then
-			available, available_err = action.is_available(ctx)
-		end
-		if not available then
-			local err = available_err or string.format("Action is not available: %s", id)
-			logger.logwarn(provider_id .. ".pulls.action.unavailable", { action_id = id, error = err })
-			if ctx.notify then
-				ctx.notify("warn", err)
-			else
-				core_notify.warn(err)
-			end
-			on_done(nil, err)
-			return false
-		end
-
-		action.run(ctx, on_done)
-		return true
 	end
 
 	return registry

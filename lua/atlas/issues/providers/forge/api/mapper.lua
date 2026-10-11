@@ -3,7 +3,7 @@ local json = require("atlas.core.json")
 local M = {}
 
 ---@class ForgeIssueMapper
----@field to_user fun(raw: table|nil): IssueUser|nil
+---@field to_user fun(raw: table|nil): AtlasUser|nil
 ---@field to_issue fun(raw: table, scoped_slug: string|nil): GiteaIssue|ForgejoIssue|nil
 ---@field to_issue_details fun(raw: table, scoped_slug: string|nil): GiteaIssueDetails|ForgejoIssueDetails|nil
 ---@field to_comment fun(raw: table): IssueComment
@@ -16,21 +16,7 @@ function M.new(provider_id)
 	---@type ForgeIssueMapper
 	local mapper = {}
 
-	---@param raw table|nil
-	---@return IssueUser|nil
-	local function user(raw)
-		raw = json.nilify(raw)
-		if raw == nil then
-			return nil
-		end
-		local login = raw.login
-		local name = raw.full_name
-		return {
-			id = raw.id,
-			account_id = login,
-			display_name = name ~= "" and name or login,
-		}
-	end
+	local user = require("atlas.providers.forge.users").to_user
 
 	---@param values table[]
 	---@return (GiteaIssueLabel|ForgejoIssueLabel)[]
@@ -47,7 +33,7 @@ function M.new(provider_id)
 	end
 
 	---@param values table[]
-	---@return IssueUser[]
+	---@return AtlasUser[]
 	local function assignees(values)
 		local result = {}
 		for _, raw in ipairs(values) do
@@ -135,9 +121,9 @@ function M.new(provider_id)
 		local original_author = nonempty(raw.original_author)
 		if not reporter and original_author then
 			reporter = {
-				id = raw.original_author_id,
-				account_id = original_author,
-				display_name = original_author,
+				id = json.safe_str(raw.original_author_id),
+				username = original_author,
+				name = original_author,
 			}
 		end
 		local due_date = nonempty(raw.due_date)
@@ -146,11 +132,9 @@ function M.new(provider_id)
 		return {
 			key = string.format("%s#%d", slug, number),
 			title = raw.title,
-			project = nil,
 			status = state == "closed" and "Closed" or "Open",
 			status_id = state,
 			type = nil,
-			priority = nil,
 			assignee = user(raw_assignees[1]),
 			reporter = reporter,
 			story_points = nil,
@@ -180,6 +164,9 @@ function M.new(provider_id)
 		end
 
 		return {
+			title = raw.title,
+			content_version = provider_id == "gitea" and json.nilify(raw.content_version) or nil,
+			due_date = nonempty(raw.due_date),
 			description = json.nilify(raw.body) or "",
 			assignees = assignees(json.nilify(raw.assignees) or {}),
 			labels = labels(json.nilify(raw.labels) or {}),
@@ -239,7 +226,7 @@ function M.new(provider_id)
 			local removed = raw.removed_assignee == true
 			entry.kind = removed and "unassigned" or "assigned"
 			entry.label = removed and "unassigned" or "assigned"
-			entry.body = assignee and assignee.display_name or team
+			entry.body = assignee and assignee.name or team
 		elseif raw_type == "change_title" then
 			entry.kind = "renamed"
 			entry.label = "renamed"

@@ -1,5 +1,6 @@
 local json = require("atlas.core.json")
 local diff_parser = require("atlas.core.git.diff_parser")
+local users = require("atlas.providers.forge.users")
 
 ---@class ForgeReviewLines
 ---@field from integer|nil
@@ -325,19 +326,28 @@ local function new(provider)
 	end
 
 	---@param raw table
-	---@return PullsAuthor[]
+	---@return AtlasUser[]
 	local function pull_assignees(raw)
-		local result = authors(json.nilify(raw.assignees) or {})
-		if #result == 0 and json.nilify(raw.assignee) then
-			table.insert(result, author(raw.assignee))
+		local result = {}
+		for _, value in ipairs(json.nilify(raw.assignees) or {}) do
+			local user = users.to_user(value)
+			if user then
+				table.insert(result, user)
+			end
+		end
+		if #result == 0 then
+			local user = users.to_user(raw.assignee)
+			if user then
+				table.insert(result, user)
+			end
 		end
 		return result
 	end
 
 	---@param raw table
-	---@return PullsLabel[], integer[]
+	---@return PullsLabel[]
 	local function pull_labels(raw)
-		local labels, ids = {}, {}
+		local labels = {}
 		for _, value in ipairs(json.nilify(raw.labels) or {}) do
 			local name = value.name
 			if name and name ~= "" then
@@ -346,11 +356,8 @@ local function new(provider)
 					color = (value.color or ""):gsub("^#", ""),
 				})
 			end
-			if value.id then
-				table.insert(ids, value.id)
-			end
 		end
-		return labels, ids
+		return labels
 	end
 
 	---@param raw table
@@ -363,7 +370,7 @@ local function new(provider)
 		local base_repo = json.safe_table(base.repo)
 		local head_repo = json.safe_table(head.repo)
 		local slug = base_repo.full_name or ""
-		local workspace, repo = slug:match("^([^/]+)/([^/]+)$")
+		local owner, repo = slug:match("^([^/]+)/([^/]+)$")
 		local source_slug = tostring(head_repo.full_name or "")
 		local source_is_fork = source_slug ~= "" and slug ~= "" and source_slug ~= slug
 		local source_https_url, source_ssh_url = clone_urls(head_repo)
@@ -391,8 +398,14 @@ local function new(provider)
 			updated_on = raw.updated_at or "",
 			link = { html = raw.html_url or "" },
 			provider = provider,
-			workspace = workspace,
-			repo = repo,
+			repo = {
+				id = slug,
+				name = repo or "",
+				owner = owner or "",
+				repo_name = repo or "",
+				full_name = slug,
+				html_url = nonempty(base_repo.html_url),
+			},
 			repo_full_name = slug,
 			reviewers = reviewers(json.nilify(raw.requested_reviewers) or {}),
 			lines_added = raw.additions,
@@ -405,13 +418,12 @@ local function new(provider)
 	---@param raw any
 	---@return GiteaPullRequestDetails|ForgejoPullRequestDetails
 	function M.to_pull_request_details(raw)
-		local labels, label_ids = pull_labels(raw)
+		local labels = pull_labels(raw)
 		return {
 			description = json.nilify(raw.body) or "",
 			is_subscribed = json.nilify(raw.subscribed),
 			assignees = pull_assignees(raw),
 			labels = labels,
-			label_ids = label_ids,
 		}
 	end
 
@@ -430,7 +442,6 @@ local function new(provider)
 	function M.to_search_pull_request(raw)
 		local metadata = raw.pull_request
 		local repository = raw.repository
-		local slug = tostring(repository.full_name or "")
 
 		local normalized = {}
 		for key, value in pairs(raw) do
@@ -439,7 +450,7 @@ local function new(provider)
 		normalized.merged = metadata.merged
 		normalized.draft = metadata.draft
 		normalized.html_url = metadata.html_url
-		normalized.base = { repo = { full_name = slug } }
+		normalized.base = { repo = repository }
 		normalized.head = { repo = repository }
 		return M.to_pull_request(normalized)
 	end
@@ -453,10 +464,7 @@ local function new(provider)
 		local inline, hunk = inline_position(raw, lines or M.review_lines(raw))
 		local review_state = review and tostring(review.state or ""):upper() or ""
 		local resolver = json.nilify(raw.resolver)
-		local comment_state = resolver and "RESOLVED"
-			or (review_state == "PENDING" and "PENDING")
-			or (review and review.stale == true and "OUTDATED")
-			or nil
+		local comment_state = resolver and "RESOLVED" or (review and review.stale == true and "OUTDATED") or nil
 		local outdated = review ~= nil and review.stale == true
 		local comment = {
 			id = raw.id,
@@ -467,6 +475,7 @@ local function new(provider)
 			inline = inline,
 			hunk = hunk,
 			state = comment_state,
+			pending = review_state == "PENDING",
 			resolved_by = resolver and author(resolver) or nil,
 			outdated = outdated,
 			html_url = json.nilify(raw.html_url),
