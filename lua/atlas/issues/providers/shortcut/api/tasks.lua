@@ -1,7 +1,7 @@
 local M = {}
 
 local mapper = require("atlas.issues.providers.shortcut.api.mapper")
-local service = require("atlas.issues.providers.shortcut.api.service")
+local service = require("atlas.providers.shortcut.client")
 
 ---@param issue ShortcutIssue
 local function invalidate(issue)

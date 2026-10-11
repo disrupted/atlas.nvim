@@ -3,7 +3,7 @@ local mapper = require("atlas.issues.providers.shortcut.api.mapper")
 describe("Shortcut Story mapper", function()
 	it("maps a Story to an Atlas issue", function()
 		local users = {
-			{ account_id = "owner", display_name = "Ada Owner" },
+			{ id = "owner", name = "Ada Owner" },
 		}
 		local state = {
 			id = 42,
@@ -35,7 +35,7 @@ describe("Shortcut Story mapper", function()
 			status_id = "42",
 			workflow_state_id = 42,
 			type = "bug",
-			assignee = { account_id = "owner", display_name = "Ada Owner" },
+			assignee = { id = "owner", name = "Ada Owner" },
 			owner_ids = { "owner", "other" },
 			follower_ids = { "follower" },
 			labels = { { id = 9, name = "api", color = "#123456" } },
@@ -76,6 +76,9 @@ describe("Shortcut Story mapper", function()
 		}, {})
 
 		assert.equal("Full description", details.description)
+		assert.equal("Ship Shortcut support", details.title)
+		assert.equal("feature", details.story_type)
+		assert.equal(1, details.workflow_state_id)
 		assert.same({
 			{ id = 1, description = "First", complete = true, position = 1 },
 			{ id = 2, description = "Second", complete = false, position = 2 },
@@ -97,7 +100,7 @@ describe("Shortcut Story mapper", function()
 	end)
 
 	it("maps Story comments", function()
-		local author = { account_id = "author", display_name = "Ada Author", mention_name = "ada" }
+		local author = { id = "author", name = "Ada Author", username = "ada" }
 		local comment = mapper.to_comment({
 			id = 456,
 			author_id = "author",
@@ -118,5 +121,18 @@ describe("Shortcut Story mapper", function()
 			reactions = { [":thumbsup:"] = 2 },
 			deleted = false,
 		}, comment)
+	end)
+
+	it("maps activity actors to the shared user model", function()
+		local entries = mapper.to_history({
+			{
+				member_id = "owner",
+				actor_name = "Ada Owner",
+				changed_at = "2026-08-23T10:00:00Z",
+				actions = { { action = "update", entity_type = "story", changes = { owner_ids = {} } } },
+			},
+		})
+		assert.same({ id = "owner", name = "Ada Owner" }, entries[1].actor)
+		assert.equal("owners", entries[1].body)
 	end)
 end)

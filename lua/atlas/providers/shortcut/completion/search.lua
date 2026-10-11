@@ -1,7 +1,7 @@
 -- Shortcut search syntax: https://www.shortcut.com/help/fields-and-features/search-operators/
 local M = {}
 
-local prompt = require("atlas.commands.search.prompt")
+local prompt = require("atlas.ui.prompt")
 
 local OPERATORS = {
 	"owner",

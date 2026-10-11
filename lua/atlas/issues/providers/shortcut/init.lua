@@ -1,8 +1,3 @@
----@class ShortcutIssueUser : IssueUser
----@field account_id string
----@field mention_name string|nil
----@field disabled boolean
-
 ---@class ShortcutIssueRef : IssueRef
 ---@field workspace string|nil
 
@@ -26,12 +21,16 @@
 ---@field labels ShortcutIssueLabel[]
 
 ---@class ShortcutIssueDetails : IssueDetails
+---@field title string
+---@field story_type ShortcutStoryType
+---@field workflow_state_id integer
 ---@field tasks ShortcutIssueTask[]
 
 local M = {}
 
-local api = require("atlas.issues.providers.shortcut.api")
-local author_completion = require("atlas.providers.shortcut.completion.author")
+local stories = require("atlas.issues.providers.shortcut.api.stories")
+local comments = require("atlas.issues.providers.shortcut.api.comments")
+local history = require("atlas.issues.providers.shortcut.api.history")
 local config = require("atlas.config")
 local emojis = require("atlas.ui.shared.emojis")
 
@@ -39,12 +38,6 @@ local DEFAULT_VIEWS = {
 	{ name = "Open", key = "1", layout = "plain", search = "!is:done !is:archived" },
 	{ name = "Bugs", key = "2", layout = "plain", search = "type:bug !is:done !is:archived" },
 }
-
----@param view IssuesViewConfig
----@return string
-function M.resolve_search(view)
-	return tostring(view.search or "")
-end
 
 ---@param target AtlasTarget
 ---@return AtlasShortcutIssuesViewConfig
@@ -69,15 +62,15 @@ end
 ---@param on_done fun(page: IssuesPage, err: string|nil)
 ---@return { cancel: fun() }|nil
 function M.fetch_issues(view, opts, on_done)
-	local query = M.resolve_search(view)
+	local query = tostring(view.search or "")
 	if query == "" then
-		on_done({ items = {} }, "Missing Shortcut Story search query")
+		on_done({ items = {}, query = query }, "Missing Shortcut Story search query")
 		return nil
 	end
-	return api.stories.search(query, opts, on_done)
+	return stories.search(query, opts, on_done)
 end
 
----@param ref IssueRef
+---@param ref ShortcutIssueRef
 ---@param opts IssuesFetchOpts|nil
 ---@param on_done fun(details: IssueDetails|nil, err: string|nil)
 ---@return { cancel: fun() }|nil
@@ -89,7 +82,8 @@ function M.fetch_issue(ref, opts, on_done)
 		return nil
 	end
 
-	return api.stories.get(story_id, opts, on_done)
+	local fetch_opts = vim.tbl_extend("force", {}, opts or {}, { workspace = ref.workspace })
+	return stories.get(story_id, fetch_opts, on_done)
 end
 
 ---@param issue Issue
@@ -97,22 +91,22 @@ end
 ---@param on_done fun(items: IssueConversationItem[]|nil, err: string|nil)
 ---@return { cancel: fun() }|nil
 function M.fetch_conversation(issue, opts, on_done)
-	return api.comments.list(issue, opts, function(comments, err)
-		if err or comments == nil then
+	return comments.list(issue, opts, function(items, err)
+		if err or items == nil then
 			on_done(nil, err)
 			return
 		end
 
-		local items = {}
-		for _, comment in ipairs(comments) do
-			table.insert(items, {
+		local conversation = {}
+		for _, comment in ipairs(items) do
+			table.insert(conversation, {
 				id = "comment:" .. comment.id,
 				kind = "comment",
 				created_at = comment.created or "",
 				entity = comment,
 			})
 		end
-		on_done(items, nil)
+		on_done(conversation, nil)
 	end)
 end
 
@@ -125,36 +119,26 @@ function M.views()
 	return DEFAULT_VIEWS
 end
 
-function M.refresh()
-	api.service.clear_cache()
-end
-
 return {
 	views = M.views,
 	view_for_target = M.view_for_target,
-	resolve_search = M.resolve_search,
 	issue_ref = M.issue_ref,
 	capabilities = {
 		core = {
-			fetch_user = api.members.get_current,
 			fetch_issues = M.fetch_issues,
-			fetch_by_refs = api.stories.fetch_by_refs,
+			fetch_by_refs = stories.fetch_by_refs,
 			fetch_issue = M.fetch_issue,
-			-- update_description = M.update_description,
-			refresh = M.refresh,
 		},
 		comments = {
 			reaction_options = emojis.shortcut(),
-			comment_completion = author_completion.for_issues,
-			fetch_activity = api.history.fetch,
+			fetch_activity = history.fetch,
 			fetch_conversation = M.fetch_conversation,
-			add_comment = api.comments.add_comment,
-			reply_comment = api.comments.reply_comment,
-			edit_comment = api.comments.edit_comment,
-			delete_comment = api.comments.delete_comment,
-			add_reaction = api.comments.add_reaction,
+			add_comment = comments.add_comment,
+			edit_comment = comments.edit_comment,
+			delete_comment = comments.delete_comment,
+			add_reaction = comments.add_reaction,
 		},
-		actions = require("atlas.issues.providers.shortcut.actions"),
+		actions = require("atlas.issues.providers.shortcut.actions.registry"),
 		ui = {
 			detail = require("atlas.issues.providers.shortcut.ui.detail"),
 		},

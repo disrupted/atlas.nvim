@@ -5,7 +5,7 @@ local providers = require("atlas.providers")
 
 ---@class AtlasIconStyle
 ---@field icon string
----@field hl_group string
+---@field hl_group string|nil
 
 ---@type table
 local ICONS = {
@@ -18,17 +18,21 @@ local ICONS = {
 		overview = { icon = "", hl_group = "AtlasTextMuted" },
 		comment = { icon = "", hl_group = "AtlasTextMuted" },
 		conversation = { icon = "", hl_group = "AtlasTextMuted" },
+		link = { icon = "", hl_group = "AtlasTextMuted" },
 		created = { icon = "󰃭", hl_group = "AtlasTextMuted" },
 		updated = { icon = "󰥔", hl_group = "AtlasTextMuted" },
 		user = { icon = "", hl_group = "AtlasTextMuted" },
-		reply = { icon = "", hl_group = "AtlasLogInfo" },
-		edit = { icon = "", hl_group = "AtlasLogInfo" },
+		reply = { icon = "", hl_group = "AtlasTextMuted" },
+		edit = { icon = "", hl_group = "AtlasTextMuted" },
 		delete = { icon = "󰆴", hl_group = "AtlasLogError" },
 		progress = { icon = "󰦖", hl_group = "AtlasTextMuted" },
 		success = { icon = "", hl_group = "AtlasTextPositive" },
-		warning = { icon = "", hl_group = "AtlasLogWarn" },
+		checkbox_unchecked = { icon = "", hl_group = "AtlasTextMuted" },
+		checkbox_checked = { icon = "", hl_group = "AtlasTextPositive" },
+		warning = { icon = "", hl_group = "AtlasTextMuted" },
 		error = { icon = "", hl_group = "AtlasLogError" },
-		info = { icon = "", hl_group = "AtlasLogInfo" },
+		info = { icon = "", hl_group = "AtlasTextMuted" },
+		lsp = { icon = "", hl_group = "AtlasTextMuted" },
 		bell = { icon = "󰂚", hl_group = "AtlasTextMuted" },
 		bell_no = { icon = "󰂛", hl_group = "AtlasTextMuted" },
 		bell_unread = { icon = "󱅫", hl_group = "AtlasLogInfo" },
@@ -49,34 +53,41 @@ local ICONS = {
 		fork = { icon = "", hl_group = "AtlasLogInfo" },
 		repo = { icon = "", hl_group = "AtlasTextMuted" },
 		pr = { icon = "", hl_group = "AtlasTextPositive" },
+		draft_pr = { icon = "", hl_group = "AtlasPRDraft" },
 		merged_pr = { icon = "", hl_group = "AtlasPRMerged" },
 		declined_pr = { icon = "", hl_group = "AtlasPRDeclined" },
-		pipeline = { icon = "󰜎", hl_group = "AtlasTextWarning" },
+		tasks = { icon = "󰘽", hl_group = "AtlasTextWarning" },
+		pipeline = { icon = "󰜎", hl_group = "AtlasTextMuted" },
 		commit = { icon = "", hl_group = "AtlasTextMuted" },
 		changes = { icon = "󱓉", hl_group = "AtlasTextMuted" },
 		file = { icon = "", hl_group = "AtlasTextMuted" },
 		activity = { icon = "󱐋", hl_group = "AtlasTextMuted" },
-		branch = { icon = "", hl_group = "AtlasLogInfo" },
+		tag = { icon = "", hl_group = "AtlasTextMuted" },
+		branch = { icon = "", hl_group = "AtlasTextMuted" },
 		review = { icon = "", hl_group = "AtlasTextMuted" },
 
 		status = {
 			successful = { icon = "", hl_group = "AtlasTextPositive" },
 			failed = { icon = "", hl_group = "AtlasLogError" },
 			inprogress = { icon = "󰦖", hl_group = "AtlasTextWarning" },
+			pending = { icon = "○", hl_group = "AtlasTextMuted" },
+			queued = { icon = "󰥔", hl_group = "AtlasTextMuted" },
+			paused = { icon = "", hl_group = "AtlasTextWarning" },
+			canceled = { icon = "󰓛", hl_group = "AtlasTextMuted" },
+			skipped = { icon = "", hl_group = "AtlasTextMuted" },
+			manual = { icon = "", hl_group = "AtlasTextWarning" },
 			stopped = { icon = "󰓛", hl_group = "AtlasTextMuted" },
 			unknown = { icon = "", hl_group = "AtlasTextMuted" },
 		},
 	},
 
 	issues = {
-		issue = { icon = "", hl_group = "AtlasTextPositive" },
-		type = {
-			epic = { icon = "", hl_group = "AtlasJiraEpic" },
-			story = { icon = "󰃀", hl_group = "AtlasTextPositive" },
-			task = { icon = "", hl_group = "AtlasLogInfo" },
+		shortcut_types = {
+			feature = { icon = "󰃀", hl_group = "AtlasTextPositive" },
+			chore = { icon = "", hl_group = "AtlasLogInfo" },
 			bug = { icon = "", hl_group = "AtlasLogError" },
-			subtask = { icon = "󰩊", hl_group = "AtlasLogInfo" },
 		},
+		issue = { icon = "", hl_group = "AtlasTextPositive" },
 
 		priority = {
 			highest = { icon = "", hl_group = "AtlasLogError" },
@@ -87,6 +98,16 @@ local ICONS = {
 			lowest = { icon = "", hl_group = "AtlasTextPositive" },
 		},
 	},
+}
+
+ICONS.log = {
+	error = ICONS.general.error,
+	warn = ICONS.general.warning,
+	info = ICONS.general.info,
+	debug = ICONS.general.info,
+	success = ICONS.general.success,
+	canceled = ICONS.pulls.status.canceled,
+	skipped = ICONS.pulls.status.skipped,
 }
 
 ICONS.picker = {
@@ -101,21 +122,21 @@ ICONS.actions = {
 	merge = ICONS.pulls.merged_pr,
 	edit = ICONS.general.edit,
 	close = ICONS.general.error,
-	reopen = { icon = "", hl_group = "AtlasTextPositive" },
+	reopen = { icon = "", hl_group = "AtlasTextMuted" },
 	review = ICONS.pulls.review,
 	user = ICONS.general.user,
-	label = ICONS.general.tag,
+	label = ICONS.pulls.tag,
 	create = ICONS.issues.issue,
 	search = ICONS.general.search,
 	notification = ICONS.general.bell,
 	pipeline = ICONS.pulls.pipeline,
 	checkout = ICONS.pulls.branch,
 	open_in_browser = { icon = "󰖟", hl_group = "AtlasTextMuted" },
-	transition = ICONS.general.progress,
+	transition = { icon = "", hl_group = "AtlasTextMuted" },
 	delete = ICONS.general.delete,
-	run = { icon = "", hl_group = "AtlasTextPositive" },
+	run = { icon = "", hl_group = "AtlasTextMuted" },
 	stop = ICONS.pulls.status.stopped,
-	retry = { icon = "󰑐", hl_group = "AtlasLogInfo" },
+	retry = { icon = "󰑐", hl_group = "AtlasTextMuted" },
 	details = ICONS.general.overview,
 	save = { icon = "", hl_group = "AtlasTextMuted" },
 	custom = { icon = "", hl_group = "AtlasTextMuted" },
@@ -160,6 +181,12 @@ function M.general(name)
 	return get(ICONS.general[name])
 end
 
+---@param level PullsLogLevel
+---@return string, string
+function M.log_level(level)
+	return get(ICONS.log[level])
+end
+
 -- Pulls
 
 ---@param name string
@@ -176,6 +203,15 @@ end
 
 -- Issues
 
+---@param category string|nil
+---@param name string|nil
+---@return string, string
+function M.issues_status(category, name)
+	local configured = config.options.issues.jira.project_config.status_icons
+	local hl_group = category == "done" and ICONS.general.success.hl_group or ICONS.fallback.hl_group
+	return configured[name] or configured[category] or ICONS.fallback.icon, hl_group
+end
+
 ---@param name string
 ---@return string, string
 function M.issues(name)
@@ -186,29 +222,15 @@ end
 ---@param provider_id AtlasIssuesProviderId|nil
 ---@return string, string
 function M.issues_type(name, provider_id)
-	local key = tostring(name or "")
+	local key = tostring(name or ""):lower()
 	if provider_id == "shortcut" then
-		key = key == "feature" and "story" or key == "chore" and "task" or key
-		local style = ICONS.issues.type[key]
-		if style then
-			return get(style)
-		end
-		return "", "AtlasTextMuted"
+		return get(ICONS.issues.shortcut_types[key])
 	end
-
-	local default = ICONS.issues.type[key:lower()]
-	local jira = config.domain_options("jira", "issues") or {}
-	local configured = ((jira.project_config or {}).issue_types or {})[key]
-
-	if configured then
-		return configured.icon or (default and default.icon) or "",
-			configured.hl_group or (default and default.hl_group) or "AtlasTextMuted"
+	local style = config.options.issues.jira.project_config.issue_types[key]
+	if style then
+		return style.icon or "", style.hl_group or "AtlasTextMuted"
 	end
-	if default then
-		return get(default)
-	end
-	local hl_group =
-		require("atlas.ui.shared.highlights").dynamic_for(key ~= "" and ("jira-issue-type:" .. key:lower()) or nil)
+	local hl_group = require("atlas.ui.highlights").dynamic_for(key ~= "" and ("jira-issue-type:" .. key) or nil)
 	return "", hl_group or "AtlasTextMuted"
 end
 

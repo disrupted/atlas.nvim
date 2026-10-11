@@ -1,9 +1,9 @@
 local M = {}
 
 local mapper = require("atlas.issues.providers.shortcut.api.mapper")
-local members = require("atlas.issues.providers.shortcut.api.members")
+local members = require("atlas.providers.shortcut.users")
 local requests = require("atlas.core.requests")
-local service = require("atlas.issues.providers.shortcut.api.service")
+local service = require("atlas.providers.shortcut.client")
 
 ---@param story_id integer
 ---@return string
@@ -29,7 +29,7 @@ local function validate(text)
 end
 
 ---@param raw_comments table[]
----@param users IssueUser[]
+---@param users AtlasUser[]
 ---@return IssueComment[]
 local function map_comments(raw_comments, users)
 	local comments = {}
@@ -57,7 +57,7 @@ function M.list(issue, opts, on_done)
 
 	local scope = requests.new()
 	scope.run(function(done)
-		return members.list(done)
+		return members.list(done, opts)
 	end, function(users, users_err)
 		if users_err then
 			on_done(nil, users_err)
@@ -86,12 +86,13 @@ end
 
 ---@param issue Issue
 ---@param text string
----@param parent_id string|number|nil
+---@param opts { parent?: IssueComment }|nil
 ---@param on_done fun(comment: IssueComment|nil, err: string|nil)
 ---@return AtlasRequestScope|nil
-local function create_comment(issue, text, parent_id, on_done)
+function M.add_comment(issue, text, opts, on_done)
 	---@cast issue ShortcutIssue
 	local story_id = issue.id
+	local parent_id = opts and opts.parent and opts.parent.id
 	local err = validate(text)
 	if err then
 		on_done(nil, err)
@@ -100,13 +101,13 @@ local function create_comment(issue, text, parent_id, on_done)
 
 	local scope = requests.new()
 	scope.run(function(done)
-		return members.get_current(done)
+		return members.fetch_user(done)
 	end, function(user, user_err)
 		if user_err then
 			on_done(nil, user_err)
 			return
 		end
-		---@cast user IssueUser
+		---@cast user AtlasUser
 
 		local endpoint = string.format("/stories/%d/comments", story_id)
 		scope.run(function(done)
@@ -131,23 +132,6 @@ local function create_comment(issue, text, parent_id, on_done)
 		end)
 	end)
 	return scope
-end
-
----@param issue Issue
----@param text string
----@param on_done fun(comment: IssueComment|nil, err: string|nil)
----@return AtlasRequestScope|nil
-function M.add_comment(issue, text, on_done)
-	return create_comment(issue, text, nil, on_done)
-end
-
----@param issue Issue
----@param parent IssueComment
----@param text string
----@param on_done fun(comment: IssueComment|nil, err: string|nil)
----@return AtlasRequestScope|nil
-function M.reply_comment(issue, parent, text, on_done)
-	return create_comment(issue, text, parent.id, on_done)
 end
 
 ---@param issue Issue

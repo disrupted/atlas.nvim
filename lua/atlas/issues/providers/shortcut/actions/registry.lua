@@ -1,3 +1,12 @@
+---@alias AtlasShortcutIssueActionId
+---| AtlasIssueActionId
+---| "reporter"
+---| "labels"
+---| "archive"
+---| "unarchive"
+---| "delete_issue"
+---| "create_checklist_item"
+
 local M = {}
 
 local actions = require("atlas.issues.actions")
@@ -5,11 +14,11 @@ local checklist_api = require("atlas.issues.providers.shortcut.api.tasks")
 local editor = require("atlas.ui.popups.editor")
 local icons = require("atlas.ui.shared.icons")
 local labels_api = require("atlas.issues.providers.shortcut.api.labels")
-local members_api = require("atlas.issues.providers.shortcut.api.members")
+local users_api = require("atlas.providers.shortcut.users")
 local notify = require("atlas.core.notify")
 local picker = require("atlas.ui.picker")
-local story_editor = require("atlas.issues.create.shortcut.issue")
 local stories_api = require("atlas.issues.providers.shortcut.api.stories")
+local utils = require("atlas.issues.actions.utils")
 local workflows_api = require("atlas.issues.providers.shortcut.api.workflows")
 
 ---@type AtlasIssueAction[]
@@ -27,18 +36,8 @@ local function has_issue(ctx)
 	return ctx.issue ~= nil, "No Story selected"
 end
 
----@param owners ShortcutIssueUser[]
----@return string[]
-local function ids_for_owners(owners)
-	local ids = {}
-	for _, owner in ipairs(owners) do
-		table.insert(ids, owner.account_id)
-	end
-	return ids
-end
-
----@param users ShortcutIssueUser[]
----@return ShortcutIssueUser[]
+---@param users ShortcutUser[]
+---@return ShortcutUser[]
 local function active_users(users)
 	local active = {}
 	for _, user in ipairs(users) do
@@ -129,14 +128,14 @@ local function assign(ctx, done)
 	local issue = assert(ctx.issue)
 	---@cast issue ShortcutIssue
 	notify.loading("Loading Shortcut members...")
-	members_api.list(function(users, err)
+	users_api.list(function(users, err)
 		if err or users == nil then
 			local message = err or "Failed to load members"
 			notify.error(message)
 			done(nil, message)
 			return
 		end
-		---@cast users ShortcutIssueUser[]
+		---@cast users ShortcutUser[]
 		local selected_ids = {}
 		for _, id in ipairs(issue.owner_ids) do
 			selected_ids[id] = true
@@ -144,9 +143,9 @@ local function assign(ctx, done)
 		local available = {}
 		local selected = {}
 		for _, user in ipairs(users) do
-			if not user.disabled or selected_ids[user.account_id] then
+			if not user.disabled or selected_ids[user.id] then
 				table.insert(available, user)
-				if selected_ids[user.account_id] then
+				if selected_ids[user.id] then
 					table.insert(selected, user)
 				end
 			end
@@ -158,14 +157,20 @@ local function assign(ctx, done)
 			items = available,
 			selected = selected,
 			key = function(user)
-				return user.account_id
+				return user.id
 			end,
 			format_item = function(user)
-				return string.format("%s %s", icons.general("user"), user.display_name)
+				return string.format("%s %s", icons.general("user"), user.name)
 			end,
 			on_done = function(chosen)
-				local owner_ids = ids_for_owners(chosen)
-				if vim.deep_equal(issue.owner_ids, owner_ids) then
+				local chosen_ids = {}
+				local owner_ids = {}
+				for _, user in ipairs(chosen) do
+					chosen_ids[user.id] = true
+					table.insert(owner_ids, user.id)
+				end
+				local adds, removes = utils.selection_diff(selected_ids, chosen_ids)
+				if #adds == 0 and #removes == 0 then
 					done(nil, nil)
 					return
 				end
@@ -188,14 +193,14 @@ local function reporter(ctx, done)
 	local issue = assert(ctx.issue)
 	---@cast issue ShortcutIssue
 	notify.loading("Loading Shortcut members...")
-	members_api.list(function(users, err)
+	users_api.list(function(users, err)
 		if err or users == nil then
 			local message = err or "Failed to load members"
 			notify.error(message)
 			done(nil, message)
 			return
 		end
-		---@cast users ShortcutIssueUser[]
+		---@cast users ShortcutUser[]
 		users = active_users(users)
 		notify.clear()
 
@@ -203,20 +208,20 @@ local function reporter(ctx, done)
 			title = string.format("Requester for #%s", issue.key),
 			items = users,
 			format_item = function(user)
-				return string.format("%s %s", icons.general("user"), user.display_name)
+				return string.format("%s %s", icons.general("user"), user.name)
 			end,
 			on_select = function(user)
 				if user == nil then
 					done(nil, nil)
 					return
 				end
-				if issue.reporter and issue.reporter.account_id == user.account_id then
+				if issue.reporter and issue.reporter.id == user.id then
 					done(nil, nil)
 					return
 				end
 				update_story(
 					issue,
-					{ requested_by_id = user.account_id },
+					{ requested_by_id = user.id },
 					string.format("Updating requester on #%s...", issue.key),
 					string.format("Updated requester on #%s", issue.key),
 					done
@@ -256,13 +261,14 @@ local function labels(ctx, done)
 				local after = {}
 				local inputs = {}
 				for _, label in ipairs(issue.labels) do
-					table.insert(before, label.name)
+					before[label.name] = true
 				end
 				for _, label in ipairs(chosen) do
-					table.insert(after, label.name)
+					after[label.name] = true
 					table.insert(inputs, { name = label.name })
 				end
-				if vim.deep_equal(before, after) then
+				local adds, removes = utils.selection_diff(before, after)
+				if #adds == 0 and #removes == 0 then
 					done(nil, nil)
 					return
 				end
@@ -329,12 +335,12 @@ local function toggle_subscription(ctx, done)
 	local issue = assert(ctx.issue)
 	---@cast issue ShortcutIssue
 
-	---@param user IssueUser
+	---@param user AtlasUser
 	local function toggle(user)
-		---@cast user ShortcutIssueUser
+		---@cast user ShortcutUser
 		local following = false
 		for _, id in ipairs(issue.follower_ids) do
-			if id == user.account_id then
+			if id == user.id then
 				following = true
 				break
 			end
@@ -342,12 +348,12 @@ local function toggle_subscription(ctx, done)
 
 		local follower_ids = {}
 		for _, id in ipairs(issue.follower_ids) do
-			if not following or id ~= user.account_id then
+			if not following or id ~= user.id then
 				table.insert(follower_ids, id)
 			end
 		end
 		if not following then
-			table.insert(follower_ids, user.account_id)
+			table.insert(follower_ids, user.id)
 		end
 
 		notify.loading(following and "Unfollowing Story..." or "Following Story...")
@@ -369,7 +375,7 @@ local function toggle_subscription(ctx, done)
 		toggle(ctx.current_user)
 		return
 	end
-	members_api.get_current(function(user, err)
+	users_api.fetch_user(function(user, err)
 		if err or user == nil then
 			local message = err or "Failed to load current member"
 			notify.error(message)
@@ -438,42 +444,8 @@ end
 ---@param _ctx AtlasIssueActionContext
 ---@param done fun(result: IssuesActionResult|nil, err: string|nil)
 local function create_issue(_ctx, done)
-	local story_type = "feature"
-	---@cast story_type ShortcutStoryType
-	story_editor.open(function(fields, submit_done)
-		---@type ShortcutStoryCreate
-		local payload = {
-			name = fields.name,
-			description = fields.description,
-			story_type = fields.story_type,
-			workflow_state_id = assert(fields.workflow_state_id),
-			owner_ids = ids_for_owners(fields.owners),
-		}
-		return stories_api.create(payload, function(created, err)
-			if err or created == nil then
-				local message = err or "Story creation failed"
-				submit_done(false, message)
-				return
-			end
-
-			submit_done(true, nil)
-			vim.schedule(function()
-				notify.success(string.format("Created #%s", created.key), { timeout = 1200 })
-				done({ issue_key = created.key }, nil)
-				if created.url then
-					require("atlas.commands.open").open(created.url)
-				end
-			end)
-		end)
-	end, {
-		name = "",
-		description = "",
-		story_type = story_type,
-		workflow_state_id = nil,
-		workflow_state_name = nil,
-		owners = {},
-	}, function()
-		done(nil, nil)
+	return require("atlas.issues.providers.shortcut.ui.editor").open(function(result, err)
+		done(result and { issue_key = result.key } or nil, err)
 	end)
 end
 
@@ -482,72 +454,8 @@ end
 local function edit_issue(ctx, done)
 	local issue = assert(ctx.issue)
 	---@cast issue ShortcutIssue
-
-	notify.loading(string.format("Loading #%s...", issue.key))
-	return stories_api.get(issue.id, { force_refresh = true }, function(details, err)
-		if err or details == nil then
-			local message = err or "Failed to load Story"
-			notify.error(message)
-			done(nil, message)
-			return
-		end
-		notify.clear()
-		---@cast details ShortcutIssueDetails
-		local story_type = issue.type.name
-		---@cast story_type ShortcutStoryType
-		local owners = details.assignees
-		---@cast owners ShortcutIssueUser[]
-
-		story_editor.open(function(fields, submit_done)
-			---@type ShortcutStoryUpdate
-			local payload = {}
-			if fields.name ~= issue.title then
-				payload.name = fields.name
-			end
-			if fields.description ~= details.description then
-				payload.description = fields.description
-			end
-			if fields.story_type ~= issue.type.name then
-				payload.story_type = fields.story_type
-			end
-			if fields.workflow_state_id ~= issue.workflow_state_id then
-				payload.workflow_state_id = fields.workflow_state_id
-			end
-
-			local next_owner_ids = ids_for_owners(fields.owners)
-			if not vim.deep_equal(issue.owner_ids, next_owner_ids) then
-				payload.owner_ids = next_owner_ids
-			end
-
-			if next(payload) == nil then
-				submit_done(true, nil)
-				done(nil, nil)
-				return nil
-			end
-
-			return stories_api.update(issue, payload, function(ok, update_err)
-				if not ok then
-					local message = update_err or "Story update failed"
-					submit_done(false, message)
-					return
-				end
-
-				submit_done(true, nil)
-				vim.schedule(function()
-					notify.success(string.format("Updated #%s", issue.key), { timeout = 1200 })
-					done({ issue_key = issue.key }, nil)
-				end)
-			end)
-		end, {
-			name = issue.title,
-			description = details.description,
-			story_type = story_type,
-			workflow_state_id = issue.workflow_state_id,
-			workflow_state_name = issue.status,
-			owners = owners,
-		}, function()
-			done(nil, nil)
-		end)
+	return require("atlas.issues.providers.shortcut.ui.editor").edit(issue, function(result, err)
+		done(result and { issue_key = issue.key } or nil, err)
 	end)
 end
 

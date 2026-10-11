@@ -2,25 +2,15 @@ local M = {}
 
 local json = require("atlas.core.json")
 
----@param raw table
----@return ShortcutIssueUser
-function M.to_user(raw)
-	local profile = json.safe_table(raw.profile)
-	local id = tostring(raw.id)
-	local mention_name = json.safe_str(profile.mention_name) or json.safe_str(raw.mention_name)
-	local display_name = json.safe_str(profile.name) or json.safe_str(raw.name) or mention_name or id
-	return { account_id = id, display_name = display_name, mention_name = mention_name, disabled = raw.disabled == true }
-end
-
----@param users IssueUser[]
+---@param users AtlasUser[]
 ---@param id string|nil
----@return IssueUser|nil
+---@return AtlasUser|nil
 local function user_for(users, id)
 	if id == nil then
 		return nil
 	end
 	for _, user in ipairs(users) do
-		if user.account_id == id then
+		if user.id == id then
 			return user
 		end
 	end
@@ -47,9 +37,9 @@ local function labels(raw_labels)
 	return result
 end
 
----@param users IssueUser[]
+---@param users AtlasUser[]
 ---@param owner_ids string[]
----@return IssueUser[]
+---@return AtlasUser[]
 local function owners(users, owner_ids)
 	local result = {}
 	for _, id in ipairs(owner_ids) do
@@ -92,7 +82,7 @@ local function story_tasks(raw_tasks)
 end
 
 ---@param raw table
----@param users IssueUser[]
+---@param users AtlasUser[]
 ---@param state ShortcutWorkflowState|nil
 ---@return ShortcutIssue
 function M.to_issue(raw, users, state)
@@ -135,11 +125,14 @@ function M.to_issue(raw, users, state)
 end
 
 ---@param raw table
----@param users IssueUser[]
+---@param users AtlasUser[]
 ---@return ShortcutIssueDetails
 function M.to_issue_details(raw, users)
 	---@type ShortcutIssueDetails
 	local details = {
+		title = json.safe_str(raw.name),
+		story_type = json.safe_str(raw.story_type),
+		workflow_state_id = raw.workflow_state_id,
 		description = json.safe_str(raw.description) or "",
 		assignees = owners(users, raw.owner_ids or {}),
 		labels = labels(raw.labels or {}),
@@ -150,7 +143,7 @@ function M.to_issue_details(raw, users)
 end
 
 ---@param stories table[]
----@param users IssueUser[]
+---@param users AtlasUser[]
 ---@param states ShortcutWorkflowState[]
 ---@return ShortcutIssue[]
 function M.to_issues(stories, users, states)
@@ -183,7 +176,7 @@ local function reaction_counts(raw_reactions)
 end
 
 ---@param raw table
----@param users? IssueUser[]
+---@param users? AtlasUser[]
 ---@return IssueComment
 function M.to_comment(raw, users)
 	return {
@@ -275,8 +268,8 @@ function M.to_activity(raw)
 		actor_name = raw.automation_id and "Automation" or "Unknown"
 	end
 	local actor = {
-		account_id = json.safe_str(raw.member_id),
-		display_name = actor_name,
+		id = json.safe_str(raw.member_id),
+		name = actor_name,
 	}
 	local entries = {}
 	for _, action in ipairs(json.safe_table(raw.actions)) do

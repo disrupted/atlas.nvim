@@ -1,6 +1,6 @@
 describe("Shortcut search completion", function()
 	local module_name = "atlas.providers.shortcut.completion.search"
-	local prompt_name = "atlas.commands.search.prompt"
+	local prompt_name = "atlas.ui.prompt"
 	local original_module, original_prompt
 	local prompt_options, submitted
 

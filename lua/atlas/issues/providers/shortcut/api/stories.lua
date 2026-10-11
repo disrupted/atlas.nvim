@@ -20,9 +20,9 @@ local M = {}
 
 local json = require("atlas.core.json")
 local mapper = require("atlas.issues.providers.shortcut.api.mapper")
-local members = require("atlas.issues.providers.shortcut.api.members")
+local members = require("atlas.providers.shortcut.users")
 local requests = require("atlas.core.requests")
-local service = require("atlas.issues.providers.shortcut.api.service")
+local service = require("atlas.providers.shortcut.client")
 local url_encode = require("atlas.core.utils").url_encode
 local workflows = require("atlas.issues.providers.shortcut.api.workflows")
 
@@ -62,10 +62,11 @@ end
 function M.search(query, opts, on_done)
 	opts = opts or {}
 	local endpoint = search_endpoint(query, opts)
-	local cache_key = "search:v2:" .. endpoint
+	local cache_key = "search:v3:" .. endpoint
 	if not opts.force_refresh then
 		local cached, found = service.get_cache(cache_key)
 		if found then
+			cached.query = query
 			on_done(cached, nil)
 			return nil
 		end
@@ -75,18 +76,18 @@ function M.search(query, opts, on_done)
 
 	scope.all({
 		users = function(done)
-			return members.list(done)
+			return members.list(done, opts)
 		end,
 		states = function(done)
-			return workflows.list_states(done)
+			return workflows.list_states(done, opts)
 		end,
 	}, function(values, errors)
 		local lookup_err = errors.users or errors.states
 		if lookup_err then
-			on_done({ items = {} }, lookup_err)
+			on_done({ items = {}, query = query }, lookup_err)
 			return
 		end
-		---@type IssueUser[]
+		---@type AtlasUser[]
 		local users = values.users
 		---@type ShortcutWorkflowState[]
 		local states = values.states
@@ -95,7 +96,7 @@ function M.search(query, opts, on_done)
 			return service.request("GET", endpoint, nil, done, { action = "Search Shortcut Stories" })
 		end, function(result, err)
 			if err then
-				on_done({ items = {} }, err)
+				on_done({ items = {}, query = query }, err)
 				return
 			end
 			---@cast result table
@@ -103,6 +104,7 @@ function M.search(query, opts, on_done)
 			local next_path = json.safe_str(result.next)
 			local size = page_size(opts.pagelen)
 			local page = {
+				query = query,
 				items = mapper.to_issues(result.data, users, states),
 				next_cursor = next_path and next_path:sub(#API_PATH + 1) or nil,
 				total_pages = math.max(1, math.ceil(math.min(result.total, 1000) / size)),
@@ -138,8 +140,20 @@ local function get_story(story_id, opts, on_done)
 	end, { action = "Fetch Shortcut Story", issue_key = tostring(story_id) })
 end
 
+---@param story table
+---@param workspace string|nil
+---@return string|nil
+local function workspace_error(story, workspace)
+	if workspace and tostring(story.app_url or ""):match("^https://app%.shortcut%.com/([^/]+)/story/") ~= workspace then
+		return "Shortcut Story does not belong to workspace " .. workspace
+	end
+end
+
+---@class ShortcutStoryFetchOpts : IssuesFetchOpts
+---@field workspace string|nil
+
 ---@param story_id integer
----@param opts? IssuesFetchOpts
+---@param opts? ShortcutStoryFetchOpts
 ---@param on_done fun(issue: ShortcutIssueDetails|nil, err: string|nil)
 ---@return AtlasRequestScope
 function M.get(story_id, opts, on_done)
@@ -150,12 +164,17 @@ function M.get(story_id, opts, on_done)
 			return get_story(story_id, opts, done)
 		end,
 		users = function(done)
-			return members.list(done)
+			return members.list(done, opts)
 		end,
 	}, function(values, errors)
 		local err = errors.story or errors.users
 		if err then
 			on_done(nil, err)
+			return
+		end
+		local mismatch = workspace_error(values.story, opts.workspace)
+		if mismatch then
+			on_done(nil, mismatch)
 			return
 		end
 		on_done(mapper.to_issue_details(values.story, values.users), nil)
@@ -184,39 +203,43 @@ function M.fetch_by_refs(refs, opts, on_done)
 	end
 
 	opts = opts or {}
-	local starts = {}
+	local starts = {
+		users = function(done)
+			return members.list(done, opts)
+		end,
+		states = function(done)
+			return workflows.list_states(done, opts)
+		end,
+	}
 	for index, story_id in ipairs(story_ids) do
-		---@cast refs ShortcutIssueRef[]
-		local workspace = refs[index].workspace
 		starts[index] = function(done)
-			return M.search("id:" .. tostring(story_id), {
-				force_refresh = opts.force_refresh,
-				pagelen = 1,
-			}, function(page, err)
-				if not err and workspace and #page.items == 1 then
-					local issue_workspace =
-						tostring(page.items[1].url or ""):match("^https://app%.shortcut%.com/([^/]+)/story/")
-					if issue_workspace ~= workspace then
-						done({}, "Shortcut Story does not belong to workspace " .. workspace)
-						return
-					end
-				end
-				done(page.items, err)
-			end)
+			return get_story(story_id, opts, done)
 		end
 	end
 
 	local scope = requests.new()
 	scope.all(starts, function(values, errors)
-		local issues = {}
+		local lookup_err = errors.users or errors.states
+		if lookup_err then
+			on_done({}, lookup_err)
+			return
+		end
+		local stories = {}
 		local messages = {}
 		for index, story_id in ipairs(story_ids) do
-			vim.list_extend(issues, values[index] or {})
-			if errors[index] then
-				table.insert(messages, string.format("#%s: %s", story_id, errors[index]))
+			---@cast refs ShortcutIssueRef[]
+			local story = values[index]
+			local err = errors[index] or workspace_error(story, refs[index].workspace)
+			if err then
+				table.insert(messages, string.format("#%s: %s", story_id, err))
+			else
+				table.insert(stories, story)
 			end
 		end
-		on_done(issues, #messages > 0 and table.concat(messages, "\n") or nil)
+		on_done(
+			mapper.to_issues(stories, values.users, values.states),
+			#messages > 0 and table.concat(messages, "\n") or nil
+		)
 	end)
 	return scope
 end

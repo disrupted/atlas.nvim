@@ -1,3 +1,2 @@
----@class AtlasShortcutConfig
+---@class AtlasShortcutConfig : AtlasProviderConfig
 ---@field token string
----@field cache_ttl number|nil Cache lifetime in seconds (default: 300); values <= 0 disable caching.

@@ -7,15 +7,18 @@
 
 local M = {}
 
-local service = require("atlas.issues.providers.shortcut.api.service")
+local service = require("atlas.providers.shortcut.client")
 
 ---@param on_done fun(states: ShortcutWorkflowState[]|nil, err: string|nil)
+---@param opts? { force_refresh?: boolean }
 ---@return { cancel: fun() }|nil
-function M.list_states(on_done)
-	local cached, found = service.get_memory_cache("workflow_states")
-	if found then
-		on_done(cached, nil)
-		return nil
+function M.list_states(on_done, opts)
+	if not (opts and opts.force_refresh) then
+		local cached, found = service.get_memory_cache("workflow_states")
+		if found then
+			on_done(cached, nil)
+			return nil
+		end
 	end
 
 	return service.request("GET", "/workflows", nil, function(result, err)

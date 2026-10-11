@@ -268,7 +268,7 @@ function M.activate(buf, refresh)
 		end
 	end)
 
-	help.register("Detail", items, { index = 212, buffer = buf })
+	help.register("Detail", items, { index = 2, buffer = buf })
 end
 
 ---@param buf integer

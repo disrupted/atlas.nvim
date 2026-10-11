@@ -12,7 +12,7 @@ local function owners_text(issue, details)
 	if details then
 		local names = {}
 		for _, owner in ipairs(details.assignees) do
-			table.insert(names, owner.display_name)
+			table.insert(names, owner.name)
 		end
 		return #names > 0 and table.concat(names, ", ") or "Unassigned"
 	end
@@ -21,9 +21,9 @@ local function owners_text(issue, details)
 		return "Unassigned"
 	end
 	if #issue.owner_ids > 1 then
-		return string.format("%s +%d", issue.assignee.display_name, #issue.owner_ids - 1)
+		return string.format("%s +%d", issue.assignee.name, #issue.owner_ids - 1)
 	end
-	return issue.assignee.display_name
+	return issue.assignee.name
 end
 
 ---@param tasks ShortcutIssueTask[]
@@ -45,10 +45,10 @@ end
 function M.header_fields(issue, details, _loading)
 	---@cast issue ShortcutIssue
 	local owners = owners_text(issue, details)
-	local requester = issue.reporter and issue.reporter.display_name or "Unknown"
+	local requester = issue.reporter and issue.reporter.name or "Unknown"
 	local fields = {
 		{ label = "Status", value = issue.status or "Unknown", hl = helper.status_hl(issue.status_id) },
-		{ label = "Owners", value = owners, hl = helper.person_hl(issue.assignee and issue.assignee.display_name) },
+		{ label = "Owners", value = owners, hl = helper.person_hl(issue.assignee and issue.assignee.name) },
 		{ label = "Requester", value = requester, hl = helper.person_hl(requester) },
 	}
 
@@ -119,26 +119,26 @@ end
 
 ---@return IssuesDetailTabDefinition[]
 function M.tabs()
-	local overview_icon, overview_hl = icons.general("overview")
-	local conversation_icon, conversation_hl = icons.general("conversation")
-	local activity_icon, activity_hl = icons.pulls("activity")
+	local overview_icon = icons.general("overview")
+	local conversation_icon = icons.general("conversation")
+	local activity_icon = icons.pulls("activity")
 	return {
 		{
 			key = "overview",
 			label = "Overview",
-			icon = { icon = overview_icon, hl_group = overview_hl },
+			icon = { icon = overview_icon },
 			mod = require("atlas.issues.providers.shortcut.ui.overview"),
 		},
 		{
 			key = "conversation",
 			label = "Conversation",
-			icon = { icon = conversation_icon, hl_group = conversation_hl },
+			icon = { icon = conversation_icon },
 			mod = require("atlas.issues.ui.detail.tabs.conversation"),
 		},
 		{
 			key = "activity",
 			label = "History",
-			icon = { icon = activity_icon, hl_group = activity_hl },
+			icon = { icon = activity_icon },
 			mod = require("atlas.issues.ui.detail.tabs.activity"),
 		},
 	}

@@ -1,4 +1,4 @@
-local api = require("atlas.issues.providers.shortcut.api")
+local stories = require("atlas.issues.providers.shortcut.api.stories")
 local bookmarks = require("atlas.ui.shared.bookmarks")
 local config = require("atlas.config")
 local providers = require("atlas.providers")
@@ -9,7 +9,7 @@ describe("Shortcut config", function()
 
 	before_each(function()
 		original_options = config.options
-		original_search = api.stories.search
+		original_search = stories.search
 		config.options = {
 			providers = { shortcut = { token = "shortcut-test-token" } },
 			issues = { shortcut = {} },
@@ -18,7 +18,7 @@ describe("Shortcut config", function()
 
 	after_each(function()
 		config.options = original_options
-		rawset(api.stories, "search", original_search)
+		stories.search = original_search
 	end)
 
 	it("uses the resolved view search unchanged", function()
@@ -31,15 +31,14 @@ describe("Shortcut config", function()
 		local view = provider.views()[1]
 		local received
 
-		rawset(api.stories, "search", function(query, opts, on_done)
+		stories.search = function(query, opts, on_done)
 			received = { query = query, opts = opts, on_done = on_done }
-		end)
+		end
 
 		local opts = { pagelen = 25 }
 		local on_done = function() end
 		provider.capabilities.core.fetch_issues(view, opts, on_done)
 
-		assert.are.equal(expression, provider.resolve_search(view))
 		assert.same({ query = expression, opts = opts, on_done = on_done }, received)
 	end)
 
@@ -62,7 +61,12 @@ describe("Shortcut config", function()
 
 		assert.same({ name = "Simple", layout = "compact", search = "type:bug !is:done" }, views.Simple)
 		assert.same({ name = "Full", layout = "plain", search = 'label:"needs review" !is:done' }, views.Full)
-		assert.are.equal("type:bug !is:done", provider.resolve_search(views.Simple))
-		assert.are.equal('label:"needs review" !is:done', provider.resolve_search(views.Full))
+		local queries = {}
+		stories.search = function(query)
+			table.insert(queries, query)
+		end
+		provider.capabilities.core.fetch_issues(views.Simple, {}, function() end)
+		provider.capabilities.core.fetch_issues(views.Full, {}, function() end)
+		assert.same({ "type:bug !is:done", 'label:"needs review" !is:done' }, queries)
 	end)
 end)
