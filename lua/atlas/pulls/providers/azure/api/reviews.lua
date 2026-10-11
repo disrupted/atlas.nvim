@@ -1,6 +1,5 @@
 local M = {}
 
-local diff_parser = require("atlas.core.git.diff_parser")
 local request_scope = require("atlas.core.requests")
 local service = require("atlas.providers.azure.client")
 local mapper = require("atlas.pulls.providers.azure.api.mapper")
@@ -101,12 +100,17 @@ local function fetch_review(pr, opts, include_hunks, on_done)
 			end
 			for _, comment in ipairs(comments) do
 				local inline = comment.inline
-				if include_hunks and inline and not comment.parent_id then
-					comment.hunk = diff_parser.find_hunk(
-						files[inline.path],
-						inline.to and "new" or "old",
-						inline.to or inline.from
-					)
+				local file = inline and files[inline.path]
+				if file and not comment.parent_id then
+					local side = inline.to and "new" or "old"
+					local line = inline.to or inline.from
+					for _, hunk in ipairs(file.hunks) do
+						local start = hunk[side .. "_start"]
+						if line >= start and line < start + hunk[side .. "_count"] then
+							comment.hunk = hunk
+							break
+						end
+					end
 				end
 			end
 			local data = {
