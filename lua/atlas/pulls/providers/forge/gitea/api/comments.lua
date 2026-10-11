@@ -249,15 +249,12 @@ function M.edit(pr, comment, on_done)
 	end
 	return service.request("PATCH", string.format("%s/issues/comments/%s", base, id), {
 		body = comment.content_raw,
-	}, function(raw, err)
+	}, function(_, err)
 		if err then
 			on_done(nil, err)
 			return
 		end
-		local updated = mapper.to_comment(raw)
-		updated.pending = comment.pending
-		updated.outdated = comment.outdated
-		on_done(vim.tbl_extend("force", {}, comment, updated), nil)
+		on_done(comment, nil)
 	end)
 end
 

@@ -51,6 +51,81 @@ describe("Gitea pulls", function()
 		assert.equal(require("atlas.pulls.pipelines.forge.gitea.actions"), provider.capabilities.pipelines.actions)
 	end)
 
+	it("returns the inline comment and diff preview after creating a review", function()
+		local requests = {}
+		local comments = load_api(COMMENTS, {
+			url_encode = tostring,
+			request = function(method, endpoint, data, done)
+				table.insert(requests, { method = method, endpoint = endpoint, data = data })
+				if method == "POST" then
+					done({ id = 8, state = "COMMENT" }, nil)
+				else
+					done({
+						{
+							id = 12,
+							body = "Check this line",
+							path = "init.lua",
+							position = 2,
+							diff_hunk = "@@ -1 +1,2 @@\n before\n+after",
+						},
+					}, nil)
+				end
+				return { cancel = function() end }
+			end,
+		})
+		local pr = { id = 3, repo_full_name = "owner/repo", source = { commit_hash = "abc" } }
+		local created, create_err
+
+		comments.add(pr, "Check this line", { inline = { path = "init.lua", to = 2 } }, function(value, err)
+			created, create_err = value, err
+		end)
+
+		assert.is_nil(create_err)
+		assert.equal(12, created.id)
+		assert.same({ path = "init.lua", to = 2 }, created.inline)
+		assert.equal("after", created.hunk.lines[2].content)
+		assert.equal(2, created.hunk.lines[2].new_line)
+		assert.same({
+			"POST /repos/owner/repo/pulls/3/reviews",
+			"GET /repos/owner/repo/pulls/3/reviews/8/comments",
+		}, endpoints(requests))
+		assert.same({
+			event = "COMMENT",
+			commit_id = "abc",
+			comments = { { body = "Check this line", path = "init.lua", new_position = 2 } },
+		}, requests[1].data)
+	end)
+
+	it("preserves pending comment metadata when editing returns a null author", function()
+		local requests = {}
+		local comments = load_api(COMMENTS, {
+			url_encode = tostring,
+			request = function(method, endpoint, data, done)
+				table.insert(requests, { method = method, endpoint = endpoint, data = data })
+				done({ id = 12, body = data.body, user = vim.NIL }, nil)
+				return { cancel = function() end }
+			end,
+		})
+		local comment = {
+			id = 12,
+			content_raw = "Updated draft",
+			author = { id = "1", username = "author" },
+			pending = true,
+			inline = { path = "init.lua", to = 2 },
+			hunk = require("atlas.core.git.diff_parser").parse_hunk("@@ -1 +1,2 @@\n before\n+after"),
+		}
+		local updated, update_err
+
+		comments.edit({ id = 3, repo_full_name = "owner/repo" }, comment, function(value, err)
+			updated, update_err = value, err
+		end)
+
+		assert.is_nil(update_err)
+		assert.same(comment, updated)
+		assert.same({ "PATCH /repos/owner/repo/issues/comments/12" }, endpoints(requests))
+		assert.same({ body = "Updated draft" }, requests[1].data)
+	end)
+
 	it("uses the Gitea 1.27 review-thread endpoints", function()
 		local requests = {}
 		local service = {

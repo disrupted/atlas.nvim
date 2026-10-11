@@ -158,14 +158,7 @@ local function new(provider)
 			return inline, nil
 		end
 
-		local synthetic = "diff --git a/x b/x\n--- a/x\n+++ b/x\n" .. diff_hunk .. "\n"
-		local files = diff_parser.parse(synthetic) ---@type DiffFile[]
-		local hunk = files[1] and files[1].hunks[1] or nil
-		local anchor = to or from
-		if hunk and anchor then
-			hunk = diff_parser.window_hunk(hunk, to and "new" or "old", anchor)
-		end
-		return inline, hunk
+		return inline, diff_parser.parse_hunk(diff_hunk)
 	end
 
 	M.author = author

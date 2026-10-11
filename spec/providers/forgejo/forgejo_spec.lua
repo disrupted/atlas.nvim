@@ -56,6 +56,7 @@ describe("Forgejo pulls", function()
 					path = data and data.path,
 					position = data and data.new_position,
 					extra_lines_count = data and data.extra_lines_count,
+					diff_hunk = "@@ -1 +1,4 @@\n before\n+first\n+middle\n+last",
 				}, nil)
 				return { cancel = function() end }
 			end,
@@ -77,6 +78,8 @@ describe("Forgejo pulls", function()
 		assert.same({ body = "Range", path = "init.lua", new_position = 2, extra_lines_count = 2 }, requests[1].data)
 		assert.equal(2, created.inline.start_to)
 		assert.equal(4, created.inline.to)
+		assert.equal("first", created.hunk.lines[2].content)
+		assert.equal("last", created.hunk.lines[4].content)
 		assert.equal("/repos/owner/repo/pulls/3/reviews/8/comments", requests[1].endpoint)
 		assert.equal("DELETE", requests[2].method)
 		assert.equal("/repos/owner/repo/pulls/3/reviews/8/comments/12", requests[2].endpoint)
