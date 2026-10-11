@@ -8,6 +8,7 @@
 
 ---@class Issue : IssueRef
 ---@field title string
+---@field icon AtlasIconStyle|nil
 ---@field status string|nil
 ---@field status_id string|nil
 ---@field type IssueType|nil
@@ -64,6 +65,7 @@
 ---@class IssueType
 ---@field id string
 ---@field name string
+---@field icon AtlasIconStyle|nil
 ---@field description string|nil
 ---@field subtask boolean
 
@@ -74,6 +76,7 @@
 ---@class IssueTransition
 ---@field id string
 ---@field name string
+---@field icon AtlasIconStyle|nil
 ---@field to_status_id string|nil
 ---@field to_status_name string|nil
 ---@field to_status_category string|nil

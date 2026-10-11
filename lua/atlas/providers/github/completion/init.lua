@@ -134,15 +134,15 @@ local users = {
 local function reference_icon(item, is_pull)
 	local icons = require("atlas.ui.shared.icons")
 	if not is_pull then
-		return icons.issues(item.state == "CLOSED" and "success" or "issue")
+		return icons.get(item.state == "CLOSED" and "success" or "issue")
 	end
 	if item.state == "MERGED" then
-		return icons.pulls("merged_pr")
+		return icons.get("merged_pr")
 	end
 	if item.state == "CLOSED" then
-		return icons.pulls("declined_pr")
+		return icons.get("declined_pr")
 	end
-	return icons.pulls(item.isDraft and "draft_pr" or "pr")
+	return icons.get(item.isDraft and "draft_pr" or "pr")
 end
 
 ---@param kind "issues"|"pulls"

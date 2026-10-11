@@ -38,9 +38,9 @@ end
 
 ---@return IssuesDetailTabDefinition[]
 function M.tabs()
-	local overview_icon, overview_hl = icons.general("overview")
-	local conversation_icon, conversation_hl = icons.general("conversation")
-	local activity_icon, activity_hl = icons.pulls("activity")
+	local overview_icon, overview_hl = icons.get("overview")
+	local conversation_icon, conversation_hl = icons.get("conversation")
+	local activity_icon, activity_hl = icons.get("activity")
 	return {
 		{
 			key = "overview",

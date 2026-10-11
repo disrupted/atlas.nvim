@@ -163,7 +163,7 @@ end
 M.add_comment = {
 	id = "add_comment",
 	label = "Add comment",
-	icon = icons.general("comment"),
+	icon = icons.get("comment"),
 	---@param context AtlasReviewActionContext
 	---@param on_done fun(result: PullsActionResult|nil, err: string|nil)
 	---@return boolean handled
@@ -261,7 +261,7 @@ M.add_comment = {
 M.add_task = {
 	id = "add_task",
 	label = "Add task",
-	icon = icons.general("checkbox_unchecked"),
+	icon = icons.get("checkbox_unchecked"),
 	---@param context AtlasReviewActionContext
 	---@param on_done fun(result: PullsActionResult|nil, err: string|nil)
 	---@return boolean handled
@@ -352,7 +352,7 @@ end
 M.edit_comment = {
 	id = "edit_comment",
 	label = "Edit comment",
-	icon = icons.action("edit"),
+	icon = icons.get("edit", "actions"),
 	---@param context AtlasReviewActionContext
 	---@param on_done fun(result: PullsActionResult|nil, err: string|nil)
 	---@return boolean handled
@@ -414,7 +414,7 @@ M.edit_comment = {
 M.edit_review = {
 	id = "edit_review",
 	label = "Edit review",
-	icon = icons.action("edit"),
+	icon = icons.get("edit", "actions"),
 	---@param context AtlasReviewActionContext
 	---@param on_done fun(result: PullsActionResult|nil, err: string|nil)
 	---@return boolean handled
@@ -475,7 +475,7 @@ end
 M.delete_comment = {
 	id = "delete_comment",
 	label = "Delete comment",
-	icon = icons.action("delete"),
+	icon = icons.get("delete", "actions"),
 	---@param context AtlasReviewActionContext
 	---@param on_done fun(result: PullsActionResult|nil, err: string|nil)
 	---@return boolean handled
@@ -558,7 +558,7 @@ M.delete_comment = {
 M.toggle_task = {
 	id = "toggle_task",
 	label = "Toggle task",
-	icon = icons.general("checkbox_checked"),
+	icon = icons.get("checkbox_checked"),
 	---@param context AtlasReviewActionContext
 	---@param on_done fun(result: PullsActionResult|nil, err: string|nil)
 	---@return boolean handled
@@ -607,7 +607,7 @@ M.toggle_task = {
 M.toggle_resolved = {
 	id = "toggle_resolved",
 	label = "Toggle resolved",
-	icon = icons.action("success"),
+	icon = icons.get("success", "actions"),
 	---@param context AtlasReviewActionContext
 	---@param on_done fun(result: PullsActionResult|nil, err: string|nil)
 	---@return boolean handled
@@ -688,7 +688,7 @@ end
 M.start_review = {
 	id = "start_review",
 	label = "Start review",
-	icon = icons.action("review"),
+	icon = icons.get("review", "actions"),
 	run = function(context, on_done)
 		local data = context.data
 		local reviews = context.provider.capabilities.reviews
@@ -714,7 +714,7 @@ M.start_review = {
 M.submit_review = {
 	id = "submit_review",
 	label = "Submit review",
-	icon = icons.action("review"),
+	icon = icons.get("review", "actions"),
 	run = function(context, on_done)
 		return open_review_editor(
 			context,
@@ -730,7 +730,7 @@ M.submit_review = {
 M.approve = {
 	id = "approve",
 	label = "Approve",
-	icon = icons.action("success"),
+	icon = icons.get("success", "actions"),
 	run = function(context, on_done)
 		return open_review_editor(context, "approve", " Approve ", "Approving...", "Approved", on_done)
 	end,
@@ -739,7 +739,7 @@ M.approve = {
 M.request_changes = {
 	id = "request_changes",
 	label = "Request changes",
-	icon = icons.action("changes"),
+	icon = icons.get("changes", "actions"),
 	run = function(context, on_done)
 		return open_review_editor(
 			context,
@@ -755,7 +755,7 @@ M.request_changes = {
 M.discard_review = {
 	id = "discard_review",
 	label = "Discard review",
-	icon = icons.action("delete"),
+	icon = icons.get("delete", "actions"),
 	run = function(context, on_done)
 		local data = context.data
 		local reviews = context.provider.capabilities.reviews

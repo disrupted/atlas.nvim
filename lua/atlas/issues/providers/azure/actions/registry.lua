@@ -64,7 +64,7 @@ end
 register({
 	id = "transition",
 	label = "Change state",
-	icon = icons.action("transition"),
+	icon = icons.get("transition", "actions"),
 	is_available = has_issue,
 	run = function(context, done)
 		local issue = assert(context.issue)
@@ -98,7 +98,7 @@ register({
 register({
 	id = "edit_issue",
 	label = "Edit Issue",
-	icon = icons.action("edit"),
+	icon = icons.get("edit", "actions"),
 	is_available = has_issue,
 	run = function(context, done)
 		local issue = assert(context.issue)
@@ -115,7 +115,7 @@ register({
 register({
 	id = "assign",
 	label = "Assign work item",
-	icon = icons.action("user"),
+	icon = icons.get("user", "actions"),
 	is_available = has_issue,
 	run = function(context, done)
 		local issue = assert(context.issue)
@@ -137,7 +137,7 @@ register({
 register({
 	id = "labels",
 	label = "Edit tags",
-	icon = icons.action("label"),
+	icon = icons.get("label", "actions"),
 	is_available = has_issue,
 	run = function(context, done)
 		local issue = assert(context.issue)
@@ -165,7 +165,7 @@ register({
 register({
 	id = "create_issue",
 	label = "Create work item",
-	icon = icons.action("create"),
+	icon = icons.get("create", "actions"),
 	run = function(context, done)
 		with_project(context, function(project)
 			require("atlas.issues.providers.azure.ui.editor").open(project, function(issue, err)
@@ -181,7 +181,7 @@ register({
 register({
 	id = "delete_issue",
 	label = "Delete work item",
-	icon = icons.action("delete"),
+	icon = icons.get("delete", "actions"),
 	is_available = has_issue,
 	run = function(context, done)
 		local issue = assert(context.issue)
@@ -206,21 +206,21 @@ register({
 register({
 	id = "search",
 	label = "Search work items",
-	icon = icons.action("search"),
+	icon = icons.get("search", "actions"),
 	run = search.issues,
 })
 
 register({
 	id = "open_project",
 	label = "Open Project",
-	icon = icons.action("search"),
+	icon = icons.get("search", "actions"),
 	run = search.project,
 })
 
 register({
 	id = "search_wiql",
 	label = "Search WIQL",
-	icon = icons.action("search"),
+	icon = icons.get("search", "actions"),
 	run = function(context, done)
 		with_project(context, function(project)
 			vim.ui.input({
@@ -241,7 +241,7 @@ register({
 register({
 	id = "edit_search",
 	label = "Edit WIQL",
-	icon = icons.action("search"),
+	icon = icons.get("search", "actions"),
 	run = function(_, done)
 		local state = require("atlas.issues.state")
 		local query = vim.trim(state.query:gsub("[\r\n\t]+[ \t]*", " "))

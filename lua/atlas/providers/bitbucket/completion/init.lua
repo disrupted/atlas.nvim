@@ -134,7 +134,7 @@ local pulls = {
 					icon = "declined_pr"
 				end
 				items[#items + 1] = {
-					label = icons.pulls(icon) .. " " .. reference,
+					label = icons.get(icon) .. " " .. reference,
 					insert_text = "pull request " .. reference,
 					filter_text = item.id .. " " .. item.title,
 					detail = item.title,

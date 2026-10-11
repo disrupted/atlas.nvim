@@ -48,7 +48,7 @@ local function open_editor(project, item_types, issue, details, on_done)
 		is_modified = is_modified,
 		meta = function()
 			local name = item_type and item_type.name or "None"
-			local icon, hl = icons.issues_type(name)
+			local icon, hl = icons.get("issue")
 			return {
 				{
 					{ key = "Project:", value = project },
@@ -68,7 +68,7 @@ local function open_editor(project, item_types, issue, details, on_done)
 						title = "Work item type",
 						items = item_types,
 						format_item = function(value)
-							local icon, hl = icons.issues_type(value.name)
+							local icon, hl = icons.get("issue")
 							return icon .. " " .. value.name, hl
 						end,
 						on_select = function(value)

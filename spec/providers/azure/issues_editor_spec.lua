@@ -2,7 +2,8 @@ local editor_name = "atlas.issues.providers.azure.ui.editor"
 local api_name = "atlas.issues.providers.azure.api.issues"
 local form_name = "atlas.ui.form"
 local notify_name = "atlas.core.notify"
-local module_names = { editor_name, api_name, form_name, notify_name }
+local picker_name = "atlas.ui.picker"
+local module_names = { editor_name, api_name, form_name, notify_name, picker_name }
 
 describe("Azure work item editor", function()
 	local original = {}
@@ -42,7 +43,11 @@ describe("Azure work item editor", function()
 					},
 				}
 				content = { title = opts.initial_title, body = opts.initial_body }
+				handle.meta = opts.meta()
 				return handle
+			end,
+			render_meta = function(editor)
+				editor.meta = editor.opts.meta()
 			end,
 			get_content = function()
 				return content
@@ -140,5 +145,23 @@ describe("Azure work item editor", function()
 		pending_save({ key = "43" })
 		assert.is_true(handle.closed)
 		assert.same({ { result = { key = "43" } } }, callbacks)
+	end)
+
+	it("renders and selects work item types in the shared editor", function()
+		package.loaded[picker_name] = {
+			select = function(opts)
+				local label, hl = opts.format_item(opts.items[1])
+				assert.is_truthy(label:find("Bug", 1, true))
+				assert.is_string(hl)
+				opts.on_select(opts.items[1])
+			end,
+		}
+		require(editor_name).open("Platform", on_done)
+		assert.is_truthy(handle.meta[1][2].value:find("Task", 1, true))
+		handle.opts.keymaps[1].action(handle)
+		assert.is_truthy(handle.meta[1][2].value:find("Bug", 1, true))
+		content.title = "New bug"
+		handle.opts.submit(handle)
+		assert.equal("Bug", saved.item_type)
 	end)
 end)

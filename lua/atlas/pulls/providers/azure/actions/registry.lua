@@ -26,7 +26,7 @@ register(actions.request_changes)
 register({
 	id = "merge",
 	label = "Merge PR",
-	icon = icons.action("merge"),
+	icon = icons.get("merge", "actions"),
 	is_available = function(ctx)
 		return ctx.pr ~= nil and ctx.pr.state == "open"
 	end,
@@ -56,7 +56,7 @@ register(actions.decline)
 register({
 	id = "reopen",
 	label = "Reopen PR",
-	icon = icons.action("reopen"),
+	icon = icons.get("reopen", "actions"),
 	is_available = function(ctx)
 		return ctx.pr ~= nil and ctx.pr.state == "declined"
 	end,
@@ -77,7 +77,7 @@ register(actions.edit_pr)
 register({
 	id = "labels",
 	label = "Edit tags",
-	icon = icons.action("label"),
+	icon = icons.get("label", "actions"),
 	is_available = action_utils.has_pr,
 	run = function(ctx, done)
 		local pr = assert(ctx.pr)
@@ -123,18 +123,18 @@ register(actions.ready_for_review)
 register(actions.convert_to_draft)
 register(actions.edit_reviewers)
 
-register({ id = "search", label = "Search Pull Requests", icon = icons.action("search"), run = search.search })
-register({ id = "open_repo", label = "Open Repo", icon = icons.action("search"), run = search.open_repo })
+register({ id = "search", label = "Search Pull Requests", icon = icons.get("search", "actions"), run = search.search })
+register({ id = "open_repo", label = "Open Repo", icon = icons.get("search", "actions"), run = search.open_repo })
 register({
 	id = "search_pull_requests",
 	label = "Open Search View",
-	icon = icons.action("search"),
+	icon = icons.get("search", "actions"),
 	run = search.open_view,
 })
 register({
 	id = "edit_search",
 	label = "Edit search",
-	icon = icons.action("search"),
+	icon = icons.get("search", "actions"),
 	is_available = function(context)
 		local state = require("atlas.pulls.state")
 		return state.provider == context.provider and state.search_view() ~= nil

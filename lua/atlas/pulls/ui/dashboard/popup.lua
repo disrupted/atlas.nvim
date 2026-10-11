@@ -12,7 +12,7 @@ local function add(rows, label, value, hl_group)
 end
 
 local function status_value(kind, label)
-	local icon, hl_group = icons.pulls_status(kind)
+	local icon, hl_group = icons.get(kind, "status")
 	return (icon ~= "" and (icon .. " ") or "") .. label, hl_group
 end
 
@@ -42,7 +42,7 @@ local function github_rows(pr)
 	}
 	local review_status = review[tostring(pr.review_decision or ""):upper()]
 	if review_status then
-		local value, hl_group = icons.pulls_status(review_status)
+		local value, hl_group = icons.get(review_status, "status")
 		add(rows, "Review", value, hl_group)
 	end
 
@@ -55,7 +55,7 @@ local function github_rows(pr)
 	}
 	local build_status = pr.check_status and build[pr.check_status:upper()] or nil
 	if build_status then
-		local value, hl_group = icons.pulls_status(build_status)
+		local value, hl_group = icons.get(build_status, "status")
 		add(rows, "Build", value, hl_group)
 	end
 
@@ -70,7 +70,7 @@ local function gitlab_rows(pr)
 	local rows = {}
 	local merge_status = presentation.gitlab_merge_status(pr)
 	if merge_status then
-		local value, hl_group = icons.pulls_status(merge_status)
+		local value, hl_group = icons.get(merge_status, "status")
 		add(rows, "Merge", value, hl_group)
 	end
 
@@ -108,7 +108,7 @@ local function azure_rows(pr)
 		rejectedByPolicy = "failed",
 		failure = "failed",
 	}
-	add(rows, "Merge", icons.pulls_status(merge[pr.merge_status] or "unknown"))
+	add(rows, "Merge", icons.get(merge[pr.merge_status] or "unknown", "status"))
 
 	local reviewers = {}
 	local review = "inprogress"
@@ -120,7 +120,7 @@ local function azure_rows(pr)
 			review = "successful"
 		end
 	end
-	add(rows, "Review", icons.pulls_status(review))
+	add(rows, "Review", icons.get(review, "status"))
 	add(rows, "Reviewers", table.concat(reviewers, ", "))
 	return rows
 end

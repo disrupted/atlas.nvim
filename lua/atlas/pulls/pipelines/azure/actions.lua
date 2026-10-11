@@ -6,7 +6,7 @@ return {
 	{
 		id = "cancel_pipeline",
 		label = "Cancel pipeline",
-		icon = icons.action("close"),
+		icon = icons.get("close", "actions"),
 		confirm = "Cancel this pipeline?",
 		is_available = function(ctx)
 			return ctx.pipeline.state == "INPROGRESS" and ctx.pipeline.provider_state ~= "cancelling"
@@ -20,7 +20,7 @@ return {
 	{
 		id = "rerun_stage",
 		label = "Re-run stage",
-		icon = icons.action("retry"),
+		icon = icons.get("retry", "actions"),
 		confirm = "Re-run this stage and all its jobs?",
 		is_available = function(ctx)
 			local stage = ctx.stage
@@ -38,7 +38,7 @@ return {
 	{
 		id = "cancel_stage",
 		label = "Cancel stage",
-		icon = icons.action("close"),
+		icon = icons.get("close", "actions"),
 		confirm = "Cancel this stage?",
 		is_available = function(ctx)
 			local stage = ctx.stage
