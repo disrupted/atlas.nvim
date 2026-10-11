@@ -43,7 +43,7 @@ query($path: ID!) {
 local function completion_items(candidates)
 	local items, seen = {}, {}
 	for _, user in ipairs(candidates) do
-		if user.username and not seen[user.username] then
+		if user.username and user.username ~= "" and not seen[user.username] then
 			seen[user.username] = true
 			items[#items + 1] = {
 				label = "@" .. user.username,

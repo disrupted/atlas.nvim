@@ -54,6 +54,26 @@ describe("Azure mention completion", function()
 		end
 	end)
 
+	it("formats reply mentions through the shared API using the Azure identity for both author models", function()
+		local completion = require("atlas.completion")
+		local provider = { capabilities = { completion = { users = source } } }
+		local issue_author = { id = "issue-author", name = "Avery", username = "avery@example.com" }
+		local pr_author = { id = "pr-author", name = "Robin", nickname = "Robin", username = "robin@example.com" }
+
+		assert.equal("@<issue-author>", completion.format_mention(provider, issue_author))
+		assert.equal("@<pr-author>", completion.format_mention(provider, pr_author))
+		assert.equal(0, #calls)
+	end)
+
+	it("omits reply mentions when the Azure identity is missing instead of inserting an email address", function()
+		local completion = require("atlas.completion")
+		local provider = { capabilities = { completion = { users = source } } }
+
+		assert.is_nil(completion.format_mention(provider, { name = "Avery", username = "avery@example.com" }))
+		assert.is_nil(completion.format_mention(provider, { id = "", username = "avery@example.com" }))
+		assert.is_nil(completion.format_mention(provider, nil))
+	end)
+
 	it("preserves Azure mention syntax and includes all thread authors without duplicates", function()
 		source.complete(pr, "", function(items, err)
 			assert.is_nil(err)

@@ -3,16 +3,25 @@ local users_api = require("atlas.providers.azure.users")
 local requests = require("atlas.core.requests")
 local mentions = require("atlas.providers.azure.mentions")
 
+---@param user AtlasUser|PullsAuthor
+---@return string|nil
+local function format_mention(user)
+	if user.id and user.id ~= "" then
+		return "@<" .. user.id .. ">"
+	end
+end
+
 ---@param authors table<string, string>
 ---@param query string
 ---@return AtlasCompletionItem[]
 local function completion_items(authors, query)
 	local items = {}
 	for id, name in pairs(authors) do
-		if name:lower():find(query:lower(), 1, true) then
+		local mention = format_mention({ id = id, name = name })
+		if mention and name:lower():find(query:lower(), 1, true) then
 			items[#items + 1] = {
 				label = "@" .. name,
-				insert_text = "@<" .. id .. ">",
+				insert_text = mention,
 				filter_text = name,
 			}
 		end
@@ -26,6 +35,7 @@ end
 ---@type AtlasCompletionSource
 local users = {
 	triggers = { "@" },
+	format_mention = format_mention,
 	complete = function(context, query, done)
 		local pr = context.pr
 		local issue = context.issue

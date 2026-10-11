@@ -1,6 +1,7 @@
 local M = {}
 
 local config = require("atlas.config")
+local completion = require("atlas.completion")
 local keymaps = require("atlas.core.keymaps")
 local icons = require("atlas.ui.shared.icons")
 local editor = require("atlas.ui.popups.editor")
@@ -211,11 +212,12 @@ M.add_comment = {
 			preview = comment_threads.render_comment(parent, math.max(math.floor(vim.o.columns * 0.7), 80))
 		end
 		local template_action = comment_template_action()
+		local mention = parent and completion.format_mention(context.provider, parent.author)
 
 		open_editor(context, {
 			key = "pr-comment",
 			title = title,
-			initial_text = opts.initial_text,
+			initial_text = opts.initial_text or (mention and (mention .. " ")),
 			preview = preview,
 			actions = template_action and { template_action } or nil,
 			on_save = function(text)
