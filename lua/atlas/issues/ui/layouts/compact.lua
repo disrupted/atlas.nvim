@@ -246,6 +246,73 @@ function M.jira(opts, issues)
 end
 
 ---@param opts table
+---@param issues LinearIssue[]
+---@return string[], table<integer, table>, table[]
+function M.linear(opts, issues)
+	local columns = {
+		{ key = "icon", name = "", can_grow = false, align = "center" },
+		{ key = "name", name = "Issue", min_width = 42 },
+		{ key = "assignee", name = icons.get("user") .. " Assignee", min_width = 10, max_width = 22, can_grow = false },
+		{ key = "reporter", name = icons.get("user") .. " Reporter", min_width = 10, max_width = 22, can_grow = false },
+		{ key = "status", name = " Status", can_grow = false },
+	}
+
+	local function values(issue)
+		---@cast issue LinearIssue
+		local priority = icons.get(issue.priority or "", "priority")
+		local parts = {}
+		if issue.team then
+			table.insert(parts, issue.team.name ~= "" and issue.team.name or issue.team.key)
+		end
+		if issue.project then
+			table.insert(parts, issue.project.name)
+		end
+		if issue.cycle then
+			table.insert(parts, issue.cycle.name or string.format("Cycle %s", tostring(issue.cycle.number)))
+		end
+		table.insert(parts, issue.type and issue.type.name or "")
+		if issue.priority ~= "No priority" then
+			table.insert(parts, issue.priority or "")
+		end
+
+		return {
+			icon = utils.type_icon(issue),
+			name = utils.join({ issue.key .. " " .. issue.title, priority, utils.due_text(issue) }),
+			assignee = utils.person_value(issue.assignee, "Unassigned"),
+			reporter = utils.person_value(issue.reporter, "Unknown"),
+			status = utils.status_value(issue, opts),
+			_meta = meta_text(issue, parts),
+		}
+	end
+
+	local function highlights(row, column, context)
+		local issue = row._issue
+		if issue == nil then
+			return nil
+		end
+		---@cast issue LinearIssue
+
+		if column.key == "icon" then
+			local icon, icon_hl = utils.type_icon(issue)
+			return utils.highlight_match({}, context.text, icon, icon_hl)
+		elseif column.key == "name" then
+			local spans = utils.key_title_highlights(context.text, issue.key, presentation.issue_hl(issue.key))
+			if issue.priority and issue.priority ~= "" then
+				local priority, priority_hl = icons.get(issue.priority, "priority")
+				utils.highlight_match(spans, context.text, priority, priority_hl)
+			end
+			return spans
+		elseif column.key == "status" then
+			return utils.status_hl(issue, opts, issue.icon and issue.icon.hl_group or "AtlasTextMuted")
+		end
+
+		return utils.person_hl(issue, column.key)
+	end
+
+	return render(opts, issues, columns, values, highlights)
+end
+
+---@param opts table
 ---@param issues Issue[]
 ---@return string[], table<integer, table>, table[]
 function M.default(opts, issues)

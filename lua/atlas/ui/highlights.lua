@@ -76,6 +76,7 @@ local function default_groups()
 		AtlasGitLabTheme = { fg = "#1e1e2e", bg = "#fc6d26", bold = true },
 		AtlasBitbucketTheme = { bg = "#1e3a8a", bold = true },
 		AtlasJiraTheme = chip_defaults("#1e3a8a"),
+		AtlasLinearTheme = chip_defaults("#5e6ad2"),
 
 		-- Chips
 		AtlasChipActive = chip_defaults("#89b4fa"),
@@ -186,6 +187,19 @@ function M.chip(bg, opts)
 	local fg = normalize_color(opts.fg) or M.foreground_for(color)
 	local name = "AtlasChip_" .. color:sub(2) .. "_" .. fg:sub(2)
 	generated[name] = { bg = color, fg = fg, bold = true }
+	set_default(name, generated[name])
+	return name
+end
+
+---@param color string|integer|nil
+---@return string
+function M.foreground(color)
+	local normalized = normalize_color(color)
+	if normalized == nil then
+		return "AtlasTextMuted"
+	end
+	local name = "AtlasColor_" .. normalized:sub(2)
+	generated[name] = { fg = normalized }
 	set_default(name, generated[name])
 	return name
 end

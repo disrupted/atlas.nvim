@@ -100,6 +100,7 @@
 ---@field github AtlasGitHubConfig|nil
 ---@field gitlab AtlasGitLabConfig|nil
 ---@field jira AtlasJiraConfig|nil
+---@field linear AtlasLinearConfig|nil
 
 ---@class AtlasPullsConfig
 ---@field git_transport AtlasGitTransport|nil Git transport for Atlas-managed repositories (default: "https").
@@ -133,6 +134,7 @@
 ---@field github AtlasGitHubIssuesConfig|nil
 ---@field gitlab AtlasGitLabIssuesConfig|nil
 ---@field jira AtlasJiraIssuesConfig|nil
+---@field linear AtlasLinearIssuesConfig|nil
 
 -- Config
 

@@ -27,6 +27,7 @@ Review pull requests and manage issues across GitHub, GitLab, Bitbucket and Jira
 - GitLab: [Pull requests](#gitlab) · [Issues](#gitlab-issues)
 - [Bitbucket](#bitbucket)
 - [Jira](#jira)
+- [Linear](#linear)
 
 ## Installation
 
@@ -611,7 +612,7 @@ pulls = {
 
 ## Issues
 
-Use `:Atlas issues [provider]` to browse and manage Jira, GitHub, and GitLab issues.
+Use `:Atlas issues [provider]` to browse Jira, GitHub, GitLab, and Linear issues.
 Shared authentication and endpoints are configured in the top-level `providers` table.
 
 ### Issue Configuration
@@ -802,6 +803,39 @@ issues = {
 ```
 
 <img alt="gitlab-issue" src="https://github.com/user-attachments/assets/65fedb30-dee0-442d-afa5-46a42aeae425" />
+
+</details>
+
+<a id="linear"></a>
+
+<details>
+<summary><strong>Linear</strong></summary>
+
+```lua
+require("atlas").setup({
+  providers = {
+    linear = { token = vim.env.LINEAR_TOKEN, cache_ttl = 300 },
+  },
+  issues = {
+    linear = {
+      views = {
+        {
+          name = "Assigned",
+          key = "1",
+          layout = "compact",
+          filter = { assignee = { isMe = { eq = true } } },
+        },
+        {
+          name = "Team",
+          key = "2",
+          filter = { team = { key = { eq = "ENG" } } },
+          -- search = "login", -- Optional text search within the filter.
+        },
+      },
+    },
+  },
+})
+```
 
 </details>
 

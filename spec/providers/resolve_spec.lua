@@ -56,6 +56,44 @@ describe("providers.resolve", function()
 		assert.are.equal("https://jira.example.com/browse/ATLAS-123", jira.url)
 	end)
 
+	it("resolves Linear issue URLs", function()
+		local cases = {
+			"https://linear.app/acme/issue/ENG-123/fix-login",
+			"https://linear.app/acme/issue/ENG-123",
+			"https://LINEAR.APP/acme/issue/eng-123/fix-login/?view=board#comment-1",
+			"https://linear.app/acme/issue/ENG%2D123/fix-login",
+		}
+		for _, value in ipairs(cases) do
+			local target = assert(providers.resolve(" <" .. value .. "> "))
+			assert.same({
+				provider = "linear",
+				domain = "issues",
+				entity = "issue",
+				host = "linear.app",
+				issue_key = "ENG-123",
+				url = value,
+			}, target)
+			local provider = assert(providers.load("linear", "issues"))
+			assert.same({ key = "ENG-123" }, provider.issue_ref(target))
+		end
+	end)
+
+	it("rejects unsupported Linear URLs", function()
+		for _, value in ipairs({
+			"https://linear.app/acme/issue/ENG-123abc",
+			"https://linear.app/acme/issue/ENG-",
+			"https://linear.app/acme/issue/",
+			"https://linear.app/acme/team/ENG/active",
+			"https://linear.app.evil.test/acme/issue/ENG-123",
+			"ssh://git@linear.app/acme/issue/ENG-123",
+			"git@linear.app:acme/issue/ENG-123",
+		}) do
+			local target, err = providers.resolve(value)
+			assert.is_nil(target, value)
+			assert.is_string(err)
+		end
+	end)
+
 	it("resolves Enterprise Server browser URLs and Git remotes on the active host", function()
 		config.options.providers.github.hostname = "github.company.test"
 		local cases = {

@@ -261,6 +261,10 @@ local function prepare_open(opts)
 		notify.error("Issue provider unavailable")
 		return nil, false
 	end
+	local ui = provider.capabilities.ui
+	if not (ui and ui.detail) then
+		return nil, false
+	end
 
 	state.win, state.buf = detail_ui.open("issues", cleanup, render)
 	set_provider(provider)

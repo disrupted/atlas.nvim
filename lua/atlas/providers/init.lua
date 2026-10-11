@@ -4,11 +4,12 @@ local jira = require("atlas.providers.jira")
 local github = require("atlas.providers.github")
 local bitbucket = require("atlas.providers.bitbucket")
 local gitlab = require("atlas.providers.gitlab")
+local linear = require("atlas.providers.linear")
 
 local M = {}
 
 ---@alias AtlasPullsProviderId "bitbucket"|"github"|"gitlab"
----@alias AtlasIssuesProviderId "jira"|"github"|"gitlab"
+---@alias AtlasIssuesProviderId "jira"|"github"|"gitlab"|"linear"
 ---@alias AtlasProviderId AtlasPullsProviderId|AtlasIssuesProviderId
 ---@alias AtlasDomain "pulls"|"issues"
 ---@alias AtlasEntity "pr"|"issue"|"repo"|"pipeline"
@@ -154,5 +155,6 @@ add(jira)
 add(github)
 add(bitbucket)
 add(gitlab)
+add(linear)
 
 return M

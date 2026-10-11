@@ -171,6 +171,16 @@ local function check_jira()
 	check_provider_views("jira")
 end
 
+local function check_linear()
+	local provider = config.provider_options("linear")
+	if provider == nil then
+		vim.health.info("Linear not configured")
+		return
+	end
+	check_credentials(provider, { "token" }, "Linear")
+	check_provider_views("linear")
+end
+
 local function check_codediff_keymaps()
 	if not has_codediff then
 		vim.health.info("CodeDiff keymap check skipped: CodeDiff config is unavailable")
@@ -342,6 +352,9 @@ function M.check()
 
 	vim.health.start("Jira")
 	check_jira()
+
+	vim.health.start("Linear")
+	check_linear()
 
 	vim.health.start("Keymaps")
 	validate_keymaps()

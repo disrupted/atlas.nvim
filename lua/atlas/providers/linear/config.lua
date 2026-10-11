@@ -1,0 +1,2 @@
+---@class AtlasLinearConfig : AtlasProviderConfig
+---@field token string Personal API key.

@@ -74,6 +74,15 @@ local ICONS = {
 
 ---@type table<string, table<string, AtlasIconStyle>>
 local SECTIONS = {
+	linear_status = {
+		triage = { icon = "" },
+		backlog = { icon = "" },
+		unstarted = { icon = "" },
+		started = { icon = "" },
+		completed = { icon = "" },
+		canceled = { icon = "" },
+		duplicate = { icon = "" },
+	},
 	priority = {
 		highest = { icon = "", hl_group = "AtlasLogError" },
 		blocker = { icon = "", hl_group = "AtlasLogError" },
@@ -136,7 +145,7 @@ local SECTIONS = {
 }
 
 ---@param name string
----@param section? "priority"|"status"|"log"|"picker"|"actions"
+---@param section? "priority"|"status"|"linear_status"|"log"|"picker"|"actions"
 ---@return string, string
 function M.get(name, section)
 	local style = (section and SECTIONS[section] or ICONS)[name:lower()] or ICONS.fallback

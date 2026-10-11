@@ -280,6 +280,64 @@ function M.jira(opts, issues)
 end
 
 ---@param opts table
+---@param issues LinearIssue[]
+---@return string[], table<integer, table>, table[]
+function M.linear(opts, issues)
+	local columns = {
+		{ key = "icon", name = "", can_grow = false, align = "center" },
+		{ key = "name", name = "Issue", min_width = 42 },
+		{ key = "assignee", name = icons.get("user") .. " Assignee", min_width = 10, max_width = 22, can_grow = false },
+		{ key = "reporter", name = icons.get("user") .. " Reporter", min_width = 10, max_width = 22, can_grow = false },
+		{ key = "status", name = " Status", can_grow = false },
+	}
+
+	local function values(issue, is_child)
+		---@cast issue LinearIssue
+		local icon = utils.type_icon(issue)
+		local priority = icons.get(issue.priority or "", "priority")
+		local title = utils.join({ issue.key .. " " .. issue.title, priority, utils.due_text(issue) })
+
+		return {
+			icon = is_child and "" or icon,
+			name = (is_child and "  " .. icon .. " " or "") .. title,
+			assignee = utils.person_value(issue.assignee, "Unassigned"),
+			reporter = utils.person_value(issue.reporter, "Unknown"),
+			status = utils.status_value(issue, opts),
+		}
+	end
+
+	local function highlights(row, column, context)
+		local issue = row._issue
+		if issue == nil then
+			return nil
+		end
+		---@cast issue LinearIssue
+
+		local icon, icon_hl = utils.type_icon(issue)
+		if column.key == "icon" then
+			return utils.highlight_match({}, context.text, icon, icon_hl)
+		elseif column.key == "name" then
+			local key_hl = presentation.issue_hl(row._is_child and "" or issue.key)
+			local spans = utils.key_title_highlights(context.text, issue.key, key_hl)
+			if row._is_child then
+				utils.highlight_match(spans, context.text, icon, icon_hl)
+			end
+			if issue.priority and issue.priority ~= "" then
+				local priority, priority_hl = icons.get(issue.priority, "priority")
+				utils.highlight_match(spans, context.text, priority, priority_hl)
+			end
+			return spans
+		elseif column.key == "status" then
+			return utils.status_hl(issue, opts, issue.icon and issue.icon.hl_group or "AtlasTextMuted")
+		end
+
+		return utils.person_hl(issue, column.key)
+	end
+
+	return render(opts, issues, columns, values, highlights, true)
+end
+
+---@param opts table
 ---@param issues Issue[]
 ---@return string[], table<integer, table>, table[]
 function M.default(opts, issues)

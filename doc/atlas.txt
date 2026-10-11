@@ -1,4 +1,4 @@
-*atlas.txt*  Pull requests and issues in Neovim   Last change: 2026 Oct 04
+*atlas.txt*  Pull requests and issues in Neovim   Last change: 2026 Oct 11
 
 Author: Emre Armagan
 License: MIT
@@ -23,14 +23,15 @@ CONTENTS                                                       *atlas-contents*
      Jira ................................... |atlas-issues-jira|
      GitHub ................................. |atlas-issues-github|
      GitLab ................................. |atlas-issues-gitlab|
+     Linear ................................. |atlas-issues-linear|
   7. Events ................................. |atlas-events|
   8. Keymaps ................................ |atlas-keymaps|
 
 ==============================================================================
 1. INTRODUCTION                              *atlas* *atlas.nvim* *atlas-introduction*
 
-Review pull requests and manage issues across GitHub, GitLab, Bitbucket and Jira
-without leaving your editor.
+Review pull requests and manage issues across GitHub, GitLab, Bitbucket, Jira
+and Linear without leaving your editor.
 
 ==============================================================================
 2. INSTALLATION                                            *atlas-installation*
@@ -67,6 +68,7 @@ REQUIREMENTS                                               *atlas-requirements*
   - For Bitbucket: Bitbucket Cloud API token (`api.bitbucket.org`)
   - For GitLab: GitLab 17.7+ and a Personal Access Token with the `api` scope
   - For Jira: Cloud REST API v3 or Server REST API v2
+  - For Linear: a personal API key
 
 CodeDiff requires v3.0.0 or newer. Diffview and Diffview-plus are also supported.
 These viewers can display Atlas comment, task, and note overlays, but their
@@ -121,6 +123,11 @@ up and what's missing.
         auth_method = "basic", -- "basic" or "bearer"
         api_type = "cloud", -- "cloud" (v3) or "server" (v2)
         cache_ttl = 300, -- Set to 0 to disable caching.
+      },
+      ---@type AtlasLinearConfig
+      linear = {
+        token = vim.env.LINEAR_TOKEN,
+        cache_ttl = 300,
       },
     },
 
@@ -537,7 +544,7 @@ self-hosted URL.
 
 6. ISSUES                                                        *atlas-issues*
 
-Use `:Atlas issues [provider]` to browse and manage Jira, GitHub, and GitLab
+Use `:Atlas issues [provider]` to browse Jira, GitHub, GitLab, and Linear
 issues. Shared authentication and endpoints are configured in
 |atlas-configuration|.
 
@@ -676,6 +683,39 @@ Uses the shared `providers.gitlab` authentication from |atlas-configuration|.
         -- label = "Search", -- default
         items = {
           ["Closed"] = { scope = "created_by_me", state = "closed" },
+        },
+      },
+    },
+  }
+<
+------------------------------------------------------------------------------
+LINEAR ISSUES                                            *atlas-issues-linear*
+
+>lua
+  issues = {
+    ---@type AtlasLinearIssuesConfig
+    linear = {
+      views = {
+        {
+          name = "Assigned",
+          key = "1",
+          layout = "compact",
+          filter = { assignee = { isMe = { eq = true } } },
+          order_by = "updatedAt",
+          include_archived = false,
+        },
+        {
+          name = "Team",
+          key = "2",
+          filter = { team = { key = { eq = "ENG" } } },
+        },
+      },
+      bookmarks = {
+        items = {
+          ["Login"] = {
+            search = "login",
+            filter = { team = { key = { eq = "ENG" } } },
+          },
         },
       },
     },

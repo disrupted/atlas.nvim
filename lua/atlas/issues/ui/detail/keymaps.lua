@@ -181,23 +181,25 @@ function M.register(buf)
 		})
 	)
 
-	utils.insert_if(
-		items,
-		item("ui.toggle_subscription", {
-			desc = "Toggle subscription",
-			index = 30,
-			opts = { nowait = true, silent = true },
-			callback = function()
-				local issue = state.current_issue
-				if issue then
-					local on_update = state.on_update
-					actions.run("toggle_subscription", context(issue), function(result)
-						complete_action(issue, on_update, result)
-					end)
-				end
-			end,
-		})
-	)
+	if actions.find("toggle_subscription", context(nil)) then
+		utils.insert_if(
+			items,
+			item("ui.toggle_subscription", {
+				desc = "Toggle subscription",
+				index = 30,
+				opts = { nowait = true, silent = true },
+				callback = function()
+					local issue = state.current_issue
+					if issue then
+						local on_update = state.on_update
+						actions.run("toggle_subscription", context(issue), function(result)
+							complete_action(issue, on_update, result)
+						end)
+					end
+				end,
+			})
+		)
+	end
 
 	vim.list_extend(items, links.keymaps(state))
 

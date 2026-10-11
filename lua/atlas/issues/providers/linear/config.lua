@@ -1,0 +1,58 @@
+-- Example:
+--   require("atlas").setup({
+--     providers = {
+--       ---@type AtlasLinearConfig
+--       linear = {
+--         token = vim.env.LINEAR_TOKEN,
+--         cache_ttl = 300, -- Seconds; 0 disables caching.
+--       },
+--     },
+--     issues = {
+--       ---@type AtlasLinearIssuesConfig
+--       linear = {
+--         views = {
+--           {
+--             name = "Assigned",
+--             key = "1",
+--             layout = "compact", -- "compact" | "plain"
+--             filter = { assignee = { isMe = { eq = true } } },
+--             order_by = "updatedAt", -- "createdAt" | "updatedAt"
+--             include_archived = false,
+--           },
+--           {
+--             name = "Team",
+--             key = "2",
+--             filter = { team = { key = { eq = "ENG" } } },
+--             -- search = "login", -- Optional text search within these filters.
+--           },
+--         },
+--         bookmarks = {
+--           items = {
+--             ["High priority"] = { filter = { priority = { lte = 2, neq = 0 } } },
+--           },
+--         },
+--       },
+--     },
+--   })
+--
+-- Filters use Linear's GraphQL IssueFilter input:
+-- https://linear.app/developers/filtering
+
+---@class AtlasLinearIssuesSearchConfig
+---@field search string|nil
+---@field filter table<string, any>|nil
+---@field order_by "createdAt"|"updatedAt"|nil
+---@field include_archived boolean|nil
+
+---@class AtlasLinearIssuesViewConfig : IssuesViewConfig, AtlasLinearIssuesSearchConfig
+
+---@class AtlasLinearIssuesBookmarkConfig : AtlasIssuesBookmarkConfig, AtlasLinearIssuesSearchConfig
+
+---@class AtlasLinearIssuesBookmarksConfig
+---@field key string|nil
+---@field label string|nil
+---@field items table<string, AtlasLinearIssuesBookmarkConfig>|nil
+
+---@class AtlasLinearIssuesConfig
+---@field views AtlasLinearIssuesViewConfig[]|nil
+---@field bookmarks AtlasLinearIssuesBookmarksConfig|nil
