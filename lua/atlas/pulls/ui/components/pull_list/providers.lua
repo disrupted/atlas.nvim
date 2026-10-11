@@ -26,7 +26,7 @@ local function columns(conversation, before_author, after_author)
 		vim.list_extend(result, before_author)
 		table.insert(result, {
 			key = "author",
-			name = string.format("%s Author", icons.general("user")),
+			name = string.format("%s Author", icons.get("user")),
 			min_width = 10,
 			can_grow = false,
 			header_hl = "AtlasColumnHeader",
@@ -34,14 +34,14 @@ local function columns(conversation, before_author, after_author)
 		vim.list_extend(result, after_author)
 		table.insert(result, {
 			key = "created",
-			name = icons.general("created"),
+			name = icons.get("created"),
 			min_width = 4,
 			can_grow = false,
 			header_hl = "AtlasColumnHeader",
 		})
 		table.insert(result, {
 			key = "updated",
-			name = icons.general("updated"),
+			name = icons.get("updated"),
 			min_width = 4,
 			can_grow = false,
 			header_hl = "AtlasColumnHeader",
@@ -71,34 +71,34 @@ end
 
 local function github()
 	local ci_icons = {
-		SUCCESS = { icons.pulls_status("successful") },
-		FAILURE = { icons.pulls_status("failed") },
-		ERROR = { icons.pulls_status("failed") },
-		PENDING = { icons.pulls_status("inprogress") },
-		EXPECTED = { icons.pulls_status("inprogress") },
+		SUCCESS = { icons.get("successful", "status") },
+		FAILURE = { icons.get("failed", "status") },
+		ERROR = { icons.get("failed", "status") },
+		PENDING = { icons.get("inprogress", "status") },
+		EXPECTED = { icons.get("inprogress", "status") },
 	}
 	local review_icons = {
-		APPROVED = { icons.pulls_status("successful") },
-		CHANGES_REQUESTED = { icons.pulls_status("failed") },
-		REVIEW_REQUIRED = { icons.pulls_status("inprogress"), "AtlasTextMuted" },
+		APPROVED = { icons.get("successful", "status") },
+		CHANGES_REQUESTED = { icons.get("failed", "status") },
+		REVIEW_REQUIRED = { icons.get("inprogress", "status"), "AtlasTextMuted" },
 	}
 	local ci_column = {
 		key = "ci",
-		name = icons.pulls("tasks"),
+		name = icons.get("tasks"),
 		min_width = 1,
 		can_grow = false,
 		header_hl = "AtlasColumnHeader",
 	}
 	local review_column = {
 		key = "review",
-		name = icons.general("success"),
+		name = icons.get("success"),
 		min_width = 1,
 		can_grow = false,
 		header_hl = "AtlasColumnHeader",
 	}
 	local diff_column = {
 		key = "diff",
-		name = icons.pulls("changes"),
+		name = icons.get("changes"),
 		min_width = 5,
 		max_width = 15,
 		can_grow = false,
@@ -107,10 +107,10 @@ local function github()
 
 	return {
 		reference = "#",
-		columns = columns(icons.general("conversation"), { review_column, ci_column }, { diff_column }),
+		columns = columns(icons.get("conversation"), { review_column, ci_column }, { diff_column }),
 		values = function(pr)
 			---@cast pr GitHubPullRequest
-			local ci = { icons.pulls_status("inprogress"), "AtlasTextMuted" }
+			local ci = { icons.get("inprogress", "status"), "AtlasTextMuted" }
 			if pr.check_status then
 				ci = ci_icons[pr.check_status:upper()] or ci
 			end
@@ -146,7 +146,7 @@ end
 local function gitlab()
 	local ci_column = {
 		key = "ci",
-		name = icons.pulls("pipeline") or icons.pulls_status("inprogress"),
+		name = icons.get("pipeline") or icons.get("inprogress", "status"),
 		min_width = 1,
 		can_grow = false,
 		header_hl = "AtlasColumnHeader",
@@ -154,14 +154,14 @@ local function gitlab()
 
 	return {
 		reference = "!",
-		columns = columns(icons.general("comment"), { ci_column }, {}),
+		columns = columns(icons.get("comment"), { ci_column }, {}),
 		values = function(pr)
 			---@cast pr GitLabPullRequest
 			local status = presentation.gitlab_merge_status(pr)
 			if not status then
 				return { ci = "", ci_hl = "AtlasTextMuted" }
 			end
-			local icon, hl = icons.pulls_status(status)
+			local icon, hl = icons.get(status, "status")
 			return { ci = icon, ci_hl = hl }
 		end,
 		highlight = function(row, col, ctx)
@@ -185,25 +185,25 @@ local function bitbucket()
 			end
 		end
 		if changes_requested > 0 then
-			return icons.pulls_status("failed")
+			return icons.get("failed", "status")
 		-- For now, any approval counts as success. The PR list doesn't give us the minimum;
 		-- we'd need a separate merge-checks request for that, i think. At least could not find anything
 		elseif approved > 0 then
-			return icons.pulls_status("successful")
+			return icons.get("successful", "status")
 		end
-		return icons.pulls_status("inprogress"), "AtlasTextMuted"
+		return icons.get("inprogress", "status"), "AtlasTextMuted"
 	end
 
 	local task_column = {
 		key = "tasks",
-		name = icons.pulls("tasks"),
+		name = icons.get("tasks"),
 		min_width = 2,
 		can_grow = false,
 		header_hl = "AtlasColumnHeader",
 	}
 	local review_column = {
 		key = "review",
-		name = icons.general("success"),
+		name = icons.get("success"),
 		min_width = 1,
 		can_grow = false,
 		header_hl = "AtlasColumnHeader",
@@ -211,7 +211,7 @@ local function bitbucket()
 
 	return {
 		reference = "#",
-		columns = columns(icons.general("comment"), { task_column }, { review_column }),
+		columns = columns(icons.get("comment"), { task_column }, { review_column }),
 		values = function(pr)
 			---@cast pr BitbucketPullRequest
 			local review, review_hl = approvals(pr.reviewers)
@@ -237,7 +237,7 @@ end
 local function default()
 	return {
 		reference = "#",
-		columns = columns(icons.general("conversation"), {}, {}),
+		columns = columns(icons.get("conversation"), {}, {}),
 		values = function()
 			return {}
 		end,

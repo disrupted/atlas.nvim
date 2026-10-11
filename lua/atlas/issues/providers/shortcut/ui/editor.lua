@@ -2,6 +2,7 @@ local M = {}
 
 local form = require("atlas.ui.form")
 local icons = require("atlas.ui.shared.icons")
+local mapper = require("atlas.issues.providers.shortcut.api.mapper")
 local notify = require("atlas.core.notify")
 local picker = require("atlas.ui.picker")
 local requests = require("atlas.core.requests")
@@ -84,7 +85,7 @@ local function pick_story_type(state, editor)
 		title = "Story type",
 		items = { "feature", "bug", "chore" },
 		format_item = function(story_type)
-			return icons.issues_type(story_type, "shortcut") .. " " .. story_type
+			return mapper.to_issue_type(story_type).icon.icon .. " " .. story_type
 		end,
 		on_select = function(story_type)
 			if story_type and not editor.closed and not state.submitting then
@@ -171,7 +172,7 @@ local function pick_owners(state, editor)
 				return user.id
 			end,
 			format_item = function(user)
-				return icons.general("user") .. " " .. user.name
+				return icons.get("user") .. " " .. user.name
 			end,
 			on_done = function(owners)
 				if not editor.closed and not state.submitting then
@@ -186,14 +187,14 @@ end
 ---@param state ShortcutStoryEditorState
 ---@return AtlasFormMetaRow[]
 local function render_meta(state)
-	local type_icon, type_hl = icons.issues_type(state.story_type, "shortcut")
+	local type_style = mapper.to_issue_type(state.story_type).icon
 	local names = {}
 	for _, owner in ipairs(state.owners) do
 		names[#names + 1] = owner.name
 	end
 	return {
 		{
-			{ key = "Type:", value = type_icon .. " " .. state.story_type, hl = type_hl },
+			{ key = "Type:", value = type_style.icon .. " " .. state.story_type, hl = type_style.hl_group },
 			{
 				key = "State:",
 				value = state.workflow_state_name or (state.workflow_state_id and "Current" or "Required"),
@@ -204,7 +205,7 @@ local function render_meta(state)
 		{
 			{
 				key = "Owners:",
-				value = icons.general("user") .. " " .. (#names > 0 and table.concat(names, ", ") or "Unassigned"),
+				value = icons.get("user") .. " " .. (#names > 0 and table.concat(names, ", ") or "Unassigned"),
 				hl = #names > 0 and "Normal" or "AtlasTextMuted",
 				loading = state.loading.owners,
 			},

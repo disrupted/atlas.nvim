@@ -62,7 +62,7 @@ end
 function M.search(query, opts, on_done)
 	opts = opts or {}
 	local endpoint = search_endpoint(query, opts)
-	local cache_key = "search:v3:" .. endpoint
+	local cache_key = "search:v4:" .. endpoint
 	if not opts.force_refresh then
 		local cached, found = service.get_cache(cache_key)
 		if found then

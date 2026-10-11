@@ -66,8 +66,7 @@ function M.render()
 			or {}
 		vim.list_extend(extra_chips, links.chips(state))
 
-		local provider_id = state.provider and state.provider.id or nil
-		local header_lines, header_spans = header.render(issue, width, extra_fields, provider_id)
+		local header_lines, header_spans = header.render(issue, width, extra_fields)
 		utils.append_block(lines, spans, { lines = header_lines, highlights = header_spans })
 
 		local chip_lines, chip_spans = chips.render(extra_chips, { width = width })

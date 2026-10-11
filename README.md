@@ -72,7 +72,7 @@ require("atlas").setup({})
 - Jira: Jira Cloud REST API v3 (`*.atlassian.net`) or Jira Server REST API v2
 - Bitbucket: Bitbucket Cloud REST API 2.0 (`api.bitbucket.org`)
 - GitHub: GitHub CLI (`gh`) authenticated with `gh auth login`
-- GitLab: GitLab REST API v4 (`gitlab.com` or self-hosted), Personal Access Token with `api` scope
+- GitLab: GitLab 17.7+ (`gitlab.com` or self-hosted), Personal Access Token with `api` scope
 - Shortcut: Shortcut REST API v3 and a [personal API token](https://app.shortcut.com/settings/account/api-tokens)
 
 </details>
@@ -207,6 +207,7 @@ pulls = {
       id = "show_repo_status",
       label = "Show repository status",
       icon = "",
+      confirmation = true,
       ---@param pr PullRequest
       ---@param ctx AtlasPullsCustomActionContext
       ---@param done fun(ok: boolean|nil, message: string|nil)
@@ -240,6 +241,7 @@ issues = {
       id = "copy_branch_name",
       label = "Copy branch name",
       icon = "",
+      confirmation = false,
       ---@param issue Issue
       ---@param ctx AtlasIssuesCustomActionContext
       ---@param done fun(ok: boolean|nil, message: string|nil)
@@ -579,18 +581,20 @@ pulls = {
         -- current_repo = true, -- Limit this view to the local repository.
       },
       {
-        name = "Reviewing",
+        name = "Waiting for review",
         key = "3",
         scope = "reviews_for_me",
+        state = "opened", -- "opened", "closed", "merged", or "all".
+        review_states = { "UNREVIEWED", "REVIEW_STARTED" },
       },
       -- Single project
       {
         name = "GitLab",
         key = "G",
         project = "gitlab-org/gitlab",
-        extra_params = { target_branch = "main" },
+        target_branch = "main",
       },
-      -- Whole group, all projects under it
+      -- Projects directly in this group
       {
         name = "GitLab Org",
         key = "O",
@@ -603,7 +607,7 @@ pulls = {
       label = "Search", -- default
       items = {
         ["Reviewing"]    = { scope = "reviews_for_me" },
-        ["Created by me"] = { scope = "all", author_username = "me" },
+        ["Created by me"] = { scope = "created_by_me" },
       },
     },
   },
@@ -788,8 +792,6 @@ issues = {
         key = "3",
         scope = "all",
         state = "opened",
-        -- Pass additional API filters via extra_params.
-        extra_params = { ["not[labels]"] = "wontfix" },
       },
     },
 
@@ -797,9 +799,7 @@ issues = {
       key   = "S",      -- default
       label = "Search", -- default
       items = {
-        ["No labels"] = { scope = "all", state = "opened",
-                          extra_params = { ["not[labels]"] = "*" } },
-        ["Closed"]    = { scope = "created_by_me", state = "closed" },
+        ["Closed"] = { scope = "created_by_me", state = "closed" },
       },
     },
   },

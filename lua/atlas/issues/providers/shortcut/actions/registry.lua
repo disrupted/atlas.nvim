@@ -160,7 +160,7 @@ local function assign(ctx, done)
 				return user.id
 			end,
 			format_item = function(user)
-				return string.format("%s %s", icons.general("user"), user.name)
+				return string.format("%s %s", icons.get("user"), user.name)
 			end,
 			on_done = function(chosen)
 				local chosen_ids = {}
@@ -208,7 +208,7 @@ local function reporter(ctx, done)
 			title = string.format("Requester for #%s", issue.key),
 			items = users,
 			format_item = function(user)
-				return string.format("%s %s", icons.general("user"), user.name)
+				return string.format("%s %s", icons.get("user"), user.name)
 			end,
 			on_select = function(user)
 				if user == nil then
@@ -519,67 +519,79 @@ end
 register({
 	id = "transition",
 	label = "Change Workflow State",
-	icon = icons.action("transition"),
+	icon = icons.get("transition", "actions"),
 	is_available = has_issue,
 	run = transition,
 })
-register({ id = "assign", label = "Edit Owners", icon = icons.action("user"), is_available = has_issue, run = assign })
+register({
+	id = "assign",
+	label = "Edit Owners",
+	icon = icons.get("user", "actions"),
+	is_available = has_issue,
+	run = assign,
+})
 register({
 	id = "reporter",
 	label = "Change Requester",
-	icon = icons.action("user"),
+	icon = icons.get("user", "actions"),
 	is_available = has_issue,
 	run = reporter,
 })
-register({ id = "labels", label = "Edit Labels", icon = icons.action("label"), is_available = has_issue, run = labels })
+register({
+	id = "labels",
+	label = "Edit Labels",
+	icon = icons.get("label", "actions"),
+	is_available = has_issue,
+	run = labels,
+})
 register({
 	id = "archive",
 	label = "Archive Story",
-	icon = icons.action("close"),
+	icon = icons.get("close", "actions"),
 	is_available = archive_available,
 	run = archive,
 })
 register({
 	id = "unarchive",
 	label = "Unarchive Story",
-	icon = icons.action("reopen"),
+	icon = icons.get("reopen", "actions"),
 	is_available = unarchive_available,
 	run = unarchive,
 })
 register({
 	id = "toggle_subscription",
 	label = "Follow / Unfollow Story",
-	icon = icons.action("notification"),
+	icon = icons.get("notification", "actions"),
 	is_available = has_issue,
 	run = toggle_subscription,
 })
 register({
 	id = "delete_issue",
 	label = "Delete Story",
-	icon = icons.action("delete"),
+	icon = icons.get("delete", "actions"),
 	is_available = has_issue,
 	run = delete_issue,
 })
 register({
 	id = "edit_issue",
 	label = "Edit Story",
-	icon = icons.action("edit"),
+	icon = icons.get("edit", "actions"),
 	is_available = has_issue,
 	run = edit_issue,
 })
-register({ id = "create_issue", label = "Create Story", icon = icons.action("create"), run = create_issue })
+register({ id = "create_issue", label = "Create Story", icon = icons.get("create", "actions"), run = create_issue })
 register({
 	id = "create_checklist_item",
 	label = "Add Checklist Item",
-	icon = icons.action("create"),
+	icon = icons.get("create", "actions"),
 	is_available = has_issue,
 	run = create_checklist_item,
 })
-register({ id = "search", label = "Search Stories", icon = icons.action("search"), run = search })
+register({ id = "search", label = "Search Stories", icon = icons.get("search", "actions"), run = search })
 register({
 	id = "edit_search",
 	label = "Edit search",
-	icon = icons.action("search"),
+	icon = icons.get("search", "actions"),
 	run = function(_, done)
 		local state = require("atlas.issues.state")
 		require("atlas.providers.shortcut.completion.search").edit(state.query .. " ", function(query)

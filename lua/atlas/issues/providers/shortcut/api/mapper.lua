@@ -1,6 +1,24 @@
 local M = {}
 
+local icons = require("atlas.ui.shared.icons")
 local json = require("atlas.core.json")
+
+local TYPE_ICONS = {
+	feature = { icon = "󰃀", hl_group = "AtlasTextPositive" },
+	chore = { icon = "", hl_group = "AtlasLogInfo" },
+	bug = { icon = "", hl_group = "AtlasLogError" },
+}
+
+---@param story_type string
+---@return IssueType
+function M.to_issue_type(story_type)
+	local style = TYPE_ICONS[story_type]
+	if not style then
+		local icon, hl_group = icons.get("issue")
+		style = { icon = icon, hl_group = hl_group }
+	end
+	return { id = story_type, name = story_type, icon = style, subtask = false }
+end
 
 ---@param users AtlasUser[]
 ---@param id string|nil
@@ -91,6 +109,8 @@ function M.to_issue(raw, users, state)
 	local mapped_labels = labels(raw.labels or {})
 	local comments = raw.comment_ids or raw.comments
 	local story_type = tostring(raw.story_type)
+	local issue_type = M.to_issue_type(story_type)
+	issue_type.subtask = parent_id ~= nil
 	local status = raw.archived and "Archived" or (state and state.name) or "Unknown"
 	local status_id = raw.archived and "archived" or tostring(raw.workflow_state_id)
 
@@ -102,11 +122,8 @@ function M.to_issue(raw, users, state)
 		status = status,
 		status_id = status_id,
 		workflow_state_id = raw.workflow_state_id,
-		type = {
-			id = story_type,
-			name = story_type,
-			subtask = parent_id ~= nil,
-		},
+		type = issue_type,
+		icon = issue_type.icon,
 		assignee = owners(users, owner_ids)[1],
 		reporter = user_for(users, raw.requested_by_id),
 		story_points = tonumber(json.nilify(raw.estimate)),

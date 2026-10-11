@@ -86,7 +86,7 @@ function M.chips(issue, details, _loading)
 	if details and #details.tasks > 0 then
 		local completed_task_count = completed_tasks(details.tasks)
 		table.insert(chips, {
-			label = string.format("%s %d/%d", icons.general("tasks"), completed_task_count, #details.tasks),
+			label = string.format("%s %d/%d", icons.get("tasks"), completed_task_count, #details.tasks),
 			hl = completed_task_count == #details.tasks and "AtlasTextPositive" or "AtlasTextWarning",
 		})
 	end
@@ -94,7 +94,7 @@ function M.chips(issue, details, _loading)
 	local deadline = utils.format_date(issue.duedate)
 	if deadline ~= "" then
 		table.insert(chips, {
-			label = string.format("%s %s", icons.general("created"), deadline),
+			label = string.format("%s %s", icons.get("created"), deadline),
 			hl = "AtlasTextMuted",
 		})
 	end
@@ -102,14 +102,14 @@ function M.chips(issue, details, _loading)
 	local labels = details and details.labels or issue.labels
 	for _, label in ipairs(labels) do
 		table.insert(chips, {
-			label = string.format("%s %s", icons.general("tag"), label.name),
+			label = string.format("%s %s", icons.get("tag"), label.name),
 			hl = "AtlasChipActive",
 		})
 	end
 
 	if issue.parent then
 		table.insert(chips, {
-			label = string.format("%s #%s", icons.pulls("branch"), issue.parent.key),
+			label = string.format("%s #%s", icons.get("branch"), issue.parent.key),
 			hl = "AtlasShortcutChipParent",
 		})
 	end
@@ -119,9 +119,9 @@ end
 
 ---@return IssuesDetailTabDefinition[]
 function M.tabs()
-	local overview_icon = icons.general("overview")
-	local conversation_icon = icons.general("conversation")
-	local activity_icon = icons.pulls("activity")
+	local overview_icon = icons.get("overview")
+	local conversation_icon = icons.get("conversation")
+	local activity_icon = icons.get("activity")
 	return {
 		{
 			key = "overview",

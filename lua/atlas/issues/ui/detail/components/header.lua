@@ -20,16 +20,16 @@ end
 ---@param issue Issue
 ---@param width integer
 ---@param fields IssuesDetailHeaderField[]|nil
----@param provider_id AtlasIssuesProviderId|nil
 ---@return string[], table[]
-function M.render(issue, width, fields, provider_id)
+function M.render(issue, width, fields)
 	local issue_type = issue.type and issue.type.name or "Issue"
 	local key = issue.key
 	local title = issue.title
 
-	local type_icon, type_icon_hl = icons.issues_type(issue_type, provider_id)
-	if type_icon == "" then
-		type_icon, type_icon_hl = icons.issues("issue")
+	local type_icon, type_icon_hl = icons.get("issue")
+	if issue.icon then
+		type_icon = issue.icon.icon
+		type_icon_hl = issue.icon.hl_group or type_icon_hl
 	end
 
 	local type_key_line = string.format(" %s %s %s", type_icon, issue_type, key)
@@ -38,10 +38,10 @@ function M.render(issue, width, fields, provider_id)
 	local bell_icon, bell_hl
 	if issue.is_subscribed ~= nil then
 		if issue.is_subscribed then
-			bell_icon = icons.general("bell")
+			bell_icon = icons.get("bell")
 			bell_hl = "AtlasLogInfo"
 		else
-			bell_icon, bell_hl = icons.general("bell_no")
+			bell_icon, bell_hl = icons.get("bell_no")
 		end
 		local line_w = vim.api.nvim_strwidth(type_key_line)
 		local bell_w = vim.api.nvim_strwidth(bell_icon)

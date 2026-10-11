@@ -59,6 +59,30 @@ describe("Shortcut Story mapper", function()
 			url = issue.url,
 		})
 		assert.same({ key = "99" }, issue.parent)
+		assert.is_true(issue.type.subtask)
+		assert.same({ icon = "", hl_group = "AtlasLogError" }, issue.type.icon)
+		assert.equal(issue.type.icon, issue.icon)
+	end)
+
+	it("supplies native Story type styles without sharing mutable type metadata", function()
+		local styles = {
+			feature = { icon = "󰃀", hl_group = "AtlasTextPositive" },
+			chore = { icon = "", hl_group = "AtlasLogInfo" },
+			bug = { icon = "", hl_group = "AtlasLogError" },
+		}
+		for name, style in pairs(styles) do
+			local issue_type = mapper.to_issue_type(name)
+			assert.same({ id = name, name = name, icon = style, subtask = false }, issue_type)
+			issue_type.subtask = true
+			assert.is_false(mapper.to_issue_type(name).subtask)
+		end
+	end)
+
+	it("uses the shared issue style for an unknown Story type", function()
+		local icon, hl_group = require("atlas.ui.shared.icons").get("issue")
+		local issue_type = mapper.to_issue_type("unknown")
+		assert.equal("unknown", issue_type.name)
+		assert.same({ icon = icon, hl_group = hl_group }, issue_type.icon)
 	end)
 
 	it("maps Story details", function()

@@ -69,11 +69,8 @@ describe("Shortcut shared form editor", function()
 				render_meta = function() end,
 			},
 			["atlas.ui.shared.icons"] = {
-				general = function()
+				get = function()
 					return ""
-				end,
-				issues_type = function()
-					return "", "Normal"
 				end,
 			},
 			["atlas.core.notify"] = {
@@ -192,6 +189,22 @@ describe("Shortcut shared form editor", function()
 		editor.content.title = "Edited title"
 		options.submit(editor)
 		assert.same({ name = "Edited title" }, requests[1].fields)
+	end)
+
+	it("preserves native Story type icons and highlights in the picker and form", function()
+		editor_api.open(done)
+		press("gt")
+		local styles = {
+			feature = { icon = "󰃀", hl = "AtlasTextPositive" },
+			bug = { icon = "", hl = "AtlasLogError" },
+			chore = { icon = "", hl = "AtlasLogInfo" },
+		}
+		for _, story_type in ipairs(selected.items) do
+			local style = styles[story_type]
+			assert.equal(style.icon .. " " .. story_type, selected.format_item(story_type))
+			selected.on_select(story_type)
+			assert.same({ key = "Type:", value = style.icon .. " " .. story_type, hl = style.hl }, options.meta()[1][1])
+		end
 	end)
 
 	it("preserves selected disabled owners and treats their ordering as unchanged", function()

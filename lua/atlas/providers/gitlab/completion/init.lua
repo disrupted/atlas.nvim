@@ -174,7 +174,7 @@ local issues = {
 			local items = {}
 			for _, item in ipairs(data.issues.nodes) do
 				local reference = "#" .. item.iid
-				local icon = icons.issues(item.state == "closed" and "success" or "issue")
+				local icon = icons.get(item.state == "closed" and "success" or "issue")
 				items[#items + 1] = {
 					label = icon .. " " .. reference,
 					insert_text = reference,
@@ -231,7 +231,7 @@ local pulls = {
 					icon = "declined_pr"
 				end
 				items[#items + 1] = {
-					label = icons.pulls(icon) .. " " .. reference,
+					label = icons.get(icon) .. " " .. reference,
 					insert_text = reference,
 					filter_text = item.iid .. " " .. item.title,
 					detail = item.title,

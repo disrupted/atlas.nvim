@@ -24,7 +24,7 @@ local function comment_item(comment, reaction_options)
 
 	local author = helper.person_name(comment.author)
 	local author_hl = helper.person_hl(author)
-	local user_icon = icons.general("user")
+	local user_icon = icons.get("user")
 	return {
 		icon = user_icon,
 		icon_hl = author_hl,

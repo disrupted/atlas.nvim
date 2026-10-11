@@ -158,6 +158,20 @@ describe("Shortcut backend workflows", function()
 		assert.equal("HTTP 400", err)
 	end)
 
+	it("bypasses persisted search entries from the model without type icons", function()
+		local endpoint = "/search/stories?query=owner%3Ame&page_size=50&detail=slim"
+		cached["search:v3:" .. endpoint] = { items = { { key = "123", title = "Old cached Story" } } }
+		replies[endpoint] = { data = { story }, total = 1 }
+		local issue
+		require("atlas.issues.providers.shortcut.api.stories").search("owner:me", {}, function(page, err)
+			assert.is_nil(err)
+			issue = page.items[1]
+		end)
+		assert.equal("A Story", issue.title)
+		assert.same({ icon = "󰃀", hl_group = "AtlasTextPositive" }, issue.icon)
+		assert.equal(issue.icon, issue.type.icon)
+	end)
+
 	it("checks workspace and invalid keys when fetching Story references", function()
 		local stories = require("atlas.issues.providers.shortcut.api.stories")
 		local issues, err
@@ -253,7 +267,7 @@ describe("Shortcut backend workflows", function()
 	it("creates replies through shared parent options and invalidates cached data", function()
 		replies["/stories/123/comments"] = { id = 456, text = "A reply", author_id = "owner", parent_id = 100 }
 		cached["story:123"] = story
-		cached["search:v3:query"] = { items = { story } }
+		cached["search:v4:query"] = { items = { story } }
 		local result
 		require("atlas.issues.providers.shortcut.api.comments").add_comment(
 			story,
@@ -269,7 +283,7 @@ describe("Shortcut backend workflows", function()
 		assert.equal(100, result.parent_id)
 		assert.same({ "story:123", "search:" }, invalidated)
 		assert.is_nil(cached["story:123"])
-		assert.is_nil(cached["search:v3:query"])
+		assert.is_nil(cached["search:v4:query"])
 	end)
 
 	it("invalidates details and searches after checklist mutations", function()

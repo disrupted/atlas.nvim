@@ -4,7 +4,7 @@ local utils = require("atlas.ui.shared.utils")
 local icons = require("atlas.ui.shared.icons")
 
 local M = {}
-local STAR_ICON, STAR_ICON_HL = icons.general("star")
+local STAR_ICON, STAR_ICON_HL = icons.get("star")
 
 ---@param display table
 ---@param issue Issue
@@ -72,7 +72,7 @@ function M.render_plain(opts, issue_groups)
 				show_indicator = true
 			else
 				root_row.icon, root_row._fold_icon_hl =
-					icons.general(collapsed[group.issue.key] and "fold_closed" or "fold_open")
+					icons.get(collapsed[group.issue.key] and "fold_closed" or "fold_open")
 			end
 		end
 		table.insert(rows, root_row)
@@ -142,7 +142,7 @@ local function issue_meta_text(issue, provider_id)
 	end
 	local due = utils.format_date(issue.duedate)
 	if due ~= "" then
-		table.insert(parts, string.format("%s %s", icons.general("created"), due))
+		table.insert(parts, string.format("%s %s", icons.get("created"), due))
 	end
 	if issue.story_points ~= nil then
 		table.insert(parts, string.format("%s pts", tostring(issue.story_points)))

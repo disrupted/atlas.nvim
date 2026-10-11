@@ -1,10 +1,13 @@
 local displays = require("atlas.issues.ui.components.issue_list.providers")
+local mapper = require("atlas.issues.providers.shortcut.api.mapper")
 
 describe("Shortcut issue list", function()
+	local issue_type = mapper.to_issue_type("feature")
 	local issue = {
 		key = "123",
 		title = "Story title",
-		type = { name = "feature" },
+		type = issue_type,
+		icon = issue_type.icon,
 		status = "Started",
 		status_id = "456",
 		assignee = { id = "a", name = "Ada Owner" },
@@ -24,7 +27,17 @@ describe("Shortcut issue list", function()
 		assert.matches("3 pts", row._meta, 1, true)
 		assert.equal("#123 Story title", row.name)
 		assert.equal(" Started ", row.status)
-		assert.is_not.equal("", row.icon)
+		assert.equal("󰃀", row.icon)
+		local spans = display.highlights({ _issue = issue }, { key = "icon" }, { text = row.icon, padded = row.icon })
+		assert.equal("AtlasTextPositive", spans[1].hl_group)
+	end)
+
+	it("uses the mapped icon in child rows and the shared detail header", function()
+		local child = displays.get("shortcut").values(issue, true, "plain")
+		assert.matches(issue.icon.icon, child.name, 1, true)
+		local lines, spans = require("atlas.issues.ui.detail.components.header").render(issue, 100)
+		assert.matches(issue.icon.icon .. " feature 123", lines[1], 1, true)
+		assert.equal(issue.icon.hl_group, spans[3].hl_group)
 	end)
 
 	it("uses the calling list's reload state for status text and highlights", function()

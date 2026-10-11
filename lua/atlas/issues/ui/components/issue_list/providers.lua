@@ -10,14 +10,14 @@ local function columns()
 		{ key = "name", name = "Issue", min_width = 42 },
 		{
 			key = "assignee",
-			name = string.format("%s Assignee", icons.general("user")),
+			name = string.format("%s Assignee", icons.get("user")),
 			min_width = 10,
 			max_width = 22,
 			can_grow = false,
 		},
 		{
 			key = "reporter",
-			name = string.format("%s Reporter", icons.general("user")),
+			name = string.format("%s Reporter", icons.get("user")),
 			min_width = 10,
 			max_width = 22,
 			can_grow = false,
@@ -42,7 +42,7 @@ end
 ---@return string
 local function person_value(user, fallback)
 	local name = user and user.name or fallback
-	return string.format("%s %s", icons.general("user"), utils.shorten_name(name, 20))
+	return string.format("%s %s", icons.get("user"), utils.shorten_name(name, 20))
 end
 
 ---@param issue Issue
@@ -62,9 +62,9 @@ end
 
 local function state_icon(status_id)
 	if status_id == "closed" then
-		return icons.pulls_status("successful"), "AtlasIssueClosed"
+		return icons.get("successful", "status"), "AtlasIssueClosed"
 	end
-	return icons.issues("issue"), "AtlasIssueOpen"
+	return icons.get("issue"), "AtlasIssueOpen"
 end
 
 local function state_chip_hl(status_id)
@@ -82,7 +82,7 @@ local function state_highlights(opts)
 		if col.key == "icon" then
 			local icon, icon_hl
 			if issue.is_pinned == true then
-				icon, icon_hl = icons.general("pin")
+				icon, icon_hl = icons.get("pin")
 			else
 				icon, icon_hl = state_icon(issue.status_id)
 			end
@@ -143,20 +143,20 @@ local function github(opts)
 			{ key = "name", name = "Issue", min_width = 42 },
 			{
 				key = "comments",
-				name = icons.general("comment"),
+				name = icons.get("comment"),
 				min_width = 2,
 				can_grow = false,
 			},
 			{
 				key = "assignee",
-				name = string.format("%s Assignee", icons.general("user")),
+				name = string.format("%s Assignee", icons.get("user")),
 				min_width = 10,
 				max_width = 22,
 				can_grow = false,
 			},
 			{
 				key = "reporter",
-				name = string.format("%s Reporter", icons.general("user")),
+				name = string.format("%s Reporter", icons.get("user")),
 				min_width = 10,
 				max_width = 22,
 				can_grow = false,
@@ -165,12 +165,12 @@ local function github(opts)
 		if layout == "compact" then
 			table.insert(result, {
 				key = "created",
-				name = icons.general("created"),
+				name = icons.get("created"),
 				can_grow = false,
 			})
 			table.insert(result, {
 				key = "updated",
-				name = icons.general("updated"),
+				name = icons.get("updated"),
 				can_grow = false,
 			})
 		end
@@ -186,7 +186,7 @@ local function github(opts)
 		---@cast issue GitHubIssue
 		local label = key_label(issue)
 		local is_pinned = issue.is_pinned == true
-		local row_icon = is_pinned and icons.general("pin") or state_icon(issue.status_id)
+		local row_icon = is_pinned and icons.get("pin") or state_icon(issue.status_id)
 		local name = is_child and ("  " .. row_icon .. "  " .. label .. " " .. issue.title)
 			or (label .. " " .. issue.title)
 
@@ -241,14 +241,14 @@ end
 local function jira(opts)
 	local function values(issue, is_child)
 		---@cast issue JiraIssue
-		local type_icon = icons.issues_type(issue.type and issue.type.name or nil)
+		local type_icon = issue.icon and issue.icon.icon or icons.get("issue")
 		local title = is_child and (type_icon .. " " .. issue.key .. " " .. issue.title)
 			or (issue.key .. " " .. issue.title)
-		local priority_icon = icons.issues_priority(issue.priority)
+		local priority_icon = icons.get(issue.priority or "", "priority")
 		local due = utils.format_date(issue.duedate)
 		local suffix = priority_icon
 		if due ~= "" then
-			local due_text = icons.general("created") .. " " .. due
+			local due_text = icons.get("created") .. " " .. due
 			suffix = suffix ~= "" and (suffix .. "  " .. due_text) or due_text
 		end
 		local name = suffix ~= "" and (title .. "  " .. suffix) or title
@@ -268,14 +268,18 @@ local function jira(opts)
 		end
 		---@cast issue JiraIssue
 
-		local issue_type = issue.type and issue.type.name or nil
+		local type_icon, type_hl = icons.get("issue")
+		if issue.icon then
+			type_icon = issue.icon.icon
+			type_hl = issue.icon.hl_group or type_hl
+		end
+
 		if col.key == "name" then
 			local spans = {}
 			if (tonumber(table_row._tv2_depth) or 0) > 0 then
-				local icon, icon_hl = icons.issues_type(issue_type)
-				local start_col, end_col = ctx.text:find(icon, 1, true)
+				local start_col, end_col = ctx.text:find(type_icon, 1, true)
 				if start_col then
-					table.insert(spans, { start_col = start_col - 1, end_col = end_col, hl_group = icon_hl })
+					table.insert(spans, { start_col = start_col - 1, end_col = end_col, hl_group = type_hl })
 				end
 			end
 
@@ -299,7 +303,7 @@ local function jira(opts)
 			end
 
 			if issue.priority and issue.priority ~= "" then
-				local icon, icon_hl = icons.issues_priority(issue.priority)
+				local icon, icon_hl = icons.get(issue.priority, "priority")
 				local start_col, end_col = ctx.text:find(icon, 1, true)
 				if start_col then
 					table.insert(spans, { start_col = start_col - 1, end_col = end_col, hl_group = icon_hl })
@@ -315,10 +319,9 @@ local function jira(opts)
 			return { { start_col = 0, end_col = #ctx.padded, hl_group = hl } }
 		end
 		if col.key == "icon" then
-			local icon, icon_hl = icons.issues_type(issue_type)
-			local start_col, end_col = ctx.text:find(icon, 1, true)
+			local start_col, end_col = ctx.text:find(type_icon, 1, true)
 			if start_col then
-				return { { start_col = start_col - 1, end_col = end_col, hl_group = icon_hl } }
+				return { { start_col = start_col - 1, end_col = end_col, hl_group = type_hl } }
 			end
 		end
 		return person_highlight(issue, col, ctx)
@@ -338,7 +341,7 @@ local function shortcut(opts)
 
 		local due = utils.format_date(issue.duedate)
 		if due ~= "" then
-			table.insert(parts, string.format("%s %s", icons.general("created"), due))
+			table.insert(parts, string.format("%s %s", icons.get("created"), due))
 		end
 
 		local labels = {}
@@ -346,17 +349,17 @@ local function shortcut(opts)
 			table.insert(labels, label.name)
 		end
 		if #labels > 0 then
-			table.insert(parts, string.format("%s %s", icons.general("tag"), table.concat(labels, ", ")))
+			table.insert(parts, string.format("%s %s", icons.get("tag"), table.concat(labels, ", ")))
 		end
 		if issue.comment_count and issue.comment_count > 0 then
-			table.insert(parts, string.format("%s %d", icons.general("comment"), issue.comment_count))
+			table.insert(parts, string.format("%s %d", icons.get("comment"), issue.comment_count))
 		end
 		return table.concat(parts, "  ")
 	end
 
 	local function values(issue, is_child, layout)
 		---@cast issue ShortcutIssue
-		local row_icon = icons.issues_type(issue.type.name, "shortcut")
+		local row_icon = issue.icon and issue.icon.icon or icons.get("issue")
 		local label = "#" .. issue.key
 		local name = label .. " " .. issue.title
 		if is_child then
@@ -370,7 +373,7 @@ local function shortcut(opts)
 			end
 			local due = utils.format_date(issue.duedate)
 			if due ~= "" then
-				table.insert(meta, string.format("%s %s", icons.general("created"), due))
+				table.insert(meta, string.format("%s %s", icons.get("created"), due))
 			end
 			if #meta > 0 then
 				name = name .. "  " .. table.concat(meta, "  ")
@@ -399,9 +402,13 @@ local function shortcut(opts)
 			return nil
 		end
 		---@cast issue ShortcutIssue
+		local icon, icon_hl = icons.get("issue")
+		if issue.icon then
+			icon = issue.icon.icon
+			icon_hl = issue.icon.hl_group or icon_hl
+		end
 
 		if col.key == "icon" then
-			local icon, icon_hl = icons.issues_type(issue.type.name, "shortcut")
 			local start_col, end_col = ctx.text:find(icon, 1, true)
 			if start_col then
 				return { { start_col = start_col - 1, end_col = end_col, hl_group = icon_hl } }
@@ -411,7 +418,6 @@ local function shortcut(opts)
 		if col.key == "name" then
 			local spans = {}
 			if (tonumber(table_row._tv2_depth) or 0) > 0 then
-				local icon, icon_hl = icons.issues_type(issue.type.name, "shortcut")
 				local start_col, end_col = ctx.text:find(icon, 1, true)
 				if start_col then
 					table.insert(spans, { start_col = start_col - 1, end_col = end_col, hl_group = icon_hl })
