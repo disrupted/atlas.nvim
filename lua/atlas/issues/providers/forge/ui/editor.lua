@@ -189,7 +189,7 @@ local function pick_assignees(state)
 				return item.username
 			end,
 			format_item = function(item)
-				return string.format("%s %s (@%s)", icons.general("user"), item.name, item.username)
+				return string.format("%s %s (@%s)", icons.get("user"), item.name, item.username)
 			end,
 			title = "Assignees",
 			on_done = function(selected)

@@ -91,11 +91,14 @@ local issues = {
 			end
 
 			local icons = require("atlas.ui.shared.icons")
+			local status_icons = require("atlas.config").options.issues.jira.project_config.status_icons
 			local base_url = service.base_url():gsub("/+$", "")
 			local items = {}
 			for _, item in ipairs(result.issues) do
 				local status = item.fields.status
-				local icon = icons.issues_status(status.statusCategory.key, status.name)
+				local icon = status_icons[status.name]
+					or status_icons[status.statusCategory.key]
+					or icons.get("fallback")
 				items[#items + 1] = {
 					label = icon .. " " .. item.key,
 					insert_text = is_server and item.key

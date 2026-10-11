@@ -6,7 +6,7 @@ return {
 	{
 		id = "cancel_pipeline",
 		label = "Cancel pipeline",
-		icon = icons.action("close"),
+		icon = icons.get("close", "actions"),
 		confirm = "Cancel this pipeline?",
 		is_available = function(ctx)
 			return pipelines.parse_run_number(ctx.context, ctx.pipeline) ~= nil

@@ -6,11 +6,11 @@ local utils = require("atlas.ui.shared.utils")
 
 local M = {}
 
-local PR_ICON, PR_ICON_HL = icons.pulls("pr")
-local DRAFT_PR_ICON, DRAFT_PR_ICON_HL = icons.pulls("draft_pr")
-local MERGED_PR_ICON, MERGED_PR_ICON_HL = icons.pulls("merged_pr")
-local DECLINED_PR_ICON, DECLINED_PR_ICON_HL = icons.pulls("declined_pr")
-local STAR_ICON, STAR_ICON_HL = icons.general("star")
+local PR_ICON, PR_ICON_HL = icons.get("pr")
+local DRAFT_PR_ICON, DRAFT_PR_ICON_HL = icons.get("draft_pr")
+local MERGED_PR_ICON, MERGED_PR_ICON_HL = icons.get("merged_pr")
+local DECLINED_PR_ICON, DECLINED_PR_ICON_HL = icons.get("declined_pr")
+local STAR_ICON, STAR_ICON_HL = icons.get("star")
 
 local PR_STATE_ICON = {
 	open = { PR_ICON, PR_ICON_HL },
@@ -129,7 +129,7 @@ local function pull_row(pr, repo, opts)
 		_pr_icon_str = icon,
 		_pr_icon_hl = icon_hl,
 		conversation = tostring(pr.comments_count),
-		author = string.format("%s %s", icons.general("user"), utils.shorten_name(author, 20)),
+		author = string.format("%s %s", icons.get("user"), utils.shorten_name(author, 20)),
 		author_hl = author,
 		created = utils.relative_time(pr.created_on),
 		updated = utils.relative_time(pr.updated_on),

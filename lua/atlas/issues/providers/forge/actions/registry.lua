@@ -171,7 +171,7 @@ function M.new(provider_id, api)
 						return item.username
 					end,
 					format_item = function(item)
-						return string.format("%s %s (@%s)", icons.general("user"), item.name, item.username)
+						return string.format("%s %s (@%s)", icons.get("user"), item.name, item.username)
 					end,
 					title = "Assignees for " .. issue.key,
 					on_done = function(values)
@@ -366,7 +366,8 @@ function M.new(provider_id, api)
 	register({
 		id = "close",
 		label = "Close Issue",
-		icon = icons.action("close"),
+		confirmation = true,
+		icon = icons.get("close", "actions"),
 		is_available = function(ctx)
 			local ok, err = has_issue(ctx)
 			if not ok then
@@ -393,7 +394,7 @@ function M.new(provider_id, api)
 	register({
 		id = "reopen",
 		label = "Reopen Issue",
-		icon = icons.action("reopen"),
+		icon = icons.get("reopen", "actions"),
 		is_available = function(ctx)
 			local ok, err = has_issue(ctx)
 			if not ok then
@@ -420,20 +421,19 @@ function M.new(provider_id, api)
 	register({
 		id = "transition",
 		label = "Transition Issue",
-		icon = icons.action("transition"),
+		icon = icons.get("transition", "actions"),
 		hidden = true,
 		is_available = has_issue,
-		confirmation = true,
 		run = function(ctx, done)
 			local action = ctx.issue.status_id == "closed" and "reopen" or "close"
-			return registry.find(action).run(ctx, done)
+			return actions.run(action, ctx, done)
 		end,
 	})
 
 	register({
 		id = "pin",
 		label = "Pin Issue",
-		icon = icons.action("save"),
+		icon = icons.get("save", "actions"),
 		is_available = function(ctx)
 			local ok, err = has_issue(ctx)
 			if not ok then
@@ -463,7 +463,7 @@ function M.new(provider_id, api)
 	register({
 		id = "unpin",
 		label = "Unpin Issue",
-		icon = icons.action("save"),
+		icon = icons.get("save", "actions"),
 		is_available = function(ctx)
 			local ok, err = has_issue(ctx)
 			if not ok then
@@ -515,7 +515,7 @@ function M.new(provider_id, api)
 		register({
 			id = "lock_issue",
 			label = "Lock Issue",
-			icon = icons.action("close"),
+			icon = icons.get("close", "actions"),
 			is_available = function(ctx)
 				local ok, err = has_issue(ctx)
 				if not ok then
@@ -539,7 +539,7 @@ function M.new(provider_id, api)
 		register({
 			id = "unlock_issue",
 			label = "Unlock Issue",
-			icon = icons.action("reopen"),
+			icon = icons.get("reopen", "actions"),
 			is_available = function(ctx)
 				local ok, err = has_issue(ctx)
 				if not ok then
@@ -558,7 +558,7 @@ function M.new(provider_id, api)
 	register({
 		id = "edit_issue",
 		label = "Edit Issue",
-		icon = icons.action("edit"),
+		icon = icons.get("edit", "actions"),
 		is_available = has_issue,
 		run = function(ctx, done)
 			local issue = assert(ctx.issue)
@@ -571,7 +571,7 @@ function M.new(provider_id, api)
 	register({
 		id = "assign",
 		label = "Edit Assignees",
-		icon = icons.action("user"),
+		icon = icons.get("user", "actions"),
 		is_available = has_issue,
 		run = function(ctx, done)
 			edit_assignees(assert(ctx.issue), done)
@@ -581,7 +581,7 @@ function M.new(provider_id, api)
 	register({
 		id = "labels",
 		label = "Edit Labels",
-		icon = icons.action("label"),
+		icon = icons.get("label", "actions"),
 		is_available = has_issue,
 		run = function(ctx, done)
 			edit_labels(assert(ctx.issue), done)
@@ -591,7 +591,7 @@ function M.new(provider_id, api)
 	register({
 		id = "milestone",
 		label = "Edit Milestone",
-		icon = icons.action("label"),
+		icon = icons.get("label", "actions"),
 		is_available = has_issue,
 		run = function(ctx, done)
 			edit_milestone(assert(ctx.issue), done)
@@ -601,7 +601,7 @@ function M.new(provider_id, api)
 	register({
 		id = "toggle_subscription",
 		label = "Toggle Subscription",
-		icon = icons.action("notification"),
+		icon = icons.get("notification", "actions"),
 		is_available = has_issue,
 		run = function(ctx, done)
 			toggle_subscription(ctx, done)
@@ -611,7 +611,7 @@ function M.new(provider_id, api)
 	register({
 		id = "delete_issue",
 		label = "Delete Issue",
-		icon = icons.action("delete"),
+		icon = icons.get("delete", "actions"),
 		confirmation = true,
 		is_available = has_issue,
 		run = function(ctx, done)
@@ -632,7 +632,7 @@ function M.new(provider_id, api)
 	register({
 		id = "create_issue",
 		label = "Create Issue",
-		icon = icons.action("create"),
+		icon = icons.get("create", "actions"),
 		run = function(ctx, done)
 			local function open(slug)
 				editor.open(slug, function(result, err)
@@ -676,23 +676,23 @@ function M.new(provider_id, api)
 	register({
 		id = "search",
 		label = "Search Issues",
-		icon = icons.action("search"),
+		icon = icons.get("search", "actions"),
 		run = search.search,
 	})
 	register({
 		id = "edit_search",
 		label = "Edit search",
-		icon = icons.action("search"),
+		icon = icons.get("search", "actions"),
 		is_available = search.can_edit,
 		run = search.edit,
 	})
-	register({ id = "open_repo", label = "Open Repo", icon = icons.action("search"), run = search.open_repo })
+	register({ id = "open_repo", label = "Open Repo", icon = icons.get("search", "actions"), run = search.open_repo })
 
 	register(actions.browse_repository)
 	register({
 		id = "browse_repositories",
 		label = "Browse Repository",
-		icon = icons.general("overview"),
+		icon = icons.get("overview"),
 		run = search.browse_repositories,
 	})
 	register(actions.manage_templates)

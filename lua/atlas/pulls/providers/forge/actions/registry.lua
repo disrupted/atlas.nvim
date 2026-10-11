@@ -222,7 +222,7 @@ function M.new(provider_id, pullrequests, repositories)
 	register({
 		id = "update_branch",
 		label = "Update branch",
-		icon = icons.action("checkout"),
+		icon = icons.get("checkout", "actions"),
 		is_available = can_review,
 		run = function(ctx, done)
 			local pr = assert(ctx.pr)
@@ -248,7 +248,7 @@ function M.new(provider_id, pullrequests, repositories)
 	register({
 		id = "reopen",
 		label = "Reopen PR",
-		icon = icons.action("reopen"),
+		icon = icons.get("reopen", "actions"),
 		is_available = function(ctx)
 			local ok, err = has_repository(ctx)
 			if not ok then
@@ -277,7 +277,7 @@ function M.new(provider_id, pullrequests, repositories)
 	register({
 		id = "search",
 		label = "Search Pull Requests",
-		icon = icons.action("search"),
+		icon = icons.get("search", "actions"),
 		run = function(ctx, done)
 			select_repository({
 				title = "Search Pull Requests - Repository",
@@ -295,7 +295,7 @@ function M.new(provider_id, pullrequests, repositories)
 	register({
 		id = "open_repo",
 		label = "Open Repo",
-		icon = icons.action("search"),
+		icon = icons.get("search", "actions"),
 		run = function(_, done)
 			select_repository({
 				title = "Open " .. provider_name .. " Repo",
@@ -319,7 +319,7 @@ function M.new(provider_id, pullrequests, repositories)
 	register({
 		id = "browse_repositories",
 		label = "Browse Repository",
-		icon = icons.general("overview"),
+		icon = icons.get("overview"),
 		run = function(ctx, done)
 			select_repository({
 				title = "Browse Repository",
@@ -338,7 +338,7 @@ function M.new(provider_id, pullrequests, repositories)
 	register({
 		id = "search_pull_requests",
 		label = "Open Search View",
-		icon = icons.action("search"),
+		icon = icons.get("search", "actions"),
 		run = function(_, done)
 			local state = require("atlas.pulls.state")
 			local current = state.provider and state.provider.id == provider_id and state.search_view() or nil
@@ -367,7 +367,7 @@ function M.new(provider_id, pullrequests, repositories)
 	register({
 		id = "edit_search",
 		label = "Edit search",
-		icon = icons.action("search"),
+		icon = icons.get("search", "actions"),
 		is_available = function()
 			local state = require("atlas.pulls.state")
 			return state.provider ~= nil and state.provider.id == provider_id and state.search_view() ~= nil
@@ -396,7 +396,7 @@ function M.new(provider_id, pullrequests, repositories)
 	register({
 		id = "toggle_subscription",
 		label = "Toggle subscription",
-		icon = icons.action("notification"),
+		icon = icons.get("notification", "actions"),
 		is_available = has_repository,
 		run = function(ctx, done)
 			local pr = assert(ctx.pr)

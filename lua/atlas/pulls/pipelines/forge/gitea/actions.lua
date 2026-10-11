@@ -50,7 +50,7 @@ return {
 	{
 		id = "rerun_failed_jobs",
 		label = "Re-run failed jobs",
-		icon = icons.action("retry"),
+		icon = icons.get("retry", "actions"),
 		is_available = function(ctx)
 			return pipelines.parse_run_id(ctx.context, ctx.pipeline) ~= nil
 				and has_rerunnable_jobs(ctx.pipeline)
@@ -65,7 +65,7 @@ return {
 	{
 		id = "rerun_pipeline",
 		label = "Re-run pipeline",
-		icon = icons.action("retry"),
+		icon = icons.get("retry", "actions"),
 		is_available = function(ctx)
 			return pipelines.parse_run_id(ctx.context, ctx.pipeline) ~= nil and not is_running(ctx.pipeline)
 		end,
@@ -78,7 +78,7 @@ return {
 	{
 		id = "rerun_job",
 		label = "Re-run job",
-		icon = icons.action("retry"),
+		icon = icons.get("retry", "actions"),
 		is_available = function(ctx)
 			return pipelines.parse_run_id(ctx.context, ctx.pipeline) ~= nil
 				and ctx.job ~= nil

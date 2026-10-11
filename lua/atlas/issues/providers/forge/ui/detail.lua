@@ -36,8 +36,8 @@ end
 
 ---@return IssuesDetailTabDefinition[]
 local function tabs()
-	local overview_icon, overview_hl = icons.general("overview")
-	local conversation_icon, conversation_hl = icons.general("conversation")
+	local overview_icon, overview_hl = icons.get("overview")
+	local conversation_icon, conversation_hl = icons.get("conversation")
 	return {
 		{
 			key = "overview",
@@ -79,7 +79,7 @@ function M.header_fields(issue, details, loading)
 		},
 		{
 			label = "Author",
-			value = string.format("%s %s", icons.general("user"), reporter),
+			value = string.format("%s %s", icons.get("user"), reporter),
 			hl = helper.person_hl(reporter),
 		},
 		{ label = "Assignees", value = assignee_text, hl = assignee_hl },
