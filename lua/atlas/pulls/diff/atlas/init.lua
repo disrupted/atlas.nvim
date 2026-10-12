@@ -65,14 +65,8 @@ local function prepare_document(file, contents)
 	return {
 		file = file,
 		contents = {
-			old = prepare_content(
-				old,
-				binary and file.status ~= "added" and contents.old ~= "" and contents.old or nil
-			),
-			new = prepare_content(
-				new,
-				binary and file.status ~= "deleted" and contents.new ~= "" and contents.new or nil
-			),
+			old = prepare_content(old, binary and contents.old ~= "" and contents.old or nil),
+			new = prepare_content(new, binary and contents.new ~= "" and contents.new or nil),
 		},
 		binary = binary,
 		hunks = hunks,
@@ -224,6 +218,7 @@ local function display(view, document)
 	end
 	for _, pane in ipairs({ view.left, view.right }) do
 		if pane.win then
+			setup_window(pane.win)
 			images.configure_window(document, pane.win)
 		end
 	end

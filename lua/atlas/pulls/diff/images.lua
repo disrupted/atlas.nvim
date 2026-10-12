@@ -1,13 +1,3 @@
----@class AtlasDiffImageDocument
----@field file AtlasDiffFile
----@field binary boolean
----@field contents { old: { binary_content?: string }, new: { binary_content?: string } }
-
----@class AtlasDiffImageView
----@field result { root: string, base_revision: string, head_revision: string }
----@field document AtlasDiffImageDocument|nil
----@field left { buf: integer, win?: integer }
----@field right { buf: integer, win?: integer }
 local M = {}
 
 local directory
@@ -29,7 +19,7 @@ function M.supports_file(path)
 	return image ~= nil and image.supports_file(path)
 end
 
----@param document AtlasDiffImageDocument|nil
+---@param document AtlasDiffDocument|nil
 ---@return boolean
 local function supports(document)
 	if not document or not document.binary then
@@ -65,23 +55,20 @@ local function image_file(root, revision, file, content)
 	return path
 end
 
----@param document AtlasDiffImageDocument|nil
+---@param document AtlasDiffDocument|nil
 ---@param win integer
 function M.configure_window(document, win)
-	local options = vim.wo[win][0]
-	options.number = vim.go.number
-	options.relativenumber = vim.go.relativenumber
-	options.signcolumn = vim.go.signcolumn
-	options.statuscolumn = vim.go.statuscolumn
-	if supports(document) then
-		options.number = false
-		options.relativenumber = false
-		options.signcolumn = "no"
-		options.statuscolumn = ""
+	if not supports(document) then
+		return
 	end
+	local options = vim.wo[win][0]
+	options.number = false
+	options.relativenumber = false
+	options.signcolumn = "no"
+	options.statuscolumn = ""
 end
 
----@param view AtlasDiffImageView
+---@param view AtlasDiffNativeView
 function M.clear(view)
 	local state = states[view]
 	states[view] = nil
@@ -105,15 +92,15 @@ local function clear_buffer(buf)
 	vim.bo[buf].readonly = true
 end
 
----@param view AtlasDiffImageView
+---@param view AtlasDiffNativeView
 function M.attach(view)
 	M.clear(view)
+	local image = image_module()
 	local document = view.document
-	if not supports(document) then
+	if not image or not supports(document) then
 		return
 	end
-	---@cast document AtlasDiffImageDocument
-	local image = image_module()
+	---@cast document AtlasDiffDocument
 	local state = { image = image, buffers = {} }
 	states[view] = state
 

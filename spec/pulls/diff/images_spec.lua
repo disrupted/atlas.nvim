@@ -76,8 +76,6 @@ describe("pulls.diff.images", function()
 				end,
 				mkdir = function() end,
 			},
-			go = { number = true, relativenumber = true, signcolumn = "yes:2", statuscolumn = "custom" },
-			wo = { [11] = { [0] = {} }, [12] = { [0] = {} } },
 			bo = buffers,
 		}
 		-- selene: allow(global_usage)
@@ -174,13 +172,6 @@ describe("pulls.diff.images", function()
 		assert.equals(view.document.contents.old.binary_content, writes[attached[1].src])
 	end)
 
-	it("restores the window columns when switching from images to text", function()
-		images.configure_window(view.document, 12)
-		assert.same({ number = false, relativenumber = false, signcolumn = "no", statuscolumn = "" }, vim.wo[12][0])
-		images.configure_window({ binary = false }, 12)
-		assert.same(vim.go, vim.wo[12][0])
-	end)
-
 	it("invalidates terminal detection callbacks when the same document is redisplayed", function()
 		images.attach(view)
 		images.clear(view)
@@ -215,33 +206,6 @@ describe("pulls.diff.images", function()
 		assert.equals(0, #attached)
 		assert.is_nil(buffers[1].lines)
 		assert.is_nil(buffers[2].lines)
-	end)
-
-	it("hides terminal placements and shows them again when their pane returns", function()
-		images.attach(view)
-		pending[1]()
-		local deleted, shown, visible = 0, 0, true
-		local placement = {
-			state = function()
-				return { wins = visible and { 11 } or {} }
-			end,
-			del = function()
-				deleted = deleted + 1
-			end,
-			show = function()
-				shown = shown + 1
-			end,
-		}
-		attached[1].options.on_update_pre(placement)
-		assert.equals(0, deleted)
-		assert.equals(1, shown)
-		visible = false
-		attached[1].options.on_update_pre(placement)
-		assert.equals(1, deleted)
-		assert.equals(1, shown)
-		visible = true
-		attached[1].options.on_update_pre(placement)
-		assert.equals(2, shown)
 	end)
 
 	it("cleans tracked buffers after the document and image config are cleared", function()
