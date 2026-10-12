@@ -5,6 +5,8 @@ local config = require("atlas.config")
 ---@class AtlasUIKeymaps
 ---@field next_item? AtlasKeymapValue
 ---@field previous_item? AtlasKeymapValue
+---@field previous_column? AtlasKeymapValue
+---@field next_column? AtlasKeymapValue
 ---@field first_item? AtlasKeymapValue
 ---@field last_item? AtlasKeymapValue
 ---@field select? AtlasKeymapValue
@@ -14,6 +16,7 @@ local config = require("atlas.config")
 ---@field delete? AtlasKeymapValue
 ---@field comments? AtlasUICommentKeymaps
 ---@field toggle_panel? AtlasKeymapValue
+---@field cycle_layout? AtlasKeymapValue
 ---@field toggle_fold? AtlasKeymapValue
 ---@field toggle_all_folds? AtlasKeymapValue
 ---@field toggle_description_mode? AtlasKeymapValue
@@ -153,6 +156,8 @@ local config = require("atlas.config")
 ---@alias AtlasKeymapActionId
 ---| "ui.next_item"
 ---| "ui.previous_item"
+---| "ui.previous_column"
+---| "ui.next_column"
 ---| "ui.first_item"
 ---| "ui.last_item"
 ---| "ui.select"
@@ -165,6 +170,7 @@ local config = require("atlas.config")
 ---| "ui.comments.edit"
 ---| "ui.comments.react"
 ---| "ui.toggle_panel"
+---| "ui.cycle_layout"
 ---| "ui.toggle_fold"
 ---| "ui.toggle_all_folds"
 ---| "ui.toggle_description_mode"
@@ -397,10 +403,19 @@ function M.validate()
 		return conflicts
 	end
 
+	-- Column navigation is registered only by issue dashboards.
+	local pulls_actions = actions_for({ "ui", "pulls" })
+	for index = #pulls_actions, 1, -1 do
+		local action_id = pulls_actions[index]
+		if action_id == "ui.previous_column" or action_id == "ui.next_column" then
+			table.remove(pulls_actions, index)
+		end
+	end
+
 	local result = {
 		picker = conflicts_for(actions_for({ "picker" })),
 		ui = conflicts_for(actions_for({ "ui" })),
-		pulls = conflicts_for(vim.list_extend(actions_for({ "ui", "pulls" }), {
+		pulls = conflicts_for(vim.list_extend(pulls_actions, {
 			"pulls.review.approve",
 			"pulls.review.request_changes",
 			"pulls.review.submit_review",

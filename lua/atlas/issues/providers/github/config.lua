@@ -38,10 +38,12 @@
 --   })
 
 ---@class AtlasGitHubIssuesViewConfig : IssuesViewConfig
+---@field layout "compact"|"plain"|nil
 ---@field search string
 ---@field current_repo boolean|nil
 
 ---@class AtlasGitHubIssuesBookmarkConfig : AtlasIssuesBookmarkConfig
+---@field layout "compact"|"plain"|nil
 ---@field search string
 
 ---@class AtlasGitHubIssuesBookmarksConfig
