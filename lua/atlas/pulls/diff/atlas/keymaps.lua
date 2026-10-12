@@ -108,10 +108,8 @@ function M.setup(session, commands, groups, actions)
 	for _, pane in pairs({ view.left, view.right }) do
 		help.register("View", hunk_items, { buffer = pane.buf })
 		help.register("Review", thread_items, { buffer = pane.buf, index = 2 })
-		if pane.win then
-			for _, group in ipairs(groups) do
-				help.register(group.name, group.items, { buffer = pane.buf, index = group.index })
-			end
+		for _, group in ipairs(groups) do
+			help.register(group.name, group.items, { buffer = pane.buf, index = group.index })
 		end
 	end
 end

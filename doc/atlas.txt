@@ -592,6 +592,9 @@ Shared config that applies to all issue providers:
   }
 <
 
+Issue views support "plain" and "compact" layouts. Jira also supports "board",
+which groups the current page by workflow status.
+
 ------------------------------------------------------------------------------
 JIRA                                                       *atlas-issues-jira*
 
@@ -641,7 +644,7 @@ overview tab can toggle between Markdown and ADF to inspect the conversion.
         },
       },
       views = {
-        { name = "My Board",  key = "M", layout = "plain",
+        { name = "My Board",  key = "M", layout = "board",
           jql = "project = KAN AND assignee = currentUser() ORDER BY updated DESC" },
         { name = "Team Board", key = "T", layout = "compact",
           jql = "project = KAN ORDER BY updated DESC" },
@@ -777,6 +780,8 @@ Atlas emits these `User` events after setup or cleanup completes:
         close                   = "q",     -- `false` will disable the keymap
         next_item               = "j",
         previous_item           = "k",
+        previous_column         = "h",
+        next_column             = "l",
         first_item              = "gg",
         last_item               = "G",
         select                  = "<CR>",
@@ -789,6 +794,7 @@ Atlas emits these `User` events after setup or cleanup completes:
           react  = "gr",
         },
         toggle_panel            = "p",
+        cycle_layout            = "t",
         toggle_fold             = "za",
         toggle_all_folds        = "zA",
         toggle_description_mode = "<leader>m",

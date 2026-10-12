@@ -90,7 +90,7 @@ end
 ---@param view IssuesViewConfig
 ---@return boolean
 local function relationships_enabled(view)
-	return view.layout ~= "compact" and config.options.issues.with_relationships
+	return state.view_layout(view) == "plain" and config.options.issues.with_relationships
 end
 
 ---@param issues Issue[]
@@ -233,7 +233,8 @@ local function load_page(view, page_number, cursor, force_refresh, on_done)
 	end
 
 	load_requests.run(function(done)
-		return provider.capabilities.core.fetch_issues(view, {
+		local fetch_view = vim.tbl_extend("force", view, { layout = state.view_layout(view) })
+		return provider.capabilities.core.fetch_issues(fetch_view, {
 			force_refresh = force_refresh,
 			pagelen = 50,
 			cursor = cursor,
@@ -397,7 +398,7 @@ local function show_cached_page(page_number)
 	state.query = page.query or ""
 	state.error = nil
 	render_if_active()
-	navigation.focus_first_item()
+	navigation.focus_first_item({ all_columns = true })
 	return true
 end
 
@@ -417,7 +418,7 @@ function M.next_page()
 		return
 	end
 	load_page(view, page_number, current.next_cursor, false, function()
-		navigation.focus_first_item()
+		navigation.focus_first_item({ all_columns = true })
 	end)
 end
 
@@ -437,7 +438,7 @@ function M.refresh_view()
 			end)
 		end
 		if not focused and not selected_bookmark then
-			navigation.focus_first_item()
+			navigation.focus_first_item({ all_columns = true })
 		end
 		local item = navigation.current_item()
 		local detail = require("atlas.issues.ui.detail")
@@ -453,17 +454,37 @@ function M.refresh_view()
 	load_view(true, finish)
 end
 
+function M.cycle_layout()
+	local view = state.search_view()
+	if view == nil and #state.issues == 0 then
+		return
+	end
+
+	state.layout = require("atlas.issues.ui.layouts").next(state.view_layout(view), state.provider.id)
+
+	if view then
+		load_view(false, function()
+			navigation.focus_first_item({ all_columns = true })
+		end)
+	else
+		render_if_active()
+		navigation.focus_first_item({ all_columns = true })
+	end
+end
+
 ---@param view IssuesViewConfig|nil
 function M.switch_view(view)
 	state.view = view
+	state.layout = nil
 	state.bookmarks.selection = nil
 	load_view(false, function()
-		navigation.focus_first_item()
+		navigation.focus_first_item({ all_columns = true })
 	end)
 end
 
 ---@param bookmark AtlasBookmarkSelection
 function M.select_bookmark(bookmark)
+	state.layout = nil
 	state.bookmarks.selection = bookmark
 	load_view(false)
 end
@@ -601,6 +622,9 @@ function M.update_issue(issue)
 end
 
 function M.toggle_current_issue_collapsed()
+	if state.view_layout(state.search_view()) == "board" then
+		return
+	end
 	local node = navigation.current_item()
 	if type(node) ~= "table" or node.kind ~= "issue" or type(node._issue) ~= "table" then
 		return
@@ -611,6 +635,9 @@ function M.toggle_current_issue_collapsed()
 end
 
 function M.toggle_all_issues_collapsed()
+	if state.view_layout(state.search_view()) == "board" then
+		return
+	end
 	if state.toggle_all_issues_collapsed() then
 		render_if_active()
 	end
