@@ -17,13 +17,13 @@ function M.render()
 	local lines, spans, line_map = require("atlas.issues.ui.dashboard.renderer").render({
 		width = width,
 	})
-
 	ui_state.line_map = line_map
 
 	vim.api.nvim_set_option_value("modifiable", true, { buf = buf })
 	vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines)
 	utils.apply_spans(buf, ns, spans)
 	vim.api.nvim_set_option_value("modifiable", false, { buf = buf })
+	require("atlas.ui.navigation").highlight_current_item()
 end
 
 ---@param issue Issue
