@@ -327,22 +327,6 @@ local function update_pullrequest(pr, fields, on_done)
 end
 
 ---@param pr PullRequest
----@param title string
----@param on_done fun(ok: boolean, err: string|nil)
----@return { job_id: integer, cancel: fun() }|nil
-function M.update_title(pr, title, on_done)
-	return update_pullrequest(pr, { title = title }, on_done)
-end
-
----@param pr PullRequest
----@param description string
----@param on_done fun(ok: boolean, err: string|nil)
----@return { job_id: integer, cancel: fun() }|nil
-function M.update_description(pr, description, on_done)
-	return update_pullrequest(pr, { description = description }, on_done)
-end
-
----@param pr PullRequest
 ---@param draft boolean
 ---@param on_done fun(ok: boolean, err: string|nil)
 ---@return { job_id: integer, cancel: fun() }|nil
@@ -617,10 +601,10 @@ function M.fetch_reviewer_candidates(opts, on_done)
 		for _, reviewer in ipairs(current) do
 			local uuid = reviewer.role == "reviewer" and tostring(reviewer.provider_id or "") or ""
 			if uuid ~= "" and not found[uuid] then
-				local nickname = tostring(reviewer.nickname or reviewer.username or "")
+				local username = tostring(reviewer.username or "")
 				local name = tostring(reviewer.name or "")
 				table.insert(reviewers, {
-					label = nickname ~= "" and ("@" .. nickname) or (name ~= "" and name or uuid),
+					label = username ~= "" and ("@" .. username) or (name ~= "" and name or uuid),
 					provider_id = uuid,
 					selected = true,
 				})

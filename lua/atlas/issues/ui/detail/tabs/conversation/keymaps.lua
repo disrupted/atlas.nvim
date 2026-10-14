@@ -135,7 +135,7 @@ function M.setup(buf, refresh)
 			})
 		)
 	end
-	if comments and comments.add_reaction and #(comments.reaction_options or {}) > 0 then
+	if comments and comments.reactions then
 		utils.insert_if(
 			items,
 			from_action("ui.comments.react", {

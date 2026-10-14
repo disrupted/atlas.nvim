@@ -7,128 +7,29 @@ local M = {}
 
 local STAR_ICON, STAR_HIGHLIGHT = icons.get("star")
 
----@param opts table
----@param issues Issue[]
----@param columns table[]
----@param values fun(issue: Issue, is_child: boolean): table
----@param highlights? fun(row: table, column: table, context: table): string|table[]|nil
----@param tree_indicator? boolean
----@return string[], table<integer, table>, table[]
-local function render(opts, issues, columns, values, highlights, tree_indicator)
-	local groups = opts.groups
-	if groups == nil then
-		groups = {}
-		for _, issue in ipairs(issues) do
-			table.insert(groups, { issue = issue, children = {} })
-		end
+---@param issue GitHubIssue
+---@return string, string
+local function github_issue_icon(issue)
+	if issue.is_pinned then
+		return icons.get("pin")
 	end
 
-	local collapsed = opts.collapsed or {}
-	local rows = {}
-	local show_indicator = false
-
-	local function issue_row(issue, is_child)
-		local row = values(issue, is_child)
-		if issue.is_starred then
-			row.name = STAR_ICON .. " " .. row.name
-		end
-
-		row._item = { kind = "issue", key = issue.key, _issue = issue }
-		row._issue = issue
-		row._is_child = is_child
-		row.children = {}
-
-		return row
-	end
-
-	for index, group in ipairs(groups) do
-		local row = issue_row(group.issue, false)
-
-		for _, child in ipairs(group.children) do
-			table.insert(row.children, issue_row(child, true))
-		end
-
-		if #group.children > 0 then
-			if tree_indicator then
-				show_indicator = true
-			else
-				row.icon, row._fold_icon_hl = icons.get(collapsed[group.issue.key] and "fold_closed" or "fold_open")
-			end
-		end
-
-		table.insert(rows, row)
-
-		if index < #groups then
-			local separator = utils.blank_row(columns)
-			separator.kind = "separator"
-			table.insert(rows, separator)
-		end
-	end
-
-	if opts.loading then
-		utils.append_loading(rows, columns, opts.spinner)
-	end
-
-	return table_tree.render({
-		width = opts.width,
-		margin = 1,
-		columns = columns,
-		rows = rows,
-		hide_columns = { "reporter", "assignee" },
-		tree = {
-			column_key = "icon",
-			children_key = "children",
-			default_expanded = true,
-			indent = "",
-			show_indicator = show_indicator,
-			leaf_prefix = "",
-			is_expanded = function(row)
-				return not row._issue or collapsed[row._issue.key] ~= true
-			end,
-		},
-		cell_hl = function(row, column, context)
-			if column.key == "icon" and row._fold_icon_hl then
-				return row._fold_icon_hl
-			end
-
-			local spans = highlights and highlights(row, column, context) or nil
-			if column.key == "name" and row._issue and row._issue.is_starred then
-				spans = spans or {}
-				table.insert(spans, 1, { start_col = 0, end_col = #STAR_ICON, hl_group = STAR_HIGHLIGHT })
-			end
-
-			return spans
-		end,
-	})
+	return utils.state_icon(issue.status_id)
 end
 
----@param opts table
----@param issues GitHubIssue[]
----@return string[], table<integer, table>, table[]
-function M.github(opts, issues)
-	local columns = {
+M.github = {
+	columns = {
 		{ key = "icon", name = "", can_grow = false, align = "center" },
 		{ key = "name", name = "Issue", min_width = 42 },
 		{ key = "comments", name = icons.get("comment"), min_width = 2, can_grow = false },
 		{ key = "assignee", name = icons.get("user") .. " Assignee", min_width = 10, max_width = 22, can_grow = false },
 		{ key = "reporter", name = icons.get("user") .. " Reporter", min_width = 10, max_width = 22, can_grow = false },
 		{ key = "status", name = " Status", can_grow = false },
-	}
-
-	---@param issue GitHubIssue
-	---@return string, string
-	local function issue_icon(issue)
-		if issue.is_pinned then
-			return icons.get("pin")
-		end
-
-		return utils.state_icon(issue.status_id)
-	end
-
-	local function values(issue, is_child)
+	},
+	values = function(issue, opts, is_child)
 		---@cast issue GitHubIssue
 		local label = string.format("#%d", issue.number)
-		local icon = issue_icon(issue)
+		local icon = github_issue_icon(issue)
 
 		return {
 			icon = is_child and "" or icon,
@@ -139,16 +40,15 @@ function M.github(opts, issues)
 			reporter = utils.person_value(issue.reporter, "Unknown"),
 			status = utils.status_value(issue, opts),
 		}
-	end
-
-	local function highlights(row, column, context)
+	end,
+	highlights = function(row, column, context, opts)
 		local issue = row._issue
 		if issue == nil then
 			return nil
 		end
 		---@cast issue GitHubIssue
 
-		local icon, icon_hl = issue_icon(issue)
+		local icon, icon_hl = github_issue_icon(issue)
 		if column.key == "icon" then
 			return utils.highlight_match({}, context.text, icon, icon_hl)
 		elseif column.key == "name" then
@@ -164,24 +64,18 @@ function M.github(opts, issues)
 		end
 
 		return utils.person_hl(issue, column.key)
-	end
+	end,
+}
 
-	return render(opts, issues, columns, values, highlights)
-end
-
----@param opts table
----@param issues GitLabIssue[]
----@return string[], table<integer, table>, table[]
-function M.gitlab(opts, issues)
-	local columns = {
+M.gitlab = {
+	columns = {
 		{ key = "icon", name = "", can_grow = false, align = "center" },
 		{ key = "name", name = "Issue", min_width = 42 },
 		{ key = "assignee", name = icons.get("user") .. " Assignee", min_width = 10, max_width = 22, can_grow = false },
 		{ key = "reporter", name = icons.get("user") .. " Reporter", min_width = 10, max_width = 22, can_grow = false },
 		{ key = "status", name = " Status", can_grow = false },
-	}
-
-	local function values(issue, is_child)
+	},
+	values = function(issue, opts, is_child)
 		---@cast issue GitLabIssue
 		local label = string.format("#%d", issue.iid)
 		local icon = utils.state_icon(issue.status_id)
@@ -194,9 +88,8 @@ function M.gitlab(opts, issues)
 			reporter = utils.person_value(issue.reporter, "Unknown"),
 			status = utils.status_value(issue, opts),
 		}
-	end
-
-	local function highlights(row, column, context)
+	end,
+	highlights = function(row, column, context, opts)
 		local issue = row._issue
 		if issue == nil then
 			return nil
@@ -216,24 +109,19 @@ function M.gitlab(opts, issues)
 		end
 
 		return utils.person_hl(issue, column.key)
-	end
+	end,
+}
 
-	return render(opts, issues, columns, values, highlights)
-end
-
----@param opts table
----@param issues JiraIssue[]
----@return string[], table<integer, table>, table[]
-function M.jira(opts, issues)
-	local columns = {
+M.jira = {
+	tree_indicator = true,
+	columns = {
 		{ key = "icon", name = "", can_grow = false, align = "center" },
 		{ key = "name", name = "Issue", min_width = 42 },
 		{ key = "assignee", name = icons.get("user") .. " Assignee", min_width = 10, max_width = 22, can_grow = false },
 		{ key = "reporter", name = icons.get("user") .. " Reporter", min_width = 10, max_width = 22, can_grow = false },
 		{ key = "status", name = " Status", can_grow = false },
-	}
-
-	local function values(issue, is_child)
+	},
+	values = function(issue, opts, is_child)
 		---@cast issue JiraIssue
 		local icon = utils.type_icon(issue)
 		local priority = icons.get(issue.priority or "", "priority")
@@ -246,9 +134,8 @@ function M.jira(opts, issues)
 			reporter = utils.person_value(issue.reporter, "Unknown"),
 			status = utils.status_value(issue, opts),
 		}
-	end
-
-	local function highlights(row, column, context)
+	end,
+	highlights = function(row, column, context, opts)
 		local issue = row._issue
 		if issue == nil then
 			return nil
@@ -274,24 +161,18 @@ function M.jira(opts, issues)
 		end
 
 		return utils.person_hl(issue, column.key)
-	end
+	end,
+}
 
-	return render(opts, issues, columns, values, highlights, true)
-end
-
----@param opts table
----@param issues ShortcutIssue[]
----@return string[], table<integer, table>, table[]
-function M.shortcut(opts, issues)
-	local columns = {
+M.shortcut = {
+	columns = {
 		{ key = "icon", name = "", can_grow = false, align = "center" },
 		{ key = "name", name = "Issue", min_width = 42 },
 		{ key = "assignee", name = icons.get("user") .. " Assignee", min_width = 10, max_width = 22, can_grow = false },
 		{ key = "reporter", name = icons.get("user") .. " Reporter", min_width = 10, max_width = 22, can_grow = false },
 		{ key = "status", name = " Status", can_grow = false },
-	}
-
-	local function values(issue, is_child)
+	},
+	values = function(issue, opts, is_child)
 		---@cast issue ShortcutIssue
 		local icon = utils.type_icon(issue)
 		local label = "#" .. issue.key
@@ -311,9 +192,8 @@ function M.shortcut(opts, issues)
 			reporter = utils.person_value(issue.reporter, "Unknown"),
 			status = utils.status_value(issue, opts),
 		}
-	end
-
-	local function highlights(row, column, context)
+	end,
+	highlights = function(row, column, context, opts)
 		local issue = row._issue
 		if issue == nil then
 			return nil
@@ -334,24 +214,18 @@ function M.shortcut(opts, issues)
 		end
 
 		return utils.person_hl(issue, column.key)
-	end
+	end,
+}
 
-	return render(opts, issues, columns, values, highlights)
-end
-
----@param opts table
----@param issues Issue[]
----@return string[], table<integer, table>, table[]
-function M.default(opts, issues)
-	local columns = {
+M.default = {
+	columns = {
 		{ key = "icon", name = "", can_grow = false, align = "center" },
 		{ key = "name", name = "Issue", min_width = 42 },
 		{ key = "assignee", name = icons.get("user") .. " Assignee", min_width = 10, max_width = 22, can_grow = false },
 		{ key = "reporter", name = icons.get("user") .. " Reporter", min_width = 10, max_width = 22, can_grow = false },
 		{ key = "status", name = " Status", can_grow = false },
-	}
-
-	local function values(issue)
+	},
+	values = function(issue)
 		return {
 			icon = "",
 			name = (issue.key or "") .. " " .. issue.title,
@@ -359,9 +233,99 @@ function M.default(opts, issues)
 			reporter = issue.reporter and issue.reporter.name or "Unknown",
 			status = string.format(" %s ", issue.status or ""),
 		}
+	end,
+}
+
+---@param opts table
+---@param issues Issue[]
+---@param provider table
+---@return string[], table<integer, table>, table[]
+function M.render(opts, issues, provider)
+	local groups = opts.groups
+	if groups == nil then
+		groups = {}
+		for _, issue in ipairs(issues) do
+			table.insert(groups, { issue = issue, children = {} })
+		end
 	end
 
-	return render(opts, issues, columns, values)
+	local collapsed = opts.collapsed or {}
+	local rows = {}
+	local show_indicator = false
+
+	local function issue_row(issue, is_child)
+		local row = provider.values(issue, opts, is_child)
+		if issue.is_starred then
+			row.name = STAR_ICON .. " " .. row.name
+		end
+
+		row._item = { kind = "issue", key = issue.key, _issue = issue }
+		row._issue = issue
+		row._is_child = is_child
+		row.children = {}
+
+		return row
+	end
+
+	for index, group in ipairs(groups) do
+		local row = issue_row(group.issue, false)
+
+		for _, child in ipairs(group.children) do
+			table.insert(row.children, issue_row(child, true))
+		end
+
+		if #group.children > 0 then
+			if provider.tree_indicator then
+				show_indicator = true
+			else
+				row.icon, row._fold_icon_hl = icons.get(collapsed[group.issue.key] and "fold_closed" or "fold_open")
+			end
+		end
+
+		table.insert(rows, row)
+
+		if index < #groups then
+			local separator = utils.blank_row(provider.columns)
+			separator.kind = "separator"
+			table.insert(rows, separator)
+		end
+	end
+
+	if opts.loading then
+		utils.append_loading(rows, provider.columns, opts.spinner)
+	end
+
+	return table_tree.render({
+		width = opts.width,
+		margin = 1,
+		columns = provider.columns,
+		rows = rows,
+		hide_columns = { "reporter", "assignee" },
+		tree = {
+			column_key = "icon",
+			children_key = "children",
+			default_expanded = true,
+			indent = "",
+			show_indicator = show_indicator,
+			leaf_prefix = "",
+			is_expanded = function(row)
+				return not row._issue or collapsed[row._issue.key] ~= true
+			end,
+		},
+		cell_hl = function(row, column, context)
+			if column.key == "icon" and row._fold_icon_hl then
+				return row._fold_icon_hl
+			end
+
+			local spans = provider.highlights and provider.highlights(row, column, context, opts) or nil
+			if column.key == "name" and row._issue and row._issue.is_starred then
+				spans = spans or {}
+				table.insert(spans, 1, { start_col = 0, end_col = #STAR_ICON, hl_group = STAR_HIGHLIGHT })
+			end
+
+			return spans
+		end,
+	})
 end
 
 return M

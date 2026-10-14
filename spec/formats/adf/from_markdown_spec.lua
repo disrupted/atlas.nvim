@@ -49,16 +49,13 @@ describe("Jira Markdown to ADF", function()
 		end
 	end)
 
-	it("converts emoji inside text and from shortcodes", function()
-		converts("Done  now", {
+	it("converts emoji shortcodes inside text", function()
+		converts("Done :check_mark: now", {
 			paragraph({
 				text("Done "),
 				{ type = "emoji", attrs = { shortName = ":check_mark:", text = ":check_mark:" } },
 				text(" now"),
 			}),
-		})
-		converts(":party_parrot:", {
-			paragraph({ { type = "emoji", attrs = { shortName = ":party_parrot:", text = ":party_parrot:" } } }),
 		})
 	end)
 

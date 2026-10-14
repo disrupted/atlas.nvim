@@ -33,15 +33,14 @@ query($owner:String!,$name:String!,$number:Int!,$endCursor:String,$includeHunks:
           comments(first:100){
             nodes{
               id
-              databaseId
               body
               diffHunk @include(if:$includeHunks)
               url
               createdAt
               author{login ... on User{databaseId} ... on Bot{databaseId}}
-              replyTo{databaseId}
+              replyTo{id}
               pullRequestReview{id state}
-              reactionGroups{content users{totalCount}}
+              reactionGroups{content viewerHasReacted reactors(first:10){totalCount nodes{...on User{login name} ...on Bot{login}}}}
             }
           }
         }
@@ -181,7 +180,7 @@ local function from_node(node)
 end
 
 ---@param raw table|nil
----@return PullsAuthor|nil
+---@return AtlasUser|nil
 local function review_author(raw)
 	raw = json.nilify(raw)
 	if type(raw) ~= "table" then
@@ -201,7 +200,6 @@ local function review_author(raw)
 		id = user.id ~= "" and user.id or login,
 		name = user.name ~= "" and user.name or (json.safe_str(raw.teamName) or login),
 		username = login,
-		nickname = login,
 	}
 end
 
@@ -801,7 +799,7 @@ local function fetch_comments(pr, include_hunks, on_done)
 		for _, thread in ipairs(threads) do
 			local nodes = thread.comments and thread.comments.nodes or {}
 			for index, node in ipairs(nodes) do
-				local root_id = index > 1 and nodes[1] and nodes[1].databaseId or nil
+				local root_id = index > 1 and nodes[1] and nodes[1].id or nil
 				local comment = mapper.to_review_comment(node, thread, root_id)
 				table.insert(comments, comment)
 				if include_hunks then
@@ -810,8 +808,8 @@ local function fetch_comments(pr, include_hunks, on_done)
 			end
 		end
 		table.sort(comments, function(a, b)
-			local left = tostring(a.created_on or "")
-			local right = tostring(b.created_on or "")
+			local left = tostring(a.created_at or "")
+			local right = tostring(b.created_at or "")
 			return left == right and tostring(a.id) < tostring(b.id) or left < right
 		end)
 		on_done({
@@ -820,47 +818,6 @@ local function fetch_comments(pr, include_hunks, on_done)
 		}, nil)
 	end, {
 		action = "Fetch comments",
-		repo = pr.repo_full_name,
-		number = pr.id,
-	})
-end
-
----@param pr PullRequest
----@param on_done fun(tasks: PullsComment[]|nil, err: string|nil)
----@return { cancel: fun() }|nil
-local function fetch_tasks(pr, on_done)
-	local repo_slug = pr.repo_full_name or ""
-	if repo_slug == "" then
-		vim.schedule(function()
-			on_done(nil, "Missing repo")
-		end)
-		return nil
-	end
-
-	return cli.gh({
-		"api",
-		"--paginate",
-		"--slurp",
-		string.format("repos/%s/issues/%s/comments?per_page=100", repo_slug, tostring(pr.id)),
-	}, function(result, err)
-		if err or type(result) ~= "table" then
-			on_done(nil, err or "Missing pull request checklist data")
-			return
-		end
-		local tasks = {}
-		for _, page in ipairs(result) do
-			for _, raw in ipairs(page) do
-				vim.list_extend(tasks, mapper.to_tasks(raw))
-			end
-		end
-		table.sort(tasks, function(a, b)
-			local left = tostring(a.created_on or "")
-			local right = tostring(b.created_on or "")
-			return left == right and tostring(a.id) < tostring(b.id) or left < right
-		end)
-		on_done(tasks, nil)
-	end, {
-		action = "Fetch checklists",
 		repo = pr.repo_full_name,
 		number = pr.id,
 	})
@@ -877,9 +834,6 @@ local function fetch_review(pr, opts, include_hunks, on_done)
 		comments = function(done)
 			return fetch_comments(pr, include_hunks, done)
 		end,
-		tasks = function(done)
-			return fetch_tasks(pr, done)
-		end,
 		details = function(done)
 			return fetch_review_details(pr, opts, done)
 		end,
@@ -891,7 +845,7 @@ local function fetch_review(pr, opts, include_hunks, on_done)
 		on_done({
 			review = results.comments.review,
 			comments = results.comments.comments,
-			tasks = results.tasks or {},
+			tasks = {},
 			reviewers = results.details.reviewers,
 			history = results.details.history,
 		}, nil)

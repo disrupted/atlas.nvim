@@ -7,12 +7,13 @@
 ---@field merge_status string|nil
 ---@field detailed_merge_status string|nil
 ---@field diff_refs GitLabPullRequestDiffRefs|nil
+---@field node_id string|nil
 
 ---@class GitLabPullsLabel : PullsLabel
 ---@field text_color string|nil
 
 ---@class GitLabPullRequestDetails : PullRequestDetails
----@field assignees PullsAuthor[]
+---@field assignees AtlasUser[]
 ---@field labels GitLabPullsLabel[]
 
 ---@class GitLabPullsActivityEntry : PullsActivityEntry
@@ -33,7 +34,7 @@ local repository_ui = require("atlas.providers.gitlab.ui.repository")
 local gitlab_query = require("atlas.providers.gitlab.query")
 local request_scope = require("atlas.core.requests")
 local users_api = require("atlas.providers.gitlab.users")
-local GITLAB_REACTION_OPTIONS = require("atlas.ui.shared.emojis").gitlab()
+local gitlab_mapping = require("atlas.providers.gitlab.mapping")
 
 ---@return AtlasGitLabPullsViewConfig[]
 local function views()
@@ -129,12 +130,15 @@ return {
 			end,
 		},
 		comments = {
-			reaction_options = GITLAB_REACTION_OPTIONS,
 			fetch_conversation = activity_api.fetch_conversation,
 			add_comment = comments_api.add_comment,
 			edit_comment = comments_api.edit_comment,
 			delete_comment = comments_api.delete_comment,
-			add_reaction = comments_api.add_reaction,
+			reactions = {
+				options = gitlab_mapping.reactions,
+				add = comments_api.add_reaction,
+				remove = comments_api.remove_reaction,
+			},
 			set_thread_resolved = comments_api.set_thread_resolved,
 		},
 		reviews = {

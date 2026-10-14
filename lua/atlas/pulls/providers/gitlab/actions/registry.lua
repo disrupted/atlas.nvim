@@ -112,7 +112,7 @@ local function edit_assignees(ctx, done)
 		return
 	end
 
-	---@param assignees PullsAuthor[]
+	---@param assignees AtlasUser[]
 	local function open_picker(assignees)
 		users_api.list_members(path, "", function(members, err)
 			if err or members == nil then

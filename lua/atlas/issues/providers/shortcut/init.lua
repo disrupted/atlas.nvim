@@ -32,7 +32,7 @@ local stories = require("atlas.issues.providers.shortcut.api.stories")
 local comments = require("atlas.issues.providers.shortcut.api.comments")
 local history = require("atlas.issues.providers.shortcut.api.history")
 local config = require("atlas.config")
-local emojis = require("atlas.ui.shared.emojis")
+local mapper = require("atlas.issues.providers.shortcut.api.mapper")
 
 local DEFAULT_VIEWS = {
 	{ name = "Open", key = "1", layout = "plain", search = "!is:done !is:archived" },
@@ -102,7 +102,7 @@ function M.fetch_conversation(issue, opts, on_done)
 			table.insert(conversation, {
 				id = "comment:" .. comment.id,
 				kind = "comment",
-				created_at = comment.created or "",
+				created_at = comment.created_at,
 				entity = comment,
 			})
 		end
@@ -131,13 +131,15 @@ return {
 			-- fetch_links = nil,
 		},
 		comments = {
-			reaction_options = emojis.shortcut(),
 			fetch_activity = history.fetch,
 			fetch_conversation = M.fetch_conversation,
 			add_comment = comments.add_comment,
 			edit_comment = comments.edit_comment,
 			delete_comment = comments.delete_comment,
-			add_reaction = comments.add_reaction,
+			reactions = {
+				options = mapper.reactions,
+				add = comments.add_reaction,
+			},
 		},
 		actions = require("atlas.issues.providers.shortcut.actions.registry"),
 		ui = {

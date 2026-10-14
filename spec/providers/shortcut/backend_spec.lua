@@ -161,7 +161,7 @@ describe("Shortcut backend workflows", function()
 		require("atlas.issues.providers.shortcut.api.comments").add_comment(
 			story,
 			"A reply",
-			{ parent = { id = "100" } },
+			{ parent = { id = "100", body = "", created_at = "" } },
 			done
 		)
 		assert.is_nil(err)

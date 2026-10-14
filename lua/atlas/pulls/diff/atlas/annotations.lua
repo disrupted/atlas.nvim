@@ -119,7 +119,7 @@ function M.render(view, document)
 	}
 
 	local items = ui.for_file(view.result, document.file)
-	local comment_options = ui.comment_options(view.result, view.expanded_threads)
+	local comment_options = ui.comment_options(view.expanded_threads)
 	for _, item in ipairs(items) do
 		local count = #contents[item.side]
 		if item.thread and (document.binary or (item.line and (item.line < 1 or item.line > count))) then

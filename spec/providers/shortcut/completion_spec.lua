@@ -1,5 +1,5 @@
 describe("Shortcut user completion", function()
-	local module_name = "atlas.providers.shortcut.completion"
+	local module_name = "atlas.providers.shortcut.completion.users"
 	local users_name = "atlas.providers.shortcut.users"
 	local saved_module, saved_users, done
 
@@ -19,7 +19,7 @@ describe("Shortcut user completion", function()
 
 	it("filters duplicate, disabled and missing handles from mention candidates", function()
 		local items
-		require(module_name).users.complete({}, "", function(value)
+		require(module_name).complete({}, "", function(value)
 			items = value
 		end)
 		done({

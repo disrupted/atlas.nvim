@@ -125,7 +125,7 @@ local function run(args, parse_json, callback, ctx)
 			end
 			local stdout = result.stdout or ""
 			local status
-			if parse_json and args[1] == "api" and vim.tbl_contains(args, "--include") then
+			if args[1] == "api" and vim.tbl_contains(args, "--include") then
 				local headers, body = stdout:match("^(.-)\n\n(.*)$")
 				if headers then
 					status = tonumber(headers:match("^HTTP/%S+ (%d+)"))

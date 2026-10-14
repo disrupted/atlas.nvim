@@ -47,7 +47,7 @@ describe("gitlab pull request updates", function()
 		local api = fresh_module()
 
 		local ok, err
-		api.update_description({ id = nil, repo_full_name = "group/project" }, "New body", function(success, e)
+		api.update_pr({ id = nil, repo_full_name = "group/project" }, { body = "New body" }, function(success, e)
 			ok, err = success, e
 		end)
 
@@ -73,7 +73,7 @@ describe("gitlab pull request updates", function()
 		}) do
 			response = case.response
 			local ok, err
-			api.update_description(pr, case.body, function(success, e)
+			api.update_pr(pr, { body = case.body }, function(success, e)
 				ok, err = success, e
 			end)
 			assert.is_true(ok)
@@ -153,7 +153,7 @@ describe("gitlab pull request updates", function()
 		local pr = { id = 12, repo_full_name = "group/project" }
 
 		local ok, err
-		api.update_description(pr, "New body", function(success, e)
+		api.update_pr(pr, { body = "New body" }, function(success, e)
 			ok, err = success, e
 		end)
 

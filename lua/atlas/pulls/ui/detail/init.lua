@@ -66,7 +66,7 @@ local function start_spinner()
 	if state.spinner_timer ~= nil then
 		return
 	end
-	state.spinner_timer = vim.loop.new_timer()
+	state.spinner_timer = vim.uv.new_timer()
 	if state.spinner_timer == nil then
 		return
 	end

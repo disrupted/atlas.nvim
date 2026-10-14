@@ -2,6 +2,9 @@ local modules = {
 	"atlas.providers.gitlab.client",
 	"atlas.providers.gitlab.users",
 	"atlas.providers.gitlab.completion",
+	"atlas.providers.gitlab.completion.users",
+	"atlas.providers.gitlab.completion.issues",
+	"atlas.providers.gitlab.completion.pulls",
 	"atlas.issues.providers.gitlab.api.mapper",
 	"atlas.ui.shared.icons",
 }
@@ -146,11 +149,10 @@ describe("GitLab completion", function()
 		assert.equal(4, calls.members)
 	end)
 
-	it("fetches recent issue references using repository, project, MR, and issue contexts", function()
+	it("fetches recent issue references using repository, MR, and issue contexts", function()
 		assert.same({ "#" }, issue_source.triggers)
 		for _, context in ipairs({
 			{ provider = "gitlab", repository = "group/subgroup/repository" },
-			{ provider = "gitlab", project = "group/subgroup/project" },
 			{ provider = "gitlab", pr = { id = 42, repo_full_name = "group/subgroup/pulls" } },
 			{ provider = "gitlab", issue = { key = "group/subgroup/issues#42" } },
 		}) do
@@ -167,7 +169,7 @@ describe("GitLab completion", function()
 			end)
 			assert.equal(request_handle, handle)
 		end
-		for index, project in ipairs({ "repository", "project", "pulls", "issues" }) do
+		for index, project in ipairs({ "repository", "pulls", "issues" }) do
 			local call = calls.references[index]
 			assert.same({ path = "group/subgroup/" .. project }, call.variables)
 			assert.truthy(call.query:find("issues(", 1, true))

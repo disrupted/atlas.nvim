@@ -42,7 +42,7 @@ function M.update(session)
 	end
 
 	local comments = vim.tbl_filter(function(comment)
-		return comment.state ~= "DELETED"
+		return not comment.deleted
 	end, review_data and review_data.comments or {})
 	if #comments > 0 then
 		items[#items + 1] = {

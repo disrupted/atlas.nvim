@@ -1,8 +1,9 @@
 local M = {}
 
 local action_runner = require("atlas.core.actions")
-local picker = require("atlas.ui.picker")
 local notify = require("atlas.core.notify")
+local pull_actions = require("atlas.pulls.actions")
+local reactions = require("atlas.ui.shared.reactions")
 local review = require("atlas.pulls.actions.review")
 local state = require("atlas.pulls.ui.detail.tabs.conversation.state")
 local detail = require("atlas.pulls.ui.detail.state")
@@ -82,6 +83,10 @@ end
 ---@param refresh fun()
 function M.reply(pr, entry, refresh)
 	local item = entry and entry.conversation_item or nil
+	if item and item.kind == "description" then
+		M.add(pr, refresh)
+		return
+	end
 	if not item or item.kind ~= "comment" then
 		return
 	end
@@ -112,6 +117,11 @@ function M.edit(pr, entry, refresh)
 			context.review_entry = review_entry
 			action_runner.run(review.edit_review, context, on_done(pr, refresh))
 		end
+		return
+	end
+	if item.kind == "description" then
+		local context = { provider = detail.provider, pr = pr, details = detail.current_details }
+		pull_actions.run("edit_pr", context, on_done(pr, refresh))
 		return
 	end
 	if item.kind ~= "comment" then
@@ -146,49 +156,15 @@ end
 ---@param refresh fun()
 function M.react(pr, entry, refresh)
 	local item = entry and entry.conversation_item or nil
-	if not item or item.kind ~= "comment" or item.entity.state == "DELETED" then
-		return
-	end
-	local provider = detail.provider
-	local comments = provider and provider.capabilities.comments
-	if not comments or not comments.add_reaction then
-		return
-	end
-	local options = comments.reaction_options or {}
-	if #options == 0 then
-		notify.warn("No reactions available for this provider")
+	if not item or (item.kind ~= "comment" and item.kind ~= "description") or item.entity.deleted then
 		return
 	end
 	---@type PullsComment
-	local target = item.entity
-	picker.select({
-		title = "Add reaction",
-		items = options,
-		format_item = function(option)
-			return string.format("%s  %s", option.emoji or option.key, option.label or option.key)
-		end,
-		on_select = function(selected)
-			if selected == nil then
-				return
-			end
-			notify.loading("Adding reaction...")
-			comments.add_reaction(pr, item, selected.key, function(ok, err)
-				if not state.is_current(pr) then
-					return
-				end
-				if err then
-					notify.error("Reaction failed: " .. tostring(err))
-					return
-				end
-				if ok then
-					target.reactions = target.reactions or {}
-					target.reactions[selected.key] = (tonumber(target.reactions[selected.key]) or 0) + 1
-				end
-				notify.success("Reaction added", { timeout = 1200 })
-				refresh()
-			end)
-		end,
-	})
+	local comment = item.entity
+	-- TODO: Reacting to the description doesn't update the overview's reactions until the details are reloaded.
+	reactions.pick(detail.provider.capabilities.comments.reactions, pr, comment, function()
+		return state.is_current(pr)
+	end, refresh)
 end
 
 ---@param pr PullRequest

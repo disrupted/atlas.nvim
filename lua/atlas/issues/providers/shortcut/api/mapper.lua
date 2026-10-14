@@ -178,19 +178,38 @@ function M.to_issues(stories, users, states)
 	return result
 end
 
+---@type AtlasReactionOption[]
+M.reactions = {
+	{ name = "thumbsup" },
+	{ name = "thumbsdown" },
+	{ name = "laughing" },
+	{ name = "tada" },
+	{ name = "confused" },
+	{ name = "heart" },
+	{ name = "rocket" },
+	{ name = "eyes" },
+}
+
 ---@param raw_reactions table[]
----@return table<string, integer>|nil
-local function reaction_counts(raw_reactions)
-	local counts
+---@param users AtlasUser[]
+---@return AtlasReaction[]
+local function to_reactions(raw_reactions, users)
+	local reactions = {}
 	for _, reaction in ipairs(raw_reactions) do
-		local ids = reaction.permission_ids or {}
-		if #ids > 0 then
-			local emoji = tostring(reaction.emoji)
-			counts = counts or {}
-			counts[emoji] = #ids
+		local ids = json.safe_table(reaction.permission_ids)
+		local name = (json.safe_str(reaction.emoji) or ""):gsub("^:(.+):$", "%1")
+		if #ids > 0 and name ~= "" then
+			local reactors = {}
+			for _, id in ipairs(ids) do
+				local user = user_for(users, json.safe_str(id))
+				if user then
+					table.insert(reactors, user)
+				end
+			end
+			table.insert(reactions, { name = name, count = #ids, users = reactors })
 		end
 	end
-	return counts
+	return reactions
 end
 
 ---@param raw table
@@ -201,11 +220,10 @@ function M.to_comment(raw, users)
 		id = tostring(raw.id),
 		url = json.safe_str(raw.app_url),
 		author = user_for(users or {}, json.safe_str(raw.author_id)),
-		body = json.safe_str(raw.text),
-		created = json.safe_str(raw.created_at),
-		updated = json.safe_str(raw.updated_at),
+		body = json.safe_str(raw.text) or "",
+		created_at = json.safe_str(raw.created_at) or "",
 		parent_id = tonumber(json.nilify(raw.parent_id)),
-		reactions = reaction_counts(raw.reactions or {}),
+		reactions = to_reactions(raw.reactions or {}, users or {}),
 		deleted = raw.deleted == true,
 	}
 end
@@ -295,7 +313,7 @@ function M.to_activity(raw)
 		local verb = ACTION_LABELS[tostring(action.action)] or tostring(action.action or "updated")
 		local label = entity == "comment" and verb == "created" and "commented" or (verb .. " " .. entity)
 		table.insert(entries, {
-			kind = tostring(action.entity_type or "history"),
+			kind = "other",
 			actor = actor,
 			date = json.safe_str(raw.changed_at),
 			label = label,

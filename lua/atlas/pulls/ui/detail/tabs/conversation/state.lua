@@ -95,7 +95,7 @@ function M.upsert_comment(comment)
 		return
 	end
 	local id = comment_key(comment)
-	local entry = { id = id, kind = "comment", created_on = comment.created_on or "", entity = comment }
+	local entry = { id = id, kind = "comment", created_at = comment.created_at or "", entity = comment }
 	for index, item in ipairs(M.items) do
 		if item.id == id then
 			M.items[index] = entry
@@ -122,10 +122,10 @@ end
 ---@param comment PullsComment
 ---@return boolean
 local function is_comment_long(comment)
-	if comment.is_task or comment.state == "DELETED" then
+	if comment.is_task or comment.deleted then
 		return false
 	end
-	local content = utils.strip_markup(comment.content_display or comment.content_raw or "")
+	local content = utils.strip_markup(comment.body_display or comment.body or "")
 	local lines = utils.sanitize_lines(content)
 	while #lines > 0 and vim.trim(lines[#lines]) == "" do
 		table.remove(lines)
@@ -179,6 +179,10 @@ end
 ---@param threads AtlasCommentThreadNode[]
 ---@return boolean
 function M.toggle_all_threads(threads)
+	local items = M.items
+	if type(items) ~= "table" then
+		return false
+	end
 	local roots = {}
 	local comment_keys = {}
 	local expand = false
@@ -190,8 +194,10 @@ function M.toggle_all_threads(threads)
 			end
 		end
 	end
-	for _, comment in ipairs(M.comments()) do
-		if is_comment_long(comment) then
+	for _, item in ipairs(items) do
+		local comment = item.entity
+		---@cast comment PullsComment
+		if (item.kind == "comment" or item.kind == "description") and is_comment_long(comment) then
 			local key = comment_key(comment)
 			table.insert(comment_keys, key)
 			if M.expanded_comments[key] ~= true then

@@ -121,92 +121,6 @@ local function fetch_issues(view, opts, on_done)
 	return { cancel = scope.cancel }
 end
 
----@param refs IssueRef[]
----@param opts IssuesFetchOpts
----@param on_done fun(issues: Issue[], err: string|nil)
----@return { cancel: fun() }|nil
-local function fetch_by_refs(refs, opts, on_done)
-	if #refs == 0 then
-		on_done({}, nil)
-		return nil
-	end
-
-	local quoted = {}
-	for _, ref in ipairs(refs) do
-		table.insert(quoted, string.format('"%s"', ref.key:gsub('"', '\\"')))
-	end
-
-	return issues_api.search_issues("key in (" .. table.concat(quoted, ",") .. ")", function(page, err)
-		if err or page == nil then
-			on_done({}, err or "Failed to fetch issues")
-			return
-		end
-		on_done(page.items, nil)
-	end, {
-		force_refresh = opts.force_refresh == true,
-		pagelen = #refs,
-	})
-end
-
----@param issue Issue
----@param content string
----@param opts { parent?: IssueComment }|nil
----@param on_done fun(comment: IssueComment|nil, err: string|nil)
----@return { cancel: fun() }|nil
-local function add_comment(issue, content, opts, on_done)
-	local issue_key = tostring(issue.key or "")
-	local parent = opts and opts.parent
-	return comments_api.add_comment(issue_key, content, { parent_id = parent and tostring(parent.id) or nil }, on_done)
-end
-
----@param issue Issue
----@param comment IssueComment
----@param content string
----@param on_done fun(comment: IssueComment|nil, err: string|nil)
----@return { cancel: fun() }|nil
-local function edit_comment(issue, comment, content, on_done)
-	local issue_key = tostring(issue.key or "")
-	return comments_api.edit_comment(issue_key, tostring(comment.id), content, on_done)
-end
-
----@param issue Issue
----@param opts { force_refresh: boolean|nil }|nil
----@param on_done fun(items: IssueConversationItem[]|nil, err: string|nil)
----@return { cancel: fun() }|nil
-local function fetch_conversation(issue, opts, on_done)
-	local issue_key = tostring(issue.key or "")
-	if issue_key == "" then
-		on_done(nil, "Invalid issue key")
-		return nil
-	end
-
-	return comments_api.get_comments(issue_key, function(comments, err)
-		if err or comments == nil then
-			on_done(nil, err or "Failed to fetch comments")
-			return
-		end
-		local items = {}
-		for _, comment in ipairs(comments) do
-			table.insert(items, {
-				id = "comment:" .. tostring(comment.id),
-				kind = "comment",
-				created_at = comment.created or "",
-				entity = comment,
-			})
-		end
-		on_done(items, nil)
-	end, opts)
-end
-
----@param issue Issue
----@param comment IssueComment
----@param on_done fun(ok: boolean, err: string|nil)
----@return { cancel: fun() }|nil
-local function delete_comment(issue, comment, on_done)
-	local issue_key = tostring(issue.key or "")
-	return comments_api.delete_comment(issue_key, tostring(comment.id), on_done)
-end
-
 ---@return AtlasJiraViewConfig[]
 local function views()
 	local configured = (config.domain_options("jira", "issues") or {}).views
@@ -230,20 +144,17 @@ return {
 		actions = require("atlas.issues.providers.jira.actions.registry"),
 		core = {
 			fetch_issues = fetch_issues,
-			fetch_by_refs = fetch_by_refs,
+			fetch_by_refs = issues_api.fetch_by_refs,
 			fetch_issue = issues_api.fetch_issue,
 			fetch_links = links_api.fetch,
 		},
 		comments = {
-			fetch_activity = function(issue, opts, on_done)
-				return issues_api.get_issue_history(tostring(issue.key or ""), on_done, opts)
-			end,
-			fetch_conversation = fetch_conversation,
-			add_comment = add_comment,
-			edit_comment = edit_comment,
-			delete_comment = delete_comment,
-			-- add_reaction = nil,
-			-- reaction_options = nil,
+			fetch_activity = issues_api.fetch_activity,
+			fetch_conversation = comments_api.fetch_conversation,
+			add_comment = comments_api.add_comment,
+			edit_comment = comments_api.edit_comment,
+			delete_comment = comments_api.delete_comment,
+			-- reactions = nil,
 		},
 		ui = {
 			detail = detail_ui,

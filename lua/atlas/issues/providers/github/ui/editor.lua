@@ -513,7 +513,7 @@ end
 ---@return { cancel: fun() }|nil
 function M.edit(issue, on_done)
 	notify.loading("Loading " .. issue.key .. "...")
-	return issues.get_issue(issue.key, function(details, err)
+	return issues.fetch_issue(issue, { force_refresh = true }, function(details, err)
 		if not details then
 			err = err or "Unable to load issue"
 			notify.error(err)
@@ -524,7 +524,7 @@ function M.edit(issue, on_done)
 		end
 		notify.clear()
 		open_editor(issue.repo_full_name, issue, details, on_done)
-	end, { force_refresh = true })
+	end)
 end
 
 return M

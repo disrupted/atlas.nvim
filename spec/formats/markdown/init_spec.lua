@@ -1,5 +1,6 @@
 local markdown = require("atlas.formats.markdown")
 local code_preview = require("atlas.ui.components.code_preview")
+local emojis = require("atlas.ui.shared.emojis")
 local shared_icons = require("atlas.ui.shared.icons")
 
 local function span(line, start_col, end_col, hl_group)
@@ -133,6 +134,24 @@ describe("Markdown parsing", function()
 				highlights = { span(0, 0, #case[2], "AtlasMarkdownInlineCode") },
 			}, markdown.parse(case[1]))
 		end
+	end)
+
+	it("renders emoji shortcodes as glyphs, unknown names as the fallback, and shifts later highlights", function()
+		local glyphs = { emojis.get("rocket"), emojis.get("thumbsup"), "(" .. emojis.get("white_check_mark") .. ")" }
+		local prefix = table.concat(glyphs, " ") .. " " .. emojis.get("party_parrot") .. " "
+		assert.are.same({
+			lines = { prefix .. "hot" },
+			targets = {},
+			highlights = { span(0, #prefix, #prefix + 3, "AtlasMarkdownStrong") },
+		}, markdown.parse(":rocket: :thumbsup: (:white_check_mark:) :party_parrot: **hot**"))
+	end)
+
+	it("keeps shortcodes after words, digits or colons and in code literal", function()
+		for _, source in ipairs({ "a:fire:", "10:30:00", "std::vector::size", ":---:", "https://example.com" }) do
+			assert.are.same({ lines = { source }, highlights = {}, targets = {} }, markdown.parse(source))
+		end
+		assert.same({ ":fire:" }, markdown.parse("`:fire:`").lines)
+		assert.is_truthy(markdown.parse("```\n:fire:\n```").lines[2]:find(":fire:", 1, true))
 	end)
 
 	it("mutes adjacent inline comments literally and preserves surrounding byte offsets", function()

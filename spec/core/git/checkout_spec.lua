@@ -16,6 +16,7 @@ describe("core.git.checkout", function()
 		})
 
 		assert.equal("base123", base)
+
 		assert.equal("head456", head)
 	end)
 

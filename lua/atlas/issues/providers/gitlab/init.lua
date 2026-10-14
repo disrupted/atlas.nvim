@@ -2,8 +2,9 @@
 ---@field project_path string
 ---@field iid integer
 ---@field confidential boolean|nil
+---@field node_id string|nil
 
-local GITLAB_REACTION_OPTIONS = require("atlas.ui.shared.emojis").gitlab()
+local gitlab_mapping = require("atlas.providers.gitlab.mapping")
 local config = require("atlas.config")
 local detail_ui = require("atlas.issues.providers.gitlab.ui.detail")
 local git = require("atlas.core.git")
@@ -100,13 +101,16 @@ return {
 			fetch_links = links_api.fetch_issue,
 		},
 		comments = {
-			reaction_options = GITLAB_REACTION_OPTIONS,
 			-- fetch_activity = nil,
-			fetch_conversation = notes_api.list_conversation,
+			fetch_conversation = notes_api.fetch_conversation,
 			add_comment = notes_api.add_comment,
 			edit_comment = notes_api.edit_comment,
 			delete_comment = notes_api.delete_comment,
-			add_reaction = notes_api.add_reaction,
+			reactions = {
+				options = gitlab_mapping.reactions,
+				add = notes_api.add_reaction,
+				remove = notes_api.remove_reaction,
+			},
 		},
 		ui = {
 			detail = detail_ui,

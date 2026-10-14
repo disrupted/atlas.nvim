@@ -46,13 +46,13 @@ describe("Shortcut Story mapper", function()
 			author_id = "author",
 			text = "Looks good",
 			parent_id = 123,
-			reactions = { { emoji = ":thumbsup:", permission_ids = { "one", "two" } } },
+			reactions = { { emoji = ":thumbsup:", permission_ids = { "author", "two" } } },
 		}, { author })
 		assert.equal("456", comment.id)
 		assert.equal(author, comment.author)
 		assert.equal("Looks good", comment.body)
 		assert.equal(123, comment.parent_id)
-		assert.same({ [":thumbsup:"] = 2 }, comment.reactions)
+		assert.same({ { name = "thumbsup", count = 2, users = { author } } }, comment.reactions)
 	end)
 
 	it("maps activity actors and readable change descriptions", function()

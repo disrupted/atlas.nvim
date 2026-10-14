@@ -101,8 +101,8 @@ describe("providers contracts", function()
 			"add_comment",
 			"edit_comment",
 			"delete_comment",
-			"add_reaction",
 		}, "shortcut.issues.comments")
-		assert.is_true(#provider.capabilities.comments.reaction_options > 0)
+		assert_functions(provider.capabilities.comments.reactions, { "add" }, "shortcut.issues.comments.reactions")
+		assert.is_true(#provider.capabilities.comments.reactions.options > 0)
 	end)
 end)

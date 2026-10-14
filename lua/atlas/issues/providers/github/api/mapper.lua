@@ -141,6 +141,7 @@ function M.to_issue_details(raw, fallback_slug)
 	local details = {
 		title = json.safe_str(raw.title),
 		description = json.safe_str(raw.body) or "",
+		reactions = github_mapping.graphql_reactions(raw.reactionGroups),
 		assignees = M.to_users(github_mapping.connection_nodes(raw.assignees)),
 		labels = labels(github_mapping.connection_nodes(raw.labels)),
 		milestone = milestone(raw.milestone),
@@ -179,94 +180,53 @@ function M.parse_key(key)
 	return "", nil
 end
 
----@param raw any Decoded API value.
----@param raw_user any
----@return IssueComment|nil
-local function to_comment(raw, raw_user)
-	raw = json.nilify(raw)
-	if type(raw) ~= "table" or json.nilify(raw.id) == nil then
-		return nil
-	end
-	local author = M.to_user(raw_user)
-	return {
-		id = tostring(raw.id),
-		self = nil,
-		url = json.safe_str(raw.html_url) or "",
-		author = author,
-		body = json.safe_str(raw.body) or "",
-		created = json.safe_str(raw.created_at) or "",
-		updated = json.safe_str(raw.updated_at),
-		parent_id = nil,
-		children = nil,
-		reactions = github_mapping.reaction_counts(raw.reactions),
-	}
-end
-
----@param raw any Decoded API value.
----@return IssueComment|nil
-function M.to_comment(raw)
-	return to_comment(raw, json.safe_table(raw).user)
-end
-
 local EVENT_LABELS = {
-	reopened = "reopened",
-	locked = "locked conversation",
-	unlocked = "unlocked conversation",
-	pinned = "pinned this issue",
-	unpinned = "unpinned this issue",
-	transferred = "transferred",
-	marked_as_duplicate = "marked as duplicate",
-	subscribed = "subscribed",
-	unsubscribed = "unsubscribed",
-	mentioned = "was mentioned",
-	comment_deleted = "deleted a comment",
-	connected = "linked a pull request",
-	disconnected = "unlinked a pull request",
-	parent_issue_added = "added a parent issue",
-	parent_issue_removed = "removed a parent issue",
-	sub_issue_added = "added a sub-issue",
-	sub_issue_removed = "removed a sub-issue",
-	added_to_project_v2 = "added to a project",
-	removed_from_project_v2 = "removed from a project",
-	project_v2_item_status_changed = "changed project status",
-	blocking_added = "added a blocker",
-	blocking_removed = "removed a blocker",
+	ConnectedEvent = "linked a pull request",
+	DisconnectedEvent = "unlinked a pull request",
+	IssueTypeAddedEvent = "added the issue type",
+	IssueTypeChangedEvent = "changed the issue type",
+	IssueTypeRemovedEvent = "removed the issue type",
+	MarkedAsDuplicateEvent = "marked as duplicate",
+	MentionedEvent = "was mentioned",
+	ParentIssueAddedEvent = "added a parent issue",
+	ParentIssueRemovedEvent = "removed a parent issue",
+	PinnedEvent = "pinned this issue",
+	SubIssueAddedEvent = "added a sub-issue",
+	SubIssueRemovedEvent = "removed a sub-issue",
+	SubscribedEvent = "subscribed",
+	TransferredEvent = "transferred",
+	UnmarkedAsDuplicateEvent = "unmarked as duplicate",
+	UnpinnedEvent = "unpinned this issue",
+	UnsubscribedEvent = "unsubscribed",
 }
 
----@param raw any Decoded API value.
+---@param node any GraphQL timeline event
 ---@return IssueActivityEntry|nil
-function M.to_timeline_entry(raw)
-	raw = json.nilify(raw)
-	if type(raw) ~= "table" then
-		return nil
-	end
-	local event = json.safe_str(raw.event) or ""
-	if event == "" then
-		return nil
-	end
-
-	local actor = M.to_user(raw.actor) or M.to_user(raw.user)
-	local date = json.safe_str(raw.created_at) or ""
-
+function M.to_timeline_entry(node)
+	node = json.safe_table(node)
+	local event = json.safe_str(node.__typename) or ""
 	---@type IssueActivityEntry
-	local entry = { kind = event, actor = actor, date = date }
+	local entry = { kind = "other", actor = M.to_user(node.actor), date = json.safe_str(node.createdAt) or "" }
 
-	if event == "labeled" or event == "unlabeled" then
-		local name = json.safe_str(json.safe_table(raw.label).name) or ""
-		local verb = event == "labeled" and "added label" or "removed label"
+	if event == "LabeledEvent" or event == "UnlabeledEvent" then
+		local name = json.safe_str(json.safe_table(node.label).name) or ""
+		local verb = event == "LabeledEvent" and "added label" or "removed label"
+		entry.kind = event == "LabeledEvent" and "labeled" or "unlabeled"
 		entry.label = name ~= "" and (verb .. ": " .. name) or verb
-	elseif event == "assigned" or event == "unassigned" then
-		local login = json.safe_str(json.safe_table(raw.assignee).login) or ""
-		local verb = event == "assigned" and "assigned" or "unassigned"
+	elseif event == "AssignedEvent" or event == "UnassignedEvent" then
+		local login = json.safe_str(json.safe_table(node.assignee).login) or ""
+		local verb = event == "AssignedEvent" and "assigned" or "unassigned"
+		entry.kind = event == "AssignedEvent" and "assigned" or "unassigned"
 		entry.label = login ~= "" and (verb .. " " .. login) or verb
-	elseif event == "milestoned" or event == "demilestoned" then
-		local title = json.safe_str(json.safe_table(raw.milestone).title) or ""
-		local verb = event == "milestoned" and "added milestone" or "removed milestone"
+	elseif event == "MilestonedEvent" or event == "DemilestonedEvent" then
+		local title = json.safe_str(node.milestoneTitle) or ""
+		local verb = event == "MilestonedEvent" and "added milestone" or "removed milestone"
+		entry.kind = event == "MilestonedEvent" and "milestoned" or "demilestoned"
 		entry.label = title ~= "" and (verb .. ": " .. title) or verb
-	elseif event == "renamed" then
-		local rename = json.safe_table(raw.rename)
-		local from = json.safe_str(rename.from) or ""
-		local to = json.safe_str(rename.to) or ""
+	elseif event == "RenamedTitleEvent" then
+		entry.kind = "renamed"
+		local from = json.safe_str(node.previousTitle) or ""
+		local to = json.safe_str(node.currentTitle) or ""
 		entry.label = "renamed"
 		if from ~= "" or to ~= "" then
 			entry.body = from .. " → " .. to
@@ -281,33 +241,54 @@ function M.to_timeline_entry(raw)
 				}
 			end
 		end
-	elseif event == "cross-referenced" then
-		local issue = json.safe_table(json.safe_table(raw.source).issue)
-		local title = json.safe_str(issue.title) or ""
-		local url = json.safe_str(issue.html_url) or ""
+	elseif event == "CrossReferencedEvent" then
+		entry.kind = "referenced"
+		local source = json.safe_table(node.source)
+		local title = json.safe_str(source.title) or ""
+		local url = json.safe_str(source.url) or ""
 		entry.label = "referenced"
 		entry.body = title ~= "" and title or (url ~= "" and url or nil)
-	elseif event == "referenced" or event == "closed" then
-		local commit_id = json.safe_str(raw.commit_id)
+	elseif event == "ReferencedEvent" or event == "ClosedEvent" then
+		local commit_id = json.safe_str(json.safe_table(event == "ClosedEvent" and node.closer or node.commit).oid)
 		local short = (commit_id and commit_id ~= "") and commit_id:sub(1, 8) or nil
-		entry.label = event == "closed" and "closed" or "referenced"
+		entry.kind = event == "ClosedEvent" and "closed" or "referenced"
+		entry.label = entry.kind
 		if short then
 			entry.body = "commit " .. short
 			entry.body_hl = function(row, _)
 				return { { start_col = 0, end_col = #row, hl_group = "AtlasTextMuted" } }
 			end
 		end
+	elseif event == "ReopenedEvent" then
+		entry.kind = "reopened"
+		entry.label = "reopened"
+	elseif event == "LockedEvent" or event == "UnlockedEvent" then
+		entry.kind = event == "LockedEvent" and "locked" or "unlocked"
+		entry.label = entry.kind .. " conversation"
+	elseif EVENT_LABELS[event] then
+		entry.label = EVENT_LABELS[event]
 	else
-		entry.label = EVENT_LABELS[event] or event
+		return nil
 	end
 
 	return entry
 end
 
----@param raw table
+---@param node any GraphQL `IssueComment`
 ---@return IssueComment|nil
-function M.to_timeline_comment(raw)
-	return to_comment(raw, json.nilify(raw.user) or json.nilify(raw.actor))
+function M.to_comment(node)
+	node = json.safe_table(node)
+	if json.nilify(node.id) == nil then
+		return nil
+	end
+	return {
+		id = tostring(node.id),
+		url = json.safe_str(node.url) or "",
+		author = M.to_user(node.author),
+		body = json.safe_str(node.body) or "",
+		created_at = json.safe_str(node.createdAt) or "",
+		reactions = github_mapping.graphql_reactions(node.reactionGroups),
+	}
 end
 
 return M
