@@ -93,6 +93,7 @@ function M.setup(buf, refresh)
 	local provider = detail.provider
 	local tasks = provider and provider.capabilities.tasks
 	local has_tasks = tasks and tasks.edit_task ~= nil
+	local can_react = provider and provider.capabilities.comments and provider.capabilities.comments.reactions ~= nil
 	local items = {}
 	utils.insert_if(
 		items,
@@ -138,17 +139,19 @@ function M.setup(buf, refresh)
 			end,
 		})
 	)
-	utils.insert_if(
-		items,
-		from_action("ui.comments.react", {
-			desc = "Add reaction",
-			index = 22,
-			opts = { nowait = true, silent = true },
-			callback = function()
-				dispatch_with_entry(refresh, actions.react)
-			end,
-		})
-	)
+	if can_react then
+		utils.insert_if(
+			items,
+			from_action("ui.comments.react", {
+				desc = "Add reaction",
+				index = 22,
+				opts = { nowait = true, silent = true },
+				callback = function()
+					dispatch_with_entry(refresh, actions.react)
+				end,
+			})
+		)
+	end
 	if has_tasks then
 		local toggle_task = from_action("pulls.review.toggle_resolved", {
 			desc = "Toggle task",

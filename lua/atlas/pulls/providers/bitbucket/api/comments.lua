@@ -127,9 +127,10 @@ end
 
 ---@param pr PullRequest
 ---@param comment PullsComment
+---@param content string
 ---@param on_done fun(comment: PullsComment|nil, err: string|nil)
 ---@return { cancel: fun() }|nil
-function M.edit_comment(pr, comment, on_done)
+function M.edit_comment(pr, comment, content, on_done)
 	---@cast pr BitbucketPullRequest
 	local comments_url = tostring(pr.links.comments or "")
 	if comments_url == "" then
@@ -138,7 +139,7 @@ function M.edit_comment(pr, comment, on_done)
 	end
 
 	local url = comments_url .. "/" .. tostring(comment.id)
-	local body = encode_comment_payload(comment.content_raw)
+	local body = encode_comment_payload(content)
 	return service.request("PUT", url, nil, body, function(result, err)
 		if err then
 			on_done(nil, err)
@@ -151,7 +152,7 @@ function M.edit_comment(pr, comment, on_done)
 			return
 		end
 		local merged = vim.tbl_extend("force", {}, comment, updated)
-		merged.content_display = updated.content_display
+		merged.body_display = updated.body_display
 		on_done(merged, nil)
 	end, { action = "Edit PR comment", repo = pr.repo_full_name, id = pr.id, comment_id = comment.id })
 end

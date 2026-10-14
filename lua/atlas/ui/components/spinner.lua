@@ -11,7 +11,7 @@ local function frame(interval_ns)
 	if interval <= 0 then
 		interval = DEFAULT_INTERVAL_NS
 	end
-	local idx = (math.floor(vim.loop.hrtime() / interval) % #FRAMES) + 1
+	local idx = (math.floor(vim.uv.hrtime() / interval) % #FRAMES) + 1
 	return FRAMES[idx]
 end
 
@@ -61,7 +61,7 @@ function M.create(opts)
 			return
 		end
 
-		self.timer = vim.loop.new_timer()
+		self.timer = vim.uv.new_timer()
 		if self.timer == nil then
 			return
 		end

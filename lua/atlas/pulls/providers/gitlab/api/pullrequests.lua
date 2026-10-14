@@ -9,9 +9,11 @@ local json = require("atlas.core.json")
 
 local MR_DETAILS_QUERY = [[
 query($path:ID!,$iid:String!){
+  currentUser{username}
   project(fullPath:$path){
     mergeRequest(iid:$iid){
       description
+      awardEmoji{nodes{name user{name username}}}
       subscribed
       assignees(first:100){nodes{id name username}}
       labels(first:100){nodes{name:title color text_color:textColor}}
@@ -22,6 +24,7 @@ query($path:ID!,$iid:String!){
 
 local MR_FIELDS = [[
 fragment MergeRequestFields on MergeRequest {
+  node_id:id
   iid
   reference(full:true)
   title
@@ -377,7 +380,8 @@ function M.fetch_pullrequest(pr, opts, on_done)
 			return
 		end
 		local project = json.safe_table(result).project
-		local details = mapper.to_pull_request_details(json.safe_table(project).mergeRequest)
+		local viewer = json.safe_str(json.safe_table(json.safe_table(result).currentUser).username)
+		local details = mapper.to_pull_request_details(json.safe_table(project).mergeRequest, viewer)
 		if details == nil then
 			on_done(nil, "Merge request not found")
 			return
@@ -496,22 +500,6 @@ end
 ---@return { cancel: fun() }|nil
 function M.decline(pr, on_done)
 	return update(pr, { state_event = "close" }, on_done)
-end
-
----@param pr PullRequest
----@param title string
----@param on_done fun(ok: boolean, err: string|nil)
----@return { cancel: fun() }|nil
-function M.update_title(pr, title, on_done)
-	return update(pr, { title = title }, on_done)
-end
-
----@param pr PullRequest
----@param description string
----@param on_done fun(ok: boolean, err: string|nil)
----@return { cancel: fun() }|nil
-function M.update_description(pr, description, on_done)
-	return update(pr, { description = description }, on_done)
 end
 
 ---@param pr PullRequest

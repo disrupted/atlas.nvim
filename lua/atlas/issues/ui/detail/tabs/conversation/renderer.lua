@@ -5,7 +5,6 @@ local utils = require("atlas.ui.shared.utils")
 local spinner = require("atlas.ui.components.spinner")
 local comment_threads = require("atlas.issues.ui.components.comment_threads")
 local activity_component = require("atlas.issues.ui.detail.components.activity")
-local detail = require("atlas.issues.ui.detail.state")
 local state = require("atlas.issues.ui.detail.tabs.conversation.state")
 
 local PADDING_X = 1
@@ -28,8 +27,6 @@ end
 ---@param collapsed boolean
 ---@param width integer
 local function render_thread(thread, collapsed, width)
-	local provider = detail.provider
-	local comments = provider and provider.capabilities.comments
 	local fold_keys = keymaps.resolve("ui.toggle_fold")
 	local fold_key = fold_keys and fold_keys[1]
 	return comment_threads.render({ thread }, width, {
@@ -37,7 +34,6 @@ local function render_thread(thread, collapsed, width)
 			return not collapsed
 		end,
 		padding_x = PADDING_X,
-		reaction_options = comments and comments.reaction_options,
 		content_max_lines = fold_key and function(comment)
 			return state.comment_max_lines(comment)
 		end or nil,
@@ -67,9 +63,12 @@ end
 local function build_timeline(items)
 	local mixed = {}
 	local comments, by_entity = {}, {}
+	local description
 	for _, item in ipairs(items) do
 		by_entity[item.entity] = item
-		if item.kind == "comment" then
+		if item.kind == "description" then
+			description = comment_threads.group_comments({ item.entity })[1]
+		elseif item.kind == "comment" then
 			---@type IssueComment
 			local comment = item.entity
 			table.insert(comments, comment)
@@ -84,7 +83,7 @@ local function build_timeline(items)
 	for _, thread in ipairs(comment_threads.group_comments(comments)) do
 		table.insert(mixed, {
 			kind = "comment",
-			timestamp = thread.comment.created or "",
+			timestamp = thread.comment.created_at or "",
 			thread = thread,
 		})
 	end
@@ -99,6 +98,9 @@ local function build_timeline(items)
 
 	local entries = {}
 	local run = {}
+	if description then
+		table.insert(entries, { type = "comment", timestamp = description.comment.created_at, thread = description })
+	end
 	local function flush_run()
 		if #run > 0 then
 			table.insert(entries, { type = "activity_run", timestamp = run[1].created_at, items = run })

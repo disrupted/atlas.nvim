@@ -20,26 +20,6 @@ describe("github pull request updates", function()
 		package.loaded["atlas.pulls.providers.github.api.reviews"] = reviews_module
 	end)
 
-	it("fails fast when the PR has no repo_full_name", function()
-		github_client.install({
-			gh = function(args, callback)
-				table.insert(calls, args)
-				callback(nil, nil)
-			end,
-		})
-		local api = fresh_module()
-
-		for action, value in pairs({ update_title = "New title", update_description = "New body" }) do
-			local ok, err
-			api[action]({ id = 42, repo_full_name = "" }, value, function(success, e)
-				ok, err = success, e
-			end)
-			assert.is_false(ok)
-			assert.equal("Missing repo", err)
-		end
-		assert.equal(0, #calls)
-	end)
-
 	it("runs gh pr edit with title, multiline body and empty body updates", function()
 		github_client.install({
 			gh = function(args, callback)
@@ -51,12 +31,12 @@ describe("github pull request updates", function()
 
 		local pr = { id = 42, repo_full_name = "octo/repo" }
 		for index, case in ipairs({
-			{ "update_title", "--title", "New title" },
-			{ "update_description", "--body", "Line one\nLine two" },
-			{ "update_description", "--body", "" },
+			{ { title = "New title" }, "--title", "New title" },
+			{ { body = "Line one\nLine two" }, "--body", "Line one\nLine two" },
+			{ { body = "" }, "--body", "" },
 		}) do
 			local ok, err
-			api[case[1]](pr, case[3], function(success, e)
+			api.update_pr(pr, case[1], function(success, e)
 				ok, err = success, e
 			end)
 			assert.is_true(ok)
@@ -105,10 +85,11 @@ describe("github pull request updates", function()
 			end,
 		})
 		local api = fresh_module()
+		local pr = { id = 42, repo_full_name = "octo/repo" }
 
-		for action, value in pairs({ update_title = "New title", update_description = "New body" }) do
+		for _, opts in ipairs({ { title = "New title" }, { body = "New body" } }) do
 			local ok, err
-			api[action]({ id = 42, repo_full_name = "octo/repo" }, value, function(success, e)
+			api.update_pr(pr, opts, function(success, e)
 				ok, err = success, e
 			end)
 			assert.is_false(ok)

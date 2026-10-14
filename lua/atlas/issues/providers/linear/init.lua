@@ -127,8 +127,7 @@ return {
 		-- 	add_comment = nil,
 		-- 	edit_comment = nil,
 		-- 	delete_comment = nil,
-		-- 	add_reaction = nil,
-		-- 	reaction_options = nil,
+		-- 	reactions = nil,
 		-- },
 		ui = {
 			detail = require("atlas.issues.providers.linear.ui.detail"),

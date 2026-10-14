@@ -2,14 +2,14 @@ local M = {}
 
 local highlights = require("atlas.ui.highlights")
 
----@param author PullsAuthor|nil
+---@param author AtlasUser|nil
 ---@return string
 function M.author_name(author)
 	if author == nil then
 		return "Unknown"
 	end
-	if author.nickname and author.nickname ~= "" then
-		return author.nickname
+	if author.username and author.username ~= "" then
+		return author.username
 	end
 	if author.name and author.name ~= "" then
 		return author.name
@@ -30,14 +30,11 @@ function M.author_hl(name)
 	return highlights.dynamic_for(lower) or "AtlasTextMuted"
 end
 
----@param user { name: string?, nickname: string?, username: string? }|nil
+---@param user AtlasUser|nil
 ---@return string
 function M.user_handle(user)
 	if user == nil then
 		return "Unknown"
-	end
-	if user.nickname and user.nickname ~= "" then
-		return user.nickname
 	end
 	if user.username and user.username ~= "" then
 		return user.username

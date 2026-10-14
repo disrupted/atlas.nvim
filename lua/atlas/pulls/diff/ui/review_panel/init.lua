@@ -1,4 +1,3 @@
-local annotations = require("atlas.pulls.diff.ui.annotations")
 local comment_threads = require("atlas.pulls.ui.components.comment_threads")
 local icons = require("atlas.ui.shared.icons")
 local keymap_resolver = require("atlas.core.keymaps")
@@ -90,7 +89,7 @@ local function sections(result)
 				thread = thread,
 				path = position and position.path or "",
 				line = comment.inline and (comment.inline.to or comment.inline.from) or 0,
-				timestamp = comment.created_on,
+				timestamp = comment.created_at,
 			}
 		end
 
@@ -150,7 +149,7 @@ local function render_review(item, width, expanded, history_expanded, head_revis
 	local history = item.history
 	local decision = item.decision or history[#history].state
 	local status = review_states[decision]
-	local author = item.author and (item.author.nickname or item.author.name) or "Unknown"
+	local author = item.author and (item.author.username or item.author.name) or "Unknown"
 
 	local function add_line(chunks, entry)
 		local text = ""
@@ -279,7 +278,6 @@ function M.render(state)
 	local view = vim.api.nvim_win_call(state.win, vim.fn.winsaveview)
 	local selected = state.line_map[view.lnum]
 	local width = vim.api.nvim_win_get_width(state.win)
-	local comment_options = annotations.comment_options(state.data)
 	local lines, spans, line_map = {}, {}, {}
 	local action_keys = {
 		reply = key_label("pulls.review.add_comment"),
@@ -338,7 +336,6 @@ function M.render(state)
 							comment_location(item.thread.comment),
 							{
 								action_keys = action_keys,
-								reaction_options = comment_options.reaction_options,
 							}
 						)
 					elseif item.note then

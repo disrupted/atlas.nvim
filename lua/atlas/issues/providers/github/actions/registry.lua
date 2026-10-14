@@ -386,7 +386,7 @@ local function search_issues(repo, ctx, done)
 		end,
 		preview_item = function(item, preview_done)
 			local issue = item.value
-			return issues_api.get_issue(issue.key, function(details, err)
+			return issues_api.fetch_issue(issue, nil, function(details, err)
 				if err or details == nil then
 					preview_done({ title = issue.key, lines = { err or "Failed to load issue" } })
 					return

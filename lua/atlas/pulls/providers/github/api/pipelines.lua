@@ -723,7 +723,10 @@ function M.fetch_job_log(context, _pipeline, job, on_done)
 	end
 
 	local endpoint = string.format("repos/%s/actions/jobs/%d/logs", repo_slug, job_id)
-	return cli.gh_text({ "api", "--allow-escape-sequences", endpoint }, function(raw, err)
+	return cli.gh_text({ "api", "--include", "--allow-escape-sequences", endpoint }, function(raw, err, status)
+		if status == 404 and (job.state == "INPROGRESS" or job.state == "QUEUED" or job.state == "PENDING") then
+			err = "GitHub logs are available after the job finishes."
+		end
 		on_done(raw and { raw = raw } or nil, err)
 	end, { action = "Fetch workflow job log", repo = repo_slug, job_id = job_id })
 end

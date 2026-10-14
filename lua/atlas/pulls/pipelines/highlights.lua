@@ -126,6 +126,15 @@ function M.new(custom_rules)
 		local spans = {}
 		if highlight and #body > 0 then
 			spans[1] = { start_col = 0, end_col = #body, hl_group = highlight, hl_eol = hl_eol }
+		elseif not is_group then
+			local start, label = body:match("^%s*()(%u+)%f[%s%z]")
+			if label == "PASS" or label == "FAIL" then
+				spans[1] = {
+					start_col = start - 1,
+					end_col = start - 1 + #label,
+					hl_group = label == "PASS" and "AtlasTextPositive" or "AtlasLogError",
+				}
+			end
 		end
 		return body, spans
 	end,

@@ -217,7 +217,7 @@ end
 ---@param on_done fun(err: string|nil)
 local function create_template(on_done)
 	markdown_editor.open({
-		key = string.format("template_new_%d", vim.loop.hrtime()),
+		key = string.format("template_new_%d", vim.uv.hrtime()),
 		title = " New Template ",
 		initial_text = "",
 		on_save = function(text)

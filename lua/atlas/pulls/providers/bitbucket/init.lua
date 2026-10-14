@@ -132,12 +132,11 @@ return {
 			-- fetch_assignees = nil,
 		},
 		comments = {
-			-- reaction_options = nil,
 			fetch_conversation = activity_api.fetch_conversation,
 			add_comment = comments_api.add_comment,
 			edit_comment = comments_api.edit_comment,
 			delete_comment = comments_api.delete_comment,
-			-- add_reaction = nil,
+			-- reactions = nil,
 			set_thread_resolved = comments_api.set_thread_resolved,
 		},
 		reviews = {

@@ -206,11 +206,39 @@ function M.fetch_issue(ref, opts, callback)
 	})
 end
 
----@param issue_key string
----@param on_done fun(entries: IssueActivityEntry[]|nil, err: string|nil)
+---@param refs IssueRef[]
+---@param opts IssuesFetchOpts
+---@param on_done fun(issues: Issue[], err: string|nil)
+---@return { cancel: fun() }|nil
+function M.fetch_by_refs(refs, opts, on_done)
+	if #refs == 0 then
+		on_done({}, nil)
+		return nil
+	end
+
+	local quoted = {}
+	for _, ref in ipairs(refs) do
+		table.insert(quoted, string.format('"%s"', ref.key:gsub('"', '\\"')))
+	end
+
+	return M.search_issues("key in (" .. table.concat(quoted, ",") .. ")", function(page, err)
+		if err or page == nil then
+			on_done({}, err or "Failed to fetch issues")
+			return
+		end
+		on_done(page.items, nil)
+	end, {
+		force_refresh = opts.force_refresh == true,
+		pagelen = #refs,
+	})
+end
+
+---@param issue Issue
 ---@param opts { force_refresh?: boolean }|nil
+---@param on_done fun(entries: IssueActivityEntry[]|nil, err: string|nil)
 ---@return { job_id: integer, cancel: fun() }|nil
-function M.get_issue_history(issue_key, on_done, opts)
+function M.fetch_activity(issue, opts, on_done)
+	local issue_key = tostring(issue.key or "")
 	if issue_key == "" then
 		on_done(nil, "Missing issue key")
 		return nil

@@ -6,7 +6,6 @@
 ---@field kind "pr"|"issue"|"checks"|nil
 ---@field unread boolean
 ---@field url string|nil
----@field _raw table|nil
 
 ---@class AtlasNotificationsCapability
 ---@field fetch fun(opts: { force_refresh: boolean|nil }|nil, on_done: fun(notifications: AtlasNotification[]|nil, err: string|nil)): { cancel: fun() }|nil

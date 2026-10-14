@@ -1,16 +1,5 @@
 local M = {}
 
-local emoji_shortname_map = {
-	[":check_mark:"] = "",
-	[":white_check_mark:"] = "",
-	[":x:"] = "",
-	[":warning:"] = "",
-	[":information_source:"] = "",
-	[":hourglass_flowing_sand:"] = "",
-	[":rocket:"] = "",
-	[":smile:"] = "",
-}
-
 local status_color_map = {
 	blue = "",
 	green = "",
@@ -119,10 +108,7 @@ end
 -- { "type": "emoji", "attrs": { "shortName": ":smile:" } }
 node_handlers.emoji = function(node)
 	local attrs = type(node.attrs) == "table" and node.attrs or {}
-	if type(attrs.shortName) == "string" and attrs.shortName ~= "" then
-		return emoji_shortname_map[attrs.shortName] or attrs.shortName
-	end
-	return ""
+	return type(attrs.shortName) == "string" and attrs.shortName or ""
 end
 
 -- { "type": "inlineCard", "attrs": { "url": "https://jira.example.com/browse/PROJ-123" } }

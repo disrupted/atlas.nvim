@@ -7,6 +7,34 @@ local utils = require("atlas.ui.shared.utils")
 local M = {}
 
 local namespace = vim.api.nvim_create_namespace("atlas.pipelines.logs")
+local spinner_namespace = vim.api.nvim_create_namespace("atlas.pipelines.logs.spinner")
+
+---@param pane PullsPipelinesLogs
+---@return boolean
+function M.has_content(pane)
+	local log = pane.log
+	if type(log) ~= "table" then
+		return false
+	end
+	return #log > 0 or (pane.show_raw == true and pane.source ~= nil and pane.source.raw ~= "")
+end
+
+---@param pane PullsPipelinesLogs
+function M.render_spinner(pane)
+	if not utils.window.has_buffer(pane.win, pane.buf) then
+		return
+	end
+
+	if pane.spinner and type(pane.log) == "table" then
+		vim.api.nvim_buf_set_extmark(pane.buf, spinner_namespace, vim.api.nvim_buf_line_count(pane.buf) - 1, 0, {
+			id = 1,
+			virt_text = { { pane.spinner:current_frame(), "AtlasTextMuted" } },
+			virt_text_win_col = 0,
+		})
+	else
+		vim.api.nvim_buf_clear_namespace(pane.buf, spinner_namespace, 0, -1)
+	end
+end
 
 ---@param styles table[]
 ---@param spans table[]
@@ -165,6 +193,9 @@ local function build_content(pane)
 	if log then
 		append_log(pane, lines, spans, prepared)
 	end
+	if pane.spinner then
+		lines[#lines + 1] = ""
+	end
 
 	return lines, spans
 end
@@ -197,11 +228,14 @@ function M.render(pane)
 	end
 
 	local title = pane.show_raw and "Raw logs" or "Logs"
-	vim.api.nvim_set_option_value(
-		"winbar",
-		" " .. title .. (pane.refresh_timer and " (auto) " or " "),
-		{ win = pane.win }
-	)
+	if pane.refresh_timer then
+		local following = pane.follow_pending and " - following" or ""
+		if type(pane.log) == "table" then
+			following = "%{line('.') == line('$') ? ' - following' : ''}"
+		end
+		title = title .. " (auto" .. following .. ")"
+	end
+	vim.api.nvim_set_option_value("winbar", " " .. title .. " ", { win = pane.win })
 	pane.line_map = {}
 	pane.entry_rows = {}
 	pane.counts = nil
@@ -215,7 +249,7 @@ function M.render(pane)
 		hl = "Normal"
 	elseif type(log) == "string" then
 		message, hl = log, "AtlasLogError"
-	elseif log and #log == 0 and not (pane.show_raw and pane.source and pane.source.raw ~= "") then
+	elseif log and not pane.spinner and not M.has_content(pane) then
 		message, hl = "No logs available.", "AtlasTextMuted"
 	end
 	if message then
@@ -225,6 +259,7 @@ function M.render(pane)
 			end_row = vim.api.nvim_buf_line_count(pane.buf),
 			hl_group = hl,
 		})
+		M.render_spinner(pane)
 		return
 	end
 	local view = vim.api.nvim_win_call(pane.win, vim.fn.winsaveview)
@@ -233,6 +268,7 @@ function M.render(pane)
 	vim.api.nvim_win_call(pane.win, function()
 		vim.fn.winrestview(view)
 	end)
+	M.render_spinner(pane)
 end
 
 return M
