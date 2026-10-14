@@ -133,10 +133,7 @@ describe("Jira ADF to Markdown", function()
 		}, "@user")
 	end)
 
-	it("converts known and unknown emoji", function()
-		converts({
-			paragraph({ { type = "emoji", attrs = { shortName = ":smile:" } } }),
-		}, "")
+	it("keeps emoji shortcodes", function()
 		converts({
 			paragraph({
 				{
@@ -148,10 +145,7 @@ describe("Jira ADF to Markdown", function()
 					},
 				},
 			}),
-		}, "")
-		converts({
-			paragraph({ { type = "emoji", attrs = { shortName = ":party_parrot:" } } }),
-		}, ":party_parrot:")
+		}, ":check_mark:")
 	end)
 
 	it("converts statuses", function()

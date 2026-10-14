@@ -77,8 +77,8 @@ describe("Azure review mapping", function()
 			end
 		)
 		assert.equal("approved", result.reviewers[1].decision)
-		assert.equal("Ask @<reviewer>", result.comments[1].content_raw)
-		assert.equal("Ask @Reviewer", result.comments[1].content_display)
+		assert.equal("Ask @<reviewer>", result.comments[1].body)
+		assert.equal("Ask @Reviewer", result.comments[1].body_display)
 	end)
 
 	it("matches renamed-file hunks on both sides, excluding replies and unmatched positions", function()

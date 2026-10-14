@@ -111,20 +111,29 @@ function M.fetch_conversation(pr, opts, on_done)
 		activity = function(done)
 			return M.fetch_activity(pr, opts, done)
 		end,
-		comments = function(done)
+		conversation = function(done)
 			return comments_api.fetch_conversation_comments(pr, opts, done)
 		end,
 	}, function(values, errors)
-		if values.activity == nil and values.comments == nil then
-			on_done(nil, errors.activity or errors.comments or "Failed to fetch conversation")
+		if values.activity == nil and values.conversation == nil then
+			on_done(nil, errors.activity or errors.conversation or "Failed to fetch conversation")
 			return
 		end
+		local conversation = values.conversation or { comments = {} }
 		local items = {}
-		for _, comment in ipairs(values.comments or {}) do
+		if conversation.description then
+			table.insert(items, {
+				id = "description",
+				kind = "description",
+				created_at = conversation.description.created_at,
+				entity = conversation.description,
+			})
+		end
+		for _, comment in ipairs(conversation.comments) do
 			table.insert(items, {
 				id = "comment:" .. tostring(comment.id),
 				kind = "comment",
-				created_on = comment.created_on or "",
+				created_at = comment.created_at or "",
 				entity = comment,
 			})
 		end
@@ -132,11 +141,11 @@ function M.fetch_conversation(pr, opts, on_done)
 			table.insert(items, {
 				id = table.concat({ "activity", event.date or "", event.kind or "" }, ":"),
 				kind = "activity",
-				created_on = event.date or "",
+				created_at = event.date or "",
 				entity = event,
 			})
 		end
-		on_done(items, errors.activity or errors.comments)
+		on_done(items, errors.activity or errors.conversation)
 	end)
 	return requests
 end

@@ -14,18 +14,37 @@ local function map_comments(raw, issue_key)
 	})
 end
 
----@param issue_key string
----@param callback fun(comments: IssueComment[]|nil, err: string|nil)
+---@param issue Issue
 ---@param opts { force_refresh?: boolean }|nil
+---@param on_done fun(items: IssueConversationItem[]|nil, err: string|nil)
 ---@return { job_id: integer, cancel: fun() }|nil
-function M.get_comments(issue_key, callback, opts)
+function M.fetch_conversation(issue, opts, on_done)
 	opts = opts or {}
+	local issue_key = tostring(issue.key or "")
+	if issue_key == "" then
+		on_done(nil, "Invalid issue key")
+		return nil
+	end
 	local cache_key = "jira:panel:comments:" .. issue_key
+
+	---@param comments IssueComment[]
+	local function done(comments)
+		local items = {}
+		for _, comment in ipairs(comments) do
+			table.insert(items, {
+				id = "comment:" .. tostring(comment.id),
+				kind = "comment",
+				created_at = comment.created_at or "",
+				entity = comment,
+			})
+		end
+		on_done(items, nil)
+	end
 
 	if not opts.force_refresh then
 		local cached, ok = service.get_memory_cache(cache_key)
 		if ok then
-			callback(cached, nil)
+			done(cached)
 			return nil
 		end
 	end
@@ -34,13 +53,13 @@ function M.get_comments(issue_key, callback, opts)
 
 	return service.request("GET", endpoint, nil, function(result, err)
 		if err or not result then
-			callback(nil, err or "Empty response")
+			on_done(nil, err or "Failed to fetch comments")
 			return
 		end
 
 		local comments = map_comments(result, issue_key)
 		service.set_memory_cache(cache_key, comments)
-		callback(comments, nil)
+		done(comments)
 	end, {
 		action = "Fetch comments",
 		issue_key = issue_key,
@@ -84,49 +103,41 @@ local function write_comment(issue_key, comment, comment_id, parent_id, callback
 	})
 end
 
----@param issue_key string
----@param comment string
----@param opts { parent_id?: string|number }|nil
----@param callback fun(comment: IssueComment|nil, err: string|nil)
+---@param issue Issue
+---@param content string
+---@param opts { parent?: IssueComment }|nil
+---@param on_done fun(comment: IssueComment|nil, err: string|nil)
 ---@return { job_id: integer, cancel: fun() }|nil
-function M.add_comment(issue_key, comment, opts, callback)
-	return write_comment(issue_key, comment, nil, opts and opts.parent_id or nil, callback)
+function M.add_comment(issue, content, opts, on_done)
+	local parent = opts and opts.parent
+	return write_comment(tostring(issue.key or ""), content, nil, parent and parent.id, on_done)
 end
 
----@param issue_key string
----@param comment_id string|number
----@param comment string
----@param callback fun(comment: IssueComment|nil, err: string|nil)
+---@param issue Issue
+---@param comment IssueComment
+---@param content string
+---@param on_done fun(comment: IssueComment|nil, err: string|nil)
 ---@return { job_id: integer, cancel: fun() }|nil
-function M.edit_comment(issue_key, comment_id, comment, callback)
-	local id = tostring(comment_id or "")
-	if id == "" then
-		callback(nil, "Missing comment id")
-		return nil
-	end
-	return write_comment(issue_key, comment, id, nil, callback)
+function M.edit_comment(issue, comment, content, on_done)
+	return write_comment(tostring(issue.key or ""), content, tostring(comment.id), nil, on_done)
 end
 
----@param issue_key string
----@param comment_id string|number
----@param callback fun(ok: boolean, err: string|nil)
+---@param issue Issue
+---@param comment IssueComment
+---@param on_done fun(ok: boolean, err: string|nil)
 ---@return { job_id: integer, cancel: fun() }|nil
-function M.delete_comment(issue_key, comment_id, callback)
-	local id = tostring(comment_id or "")
-	if id == "" then
-		callback(false, "Missing comment id")
-		return nil
-	end
-
+function M.delete_comment(issue, comment, on_done)
+	local issue_key = tostring(issue.key or "")
+	local id = tostring(comment.id)
 	local endpoint = string.format("/issue/%s/comment/%s", issue_key, id)
 
 	return service.request("DELETE", endpoint, nil, function(_, err)
 		if err then
-			callback(false, err)
+			on_done(false, err)
 			return
 		end
 		service.clear_memory_cache()
-		callback(true, nil)
+		on_done(true, nil)
 	end, {
 		action = "Delete comment",
 		issue_key = issue_key,

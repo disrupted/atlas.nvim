@@ -35,16 +35,6 @@ local function comment_location(comment)
 	return first == line and (side .. line) or string.format("%s%d-%s%d", side, first, side, line)
 end
 
----@param tasks PullsComment[]
----@return string
-local function task_heading(tasks)
-	local label = vim.trim(tostring(tasks[1] and tasks[1].task_label or "Task"))
-	if label == "" then
-		label = "Task"
-	end
-	return label:sub(-1):lower() == "s" and label or (label .. "s")
-end
-
 ---@param lines string[]
 ---@param spans table[]
 ---@param line_map table<integer, table>
@@ -73,7 +63,6 @@ end
 ---@param width integer
 local function emit_comments(lines, spans, line_map, nodes, width)
 	local provider = detail.provider
-	local comments = provider and provider.capabilities.comments
 	local tasks = provider and provider.capabilities.tasks
 	local thread_lines, thread_spans, thread_map = comment_threads.render(nodes, math.max(1, width - 4), {
 		expanded = function(root)
@@ -88,7 +77,6 @@ local function emit_comments(lines, spans, line_map, nodes, width)
 			add_task = tasks and tasks.add_task and action_key("pulls.review.add_task") or nil,
 			toggle_resolved = action_key("pulls.review.toggle_resolved"),
 		},
-		reaction_options = comments and comments.reaction_options,
 	})
 	local result = box.render({ { lines = thread_lines, spans = thread_spans, line_map = thread_map } }, {
 		width = width,
@@ -166,11 +154,11 @@ function M.render(width, comments, tasks)
 	if tasks and #tasks > 0 then
 		local sorted_tasks = vim.list_extend({}, tasks)
 		table.sort(sorted_tasks, function(left, right)
-			local left_date = tostring(left.created_on or "")
-			local right_date = tostring(right.created_on or "")
+			local left_date = tostring(left.created_at or "")
+			local right_date = tostring(right.created_at or "")
 			return left_date == right_date and tostring(left.id) < tostring(right.id) or left_date < right_date
 		end)
-		utils.push(lines, spans, task_heading(sorted_tasks), "AtlasColumnHeader", PADDING_X)
+		utils.push(lines, spans, "Tasks", "AtlasColumnHeader", PADDING_X)
 		for _, task in ipairs(sorted_tasks) do
 			emit_task(lines, spans, line_map, task, max_width)
 		end

@@ -54,7 +54,8 @@ describe("ui.navigation board movement", function()
 	end)
 
 	it("continues vertical movement through wrapped groups while keeping workflow column jumps", function()
-		local lines, map = require("atlas.issues.ui.layouts.board").jira({ width = 80 }, {
+		local board = require("atlas.issues.ui.layouts.board")
+		local lines, map = board.render({ width = 80 }, {
 			{ key = "A", title = "Café", status = "Open" },
 			{ key = "B", title = "Work", status = "Done" },
 			{ key = "C", title = "Work", status = "Open" },
@@ -62,7 +63,7 @@ describe("ui.navigation board movement", function()
 			{ key = "F", title = "Test", status = "Testing" },
 			{ key = "H", title = "Review", status = "Review" },
 			{ key = "I", title = "Ship", status = "Closed" },
-		})
+		}, board.jira)
 		state.line_map = map
 		local function position(key)
 			for line = 1, #lines do

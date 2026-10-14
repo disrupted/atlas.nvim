@@ -112,6 +112,37 @@ describe("GitHub pull request details", function()
 	end)
 end)
 
+describe("GitHub descriptions", function()
+	local groups = {
+		{ content = "HOORAY", viewerHasReacted = true, reactors = { totalCount = 1, nodes = { { login = "alice" } } } },
+	}
+
+	it("maps a pull request description as a comment with its reactions", function()
+		local raw = vim.tbl_extend("force", base_raw(), { id = "PR_1", reactionGroups = groups })
+
+		local comment = assert(normalizer.to_description(raw))
+
+		assert.equal("PR_1", comment.id)
+		assert.equal("Description", comment.body)
+		assert.equal("tada", comment.reactions[1].name)
+		assert.is_true(comment.reactions[1].reacted)
+		assert.same(comment.reactions, normalizer.to_pull_request_details(raw).reactions)
+	end)
+
+	it("maps an issue description as a comment", function()
+		local comment = assert(issue_mapper.to_comment({ id = "I_1", body = "Body", reactionGroups = groups }))
+
+		assert.equal("I_1", comment.id)
+		assert.equal("Body", comment.body)
+		assert.equal("tada", comment.reactions[1].name)
+	end)
+
+	it("has no description without an id", function()
+		assert.is_nil(normalizer.to_description({}))
+		assert.is_nil(issue_mapper.to_comment({}))
+	end)
+end)
+
 describe("GitHub reviewer decisions", function()
 	it("keeps an active review request pending after an earlier decision", function()
 		local raw = base_raw()
@@ -166,7 +197,6 @@ describe("review thread resolution", function()
 	local function review_comment(reply_to)
 		return {
 			id = "PRRC_1",
-			databaseId = 1,
 			body = "Review comment",
 			createdAt = "2024-01-01T00:00:00Z",
 			author = { login = "author", databaseId = 2 },
@@ -187,12 +217,12 @@ describe("review thread resolution", function()
 	it("maps the resolver onto a resolved root comment", function()
 		local comment = normalizer.to_review_comment(review_comment(nil), resolved_thread(), nil)
 
-		assert.same({ name = "resolver", id = "3", username = "resolver", nickname = "resolver" }, comment.resolved_by)
-		assert.is_nil(comment.resolved_on)
+		assert.same({ name = "resolver", id = "3", username = "resolver" }, comment.resolved_by)
+		assert.is_nil(comment.resolved_at)
 	end)
 
 	it("does not map the resolver onto replies", function()
-		local comment = normalizer.to_review_comment(review_comment({ databaseId = 1 }), resolved_thread(), 1)
+		local comment = normalizer.to_review_comment(review_comment({ id = "PRRC_1" }), resolved_thread(), "PRRC_1")
 
 		assert.is_nil(comment.resolved_by)
 	end)

@@ -5,24 +5,15 @@ local icons = require("atlas.ui.shared.icons")
 local activity = require("atlas.ui.components.activity")
 local helper = require("atlas.issues.ui.presentation")
 
+---@type table<IssueActivityKind, table>
 local EVENT_ICON = {
-	labeled = { icons.get("activity") },
-	unlabeled = { icons.get("activity") },
 	assigned = { icons.get("user") },
 	unassigned = { icons.get("user") },
-	milestoned = { icons.get("activity") },
-	demilestoned = { icons.get("activity") },
 	renamed = { icons.get("edit"), "AtlasTextMuted" },
 	closed = { icons.get("successful", "status") },
 	reopened = { icons.get("issue") },
 	locked = { icons.get("stopped", "status") },
 	unlocked = { icons.get("stopped", "status") },
-	pinned = { icons.get("activity") },
-	unpinned = { icons.get("activity") },
-	transferred = { icons.get("activity") },
-	marked_as_duplicate = { icons.get("activity") },
-	["cross-referenced"] = { icons.get("activity") },
-	referenced = { icons.get("activity") },
 }
 
 ---@param entry IssueActivityEntry

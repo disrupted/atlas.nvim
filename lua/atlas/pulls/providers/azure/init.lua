@@ -14,7 +14,6 @@
 
 local config = require("atlas.config")
 local git = require("atlas.core.git")
-local emojis = require("atlas.ui.shared.emojis")
 local request_scope = require("atlas.core.requests")
 local search_query = require("atlas.providers.azure.query")
 local pullrequests_api = require("atlas.pulls.providers.azure.api.pullrequests")
@@ -114,8 +113,10 @@ return {
 			add_comment = comments_api.add_comment,
 			edit_comment = comments_api.edit_comment,
 			delete_comment = comments_api.delete_comment,
-			reaction_options = { { key = "like", emoji = emojis.glyph("+1"), label = "Like" } },
-			add_reaction = comments_api.add_reaction,
+			reactions = {
+				options = { { name = "thumbsup", key = "like" } },
+				add = comments_api.add_reaction,
+			},
 			set_thread_resolved = comments_api.set_thread_resolved,
 		},
 		reviews = {

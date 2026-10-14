@@ -61,8 +61,8 @@ describe("Issue board layout", function()
 		local plain = require("atlas.issues.ui.layouts.plain")
 		local issues = { { key = "AT-1", number = 1, title = "Work" } }
 		local opts = { layout = "board", provider_id = "github", width = 80 }
-		assert.same({ plain.github(opts, issues) }, { layouts.render(opts, issues) })
+		assert.same({ plain.render(opts, issues, plain.github) }, { layouts.render(opts, issues) })
 		opts.provider_id = "unknown"
-		assert.same({ plain.default(opts, issues) }, { layouts.render(opts, issues) })
+		assert.same({ plain.render(opts, issues, plain.default) }, { layouts.render(opts, issues) })
 	end)
 end)

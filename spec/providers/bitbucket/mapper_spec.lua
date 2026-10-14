@@ -75,10 +75,10 @@ describe("Bitbucket comment display", function()
 		}
 		local comment = assert(mapper.to_comment({ id = 1, content = content }))
 
-		assert.equal(content.raw, comment.content_raw)
+		assert.equal(content.raw, comment.body)
 		assert.equal(
 			"**Please** @Build Agent and @Alice & Bob \\[CI\\] review [this](https://example.com), @{unknown}.",
-			comment.content_display
+			comment.body_display
 		)
 	end)
 
@@ -90,8 +90,8 @@ describe("Bitbucket comment display", function()
 		}) do
 			local comment = assert(mapper.to_comment({ id = 1, content = content }))
 
-			assert.equal(content.raw, comment.content_raw)
-			assert.is_nil(comment.content_display)
+			assert.equal(content.raw, comment.body)
+			assert.is_nil(comment.body_display)
 		end
 	end)
 
@@ -103,8 +103,8 @@ describe("Bitbucket comment display", function()
 		local task = mapper.to_tasks_list({ values = { { id = 1, content = content } } })[1]
 		local activity = mapper.to_activities_list({ values = { { comment = { content = content } } } })[1]
 
-		assert.equal("Review @{alice}", task.content_raw)
-		assert.equal("Review @Alice", task.content_display)
+		assert.equal("Review @{alice}", task.body)
+		assert.equal("Review @Alice", task.body_display)
 		assert.equal("Review @Alice", activity.body)
 		assert.equal("Review @{alice}", content.raw)
 	end)

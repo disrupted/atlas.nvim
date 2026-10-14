@@ -77,7 +77,7 @@ end
 ---@return boolean|nil
 function M.on_enter(_issue, entry)
 	local item = entry and entry.conversation_item or nil
-	if not item or item.kind ~= "comment" then
+	if not item or (item.kind ~= "comment" and item.kind ~= "description") then
 		return
 	end
 	---@type IssueComment

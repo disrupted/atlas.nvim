@@ -10,30 +10,30 @@ local function body_text(value)
 end
 
 ---@param login string
----@return PullsAuthor|nil
+---@return AtlasUser|nil
 local function actor_from_login(login)
 	if login == "" then
 		return nil
 	end
-	return { name = login, id = "", username = login, nickname = login }
+	return { name = login, id = "", username = login }
 end
 
 ---@param raw any
----@return PullsAuthor
+---@return AtlasUser
 local function pull_author(raw)
 	local user = github_mapping.identity(raw) or { id = "", login = "", name = "" }
-	return { name = user.name, id = user.id, username = user.login, nickname = user.login }
+	return { name = user.name, id = user.id, username = user.login }
 end
 
 ---@param raw any
----@return PullsAuthor
+---@return AtlasUser
 local function comment_author(raw)
 	local user = github_mapping.identity(raw) or { id = "", login = "" }
-	return { name = user.login, id = user.id, username = user.login, nickname = user.login }
+	return { name = user.login, id = user.id, username = user.login }
 end
 
 ---@param raw table
----@return PullsAuthor[]|nil
+---@return AtlasUser[]|nil
 local function pull_assignees(raw)
 	if json.nilify(raw.assignees) == nil then
 		return nil
@@ -123,7 +123,6 @@ local function pull_reviewer(raw, decision, role)
 		provider_id = username,
 		name = name,
 		username = username,
-		nickname = username,
 		decision = decision,
 		role = role,
 	}
@@ -255,6 +254,7 @@ function M.to_pull_request_details(raw)
 	---@type GitHubPullRequestDetails
 	local details = {
 		description = json.safe_str(raw.body) or "",
+		reactions = github_mapping.graphql_reactions(raw.reactionGroups),
 		assignees = pull_assignees(raw) or {},
 		labels = pull_labels(raw) or {},
 	}
@@ -277,81 +277,82 @@ function M.to_search_results_from_graphql(nodes)
 	return out
 end
 
----@param item table
+---@param node table GraphQL pull request timeline item
 ---@return PullsActivityEntry|nil
-function M.to_activity(item)
-	local event = tostring(item.event or "")
-	local actor_login = json.safe_str(json.safe_table(item.actor).login)
-		or json.safe_str(json.safe_table(item.user).login)
-		or ""
+function M.to_activity(node)
+	local event = json.safe_str(node.__typename) or ""
 	local entry = {
-		kind = event,
-		actor = actor_from_login(actor_login),
-		date = tostring(item.created_at or item.submitted_at or ""),
+		actor = actor_from_login(json.safe_str(json.safe_table(node.actor).login) or ""),
+		date = json.safe_str(node.createdAt) or "",
 	}
 
-	if event == "commented" then
-		local body = body_text(item.body)
-		entry.kind = "comment"
-		entry.label = "commented"
-		entry.body = body ~= "" and body or nil
-	elseif event == "reviewed" then
-		local state_label = tostring(item.state or ""):lower()
-		if state_label == "pending" then
+	if event == "PullRequestReview" then
+		local state = (json.safe_str(node.state) or ""):lower()
+		if state == "pending" then
 			return nil
 		end
-		entry.kind = state_label == "approved" and "approval"
-			or state_label == "changes_requested" and "changes_requested"
+		entry.actor = actor_from_login(json.safe_str(json.safe_table(node.author).login) or "")
+		entry.date = json.safe_str(node.submittedAt) or ""
+		entry.kind = state == "approved" and "approval"
+			or state == "changes_requested" and "changes_requested"
 			or "review"
 		entry.label = entry.kind == "approval" and "approved"
 			or entry.kind == "changes_requested" and "requested changes"
 			or "left a review"
-		local body = body_text(item.body)
+		local body = body_text(node.body)
 		entry.body = body ~= "" and body or nil
-	elseif event == "review_dismissed" then
+	elseif event == "ReviewDismissedEvent" then
+		entry.kind = "review_dismissed"
 		entry.label = "dismissed their review"
-	elseif event == "closed" or event == "merged" or event == "reopened" then
-		entry.label = event
-	elseif event == "head_ref_force_pushed" then
+	elseif event == "ClosedEvent" or event == "MergedEvent" or event == "ReopenedEvent" then
+		entry.kind = event == "ClosedEvent" and "closed" or event == "MergedEvent" and "merged" or "reopened"
+		entry.label = entry.kind
+	elseif event == "HeadRefForcePushedEvent" then
 		entry.kind = "force_pushed"
 		entry.label = "force pushed"
-	elseif event == "committed" then
-		local author = json.safe_table(item.author)
-		local author_name = tostring(author.name or "")
-		local msg = tostring(item.message or ""):match("([^\n]+)") or ""
-		local sha = tostring(item.sha or ""):sub(1, 8)
-		entry.actor = actor_from_login(author_name)
-		entry.date = tostring(author.date or entry.date)
-		entry.label = sha ~= "" and string.format("%s %s", sha, msg) or msg
-	elseif event == "base_ref_force_pushed" then
+	elseif event == "BaseRefForcePushedEvent" then
 		entry.kind = "force_pushed"
 		entry.label = "base branch force pushed"
-	elseif event == "labeled" or event == "unlabeled" then
-		local label = json.safe_str(json.safe_table(item.label).name) or ""
+	elseif event == "PullRequestCommit" then
+		local commit = json.safe_table(node.commit)
+		local author = json.safe_table(commit.author)
+		local msg = (json.safe_str(commit.message) or ""):match("([^\n]+)") or ""
+		local sha = (json.safe_str(commit.oid) or ""):sub(1, 8)
+		entry.kind = "committed"
+		entry.actor = actor_from_login(json.safe_str(author.name) or "")
+		entry.date = json.safe_str(commit.authoredDate) or ""
+		entry.label = sha ~= "" and string.format("%s %s", sha, msg) or msg
+	elseif event == "LabeledEvent" or event == "UnlabeledEvent" then
+		local label = json.safe_str(json.safe_table(node.label).name) or ""
 		if label == "" then
 			return nil
 		end
-		local verb = event == "labeled" and "added label" or "removed label"
-		entry.label = verb .. ": " .. label
-	elseif event == "assigned" or event == "unassigned" then
-		local assignee = json.safe_str(json.safe_table(item.assignee).login) or ""
+		entry.kind = event == "LabeledEvent" and "labeled" or "unlabeled"
+		entry.label = (event == "LabeledEvent" and "added label" or "removed label") .. ": " .. label
+	elseif event == "AssignedEvent" or event == "UnassignedEvent" then
+		local assignee = json.safe_str(json.safe_table(node.assignee).login) or ""
 		if assignee == "" then
 			return nil
 		end
-		local verb = event == "assigned" and "assigned" or "unassigned"
-		entry.label = verb .. " " .. assignee
-	elseif event == "review_requested" then
-		local reviewer = json.safe_str(json.safe_table(item.requested_reviewer).login) or ""
+		entry.kind = event == "AssignedEvent" and "assigned" or "unassigned"
+		entry.label = entry.kind .. " " .. assignee
+	elseif event == "ReviewRequestedEvent" then
+		local reviewer = json.safe_str(json.safe_table(node.requestedReviewer).login) or ""
+		entry.kind = "review_requested"
 		entry.label = reviewer ~= "" and ("requested review from " .. reviewer) or "requested review"
-	elseif event == "renamed" then
-		local rename = item.rename or {}
+	elseif event == "RenamedTitleEvent" then
+		entry.kind = "renamed"
 		entry.label = "changed the title"
-		entry.body = string.format("%s → %s", tostring(rename.from or ""), tostring(rename.to or ""))
-	elseif event == "comment_deleted" then
+		entry.body =
+			string.format("%s → %s", json.safe_str(node.previousTitle) or "", json.safe_str(node.currentTitle) or "")
+	elseif event == "CommentDeletedEvent" then
+		entry.kind = "comment_deleted"
 		entry.label = "deleted a comment"
-	elseif event == "ready_for_review" then
+	elseif event == "ReadyForReviewEvent" then
+		entry.kind = "ready_for_review"
 		entry.label = "marked as ready for review"
-	elseif event == "convert_to_draft" then
+	elseif event == "ConvertToDraftEvent" then
+		entry.kind = "convert_to_draft"
 		entry.label = "marked as draft"
 	else
 		return nil
@@ -359,185 +360,116 @@ function M.to_activity(item)
 	return entry
 end
 
----@param raw table
----@param raw_user table|nil
+---@param node table GraphQL `IssueComment`
 ---@return PullsComment
-local function comment(raw, raw_user)
+function M.to_comment(node)
 	return {
-		id = raw.id,
-		author = comment_author(raw_user),
-		content_raw = body_text(raw.body),
-		created_on = tostring(raw.created_at or raw.submitted_at or ""),
-		html_url = tostring(raw.html_url or ""),
-		reactions = github_mapping.reaction_counts(raw.reactions),
+		id = node.id,
+		author = comment_author(node.author),
+		body = body_text(node.body),
+		created_at = json.safe_str(node.createdAt) or "",
+		url = json.safe_str(node.url) or "",
+		reactions = github_mapping.graphql_reactions(node.reactionGroups),
 	}
 end
 
----@param raw table
----@return PullsComment
-function M.to_activity_comment(raw)
-	local raw_user = json.nilify(raw.user) or json.nilify(raw.actor)
-	return comment(raw, raw_user)
-end
-
----@param raw table
----@return PullsReviewHistoryEntry|nil
-function M.to_conversation_review(raw)
-	local body = body_text(raw.body)
-	if vim.trim(body) == "" then
+---@param raw table GraphQL `PullRequest`
+---@return PullsComment|nil
+function M.to_description(raw)
+	if json.nilify(raw.id) == nil then
 		return nil
 	end
+	return M.to_comment(raw)
+end
 
-	local raw_user = json.nilify(raw.user) or json.nilify(raw.actor)
-	local node_id = json.safe_str(raw.node_id)
-	local state = tostring(raw.state or ""):lower()
+---@param node table GraphQL `PullRequestReview`
+---@return PullsReviewHistoryEntry|nil
+function M.to_conversation_review(node)
+	local body = body_text(node.body)
+	local state = (json.safe_str(node.state) or ""):lower()
+	if vim.trim(body) == "" or state == "pending" then
+		return nil
+	end
 	if state ~= "approved" and state ~= "changes_requested" and state ~= "commented" and state ~= "dismissed" then
 		state = "reviewed"
 	end
 
 	return {
-		id = node_id,
-		author = comment_author(raw_user),
+		id = json.safe_str(node.id),
+		author = comment_author(node.author),
 		state = state,
-		submitted_on = tostring(raw.submitted_at or raw.created_at or ""),
+		submitted_on = json.safe_str(node.submittedAt) or "",
 		body = body,
-		commit_hash = json.safe_str(raw.commit_id),
-		url = json.safe_str(raw.html_url),
+		commit_hash = json.safe_str(json.safe_table(node.commit).oid),
+		url = json.safe_str(node.url),
 	}
 end
 
----@param raw table
----@param thread_state {pending: boolean|nil, resolved: boolean, outdated: boolean}|nil
+---@param node table GraphQL `PullRequestReviewComment`
+---@param thread table GraphQL `PullRequestReviewThread`
+---@param fallback_parent number|string|nil
 ---@return PullsComment
-function M.to_comment(raw, thread_state)
-	local line = json.nilify(raw.line)
-	local original_line = json.nilify(raw.original_line)
-	local start_line = json.nilify(raw.start_line) or json.nilify(raw.original_start_line)
-	local start_side = json.nilify(raw.start_side) or raw.side
-	local path = json.nilify(raw.path)
-	local subject_type = tostring(raw.subject_type or ""):upper()
+function M.to_review_comment(node, thread, fallback_parent)
+	local path = json.safe_str(thread.path)
+	local anchor = json.nilify(thread.line) or json.nilify(thread.originalLine)
+	local start_line = json.nilify(thread.startLine) or json.nilify(thread.originalStartLine)
+	local start_side = json.nilify(thread.startDiffSide) or thread.diffSide
 
 	local file, inline
-	if path ~= nil then
-		local side = raw.side == "LEFT" and "old" or "new"
-		local anchor = line or original_line
-		if subject_type == "FILE" then
-			file = { path = tostring(path) }
+	if path then
+		local old = thread.diffSide == "LEFT"
+		if thread.subjectType == "FILE" then
+			file = { path = path }
 		elseif anchor then
 			if start_line == anchor then
 				start_line = nil
 			end
 			inline = {
-				path = tostring(path),
-				from = side == "old" and anchor or nil,
-				to = side == "new" and anchor or nil,
+				path = path,
+				from = old and anchor or nil,
+				to = not old and anchor or nil,
 				start_from = start_side == "LEFT" and start_line or nil,
 				start_to = start_side ~= "LEFT" and start_line or nil,
 			}
 		end
 	end
 
-	local result = comment(raw, json.nilify(raw.user))
-	result.parent_id = json.nilify(raw.in_reply_to_id)
-	result.file = file
-	result.inline = inline
-	if thread_state then
-		result.pending = thread_state.pending == true
-		result.outdated = thread_state.outdated == true
-		if thread_state.resolved then
-			result.state = "RESOLVED"
-		elseif thread_state.outdated then
-			result.state = "OUTDATED"
-		end
-	end
-	return result
-end
-
----@param node table
----@param thread table
----@param fallback_parent number|string|nil
----@return PullsComment
-function M.to_review_comment(node, thread, fallback_parent)
-	local author = json.nilify(node.author) or {}
 	local reply_to = json.nilify(node.replyTo)
-	local review = json.safe_table(node.pullRequestReview)
-	local original_line = json.nilify(thread.originalLine) or json.nilify(node.originalLine)
-	local result = M.to_comment({
-		id = node.databaseId,
-		in_reply_to_id = reply_to and reply_to.databaseId or nil,
-		user = { login = author.login, id = author.databaseId },
-		body = node.body,
-		path = thread.path or node.path,
-		subject_type = thread.subjectType or node.subjectType,
-		line = thread.line or node.line,
-		start_line = thread.startLine or node.startLine,
-		original_line = original_line,
-		original_start_line = thread.originalStartLine or node.originalStartLine,
-		side = thread.diffSide,
-		start_side = thread.startDiffSide,
-		html_url = node.url,
-		created_at = node.createdAt,
-	}, {
-		pending = review.state == "PENDING",
-		resolved = thread.isResolved == true,
-		outdated = thread.isOutdated == true,
-	})
-	result.reactions = github_mapping.reaction_groups(node.reactionGroups)
-	result.thread_id = json.safe_str(thread.id)
-	result._raw = {
-		comment_id = tostring(node.id or ""),
-		original_line = original_line,
+	local resolved = thread.isResolved == true
+	local outdated = thread.isOutdated == true
+	local result = {
+		id = node.id,
+		author = comment_author(node.author),
+		body = body_text(node.body),
+		created_at = json.safe_str(node.createdAt) or "",
+		url = json.safe_str(node.url) or "",
+		parent_id = reply_to and reply_to.id or fallback_parent,
+		file = file,
+		inline = inline,
+		pending = json.safe_table(node.pullRequestReview).state == "PENDING",
+		outdated = outdated,
+		state = resolved and "RESOLVED" or (outdated and "OUTDATED" or nil),
+		reactions = github_mapping.graphql_reactions(node.reactionGroups),
+		thread_id = json.safe_str(thread.id),
 	}
-	if result.parent_id == nil then
-		result.parent_id = fallback_parent
-	end
 	local resolved_by = comment_author(json.nilify(thread.resolvedBy))
-	if result.parent_id == nil and thread.isResolved == true and resolved_by.username ~= "" then
+	if result.parent_id == nil and resolved and resolved_by.username ~= "" then
 		result.resolved_by = resolved_by
 	end
 	return result
 end
 
----@param review_comment PullsComment
----@return table
-function M.review_thread(review_comment)
-	local inline = review_comment.inline or {}
-	local file = review_comment.file
-	local side = not file and (inline.to ~= nil and "RIGHT" or "LEFT") or nil
-	local start_side = not file and (inline.start_to ~= nil and "RIGHT" or (inline.start_from ~= nil and "LEFT" or nil))
-		or nil
-	return {
-		id = tostring(review_comment.thread_id or ""),
-		subjectType = file and "FILE" or "LINE",
-		path = file and file.path or inline.path,
-		line = inline.to,
-		startLine = inline.start_to,
-		originalLine = (review_comment._raw or {}).original_line or inline.from,
-		originalStartLine = inline.start_from,
-		diffSide = side,
-		startDiffSide = start_side,
-		isResolved = review_comment.state == "RESOLVED",
-		isOutdated = review_comment.outdated == true or review_comment.state == "OUTDATED",
-	}
-end
-
----@param raw table
----@return PullsComment[]
-function M.to_tasks(raw)
-	local out = {}
-	for _, line in ipairs(vim.split(tostring(raw.body or ""), "\n", { plain = true })) do
-		local marker = line:match("^%s*[-*+]%s+%[([ xX])%]") or line:match("^%s*%[([ xX])%]")
-		if marker then
-			local task = M.to_comment(raw)
-			task.id = string.format("github-task:%s:%06d", tostring(raw.id), #out + 1)
-			task.content_raw = line
-			task.is_task = true
-			task.task_label = "Checklist"
-			task.state = marker:lower() == "x" and "RESOLVED" or nil
-			table.insert(out, task)
-		end
-	end
-	return out
+---@param node table GraphQL `PullRequestReviewComment` returned by a mutation, which has no thread
+---@param sibling PullsComment A comment from the same thread
+---@param parent_id number|string|nil
+---@return PullsComment
+function M.to_thread_comment(node, sibling, parent_id)
+	local result = M.to_review_comment(node, { id = sibling.thread_id }, parent_id)
+	result.file = sibling.file
+	result.inline = sibling.inline
+	result.outdated = sibling.outdated
+	result.state = sibling.state
+	return result
 end
 
 return M

@@ -4,6 +4,7 @@ local modules = {
 	"atlas.providers.azure.completion",
 	"atlas.issues.providers.azure.api.issues",
 	"atlas.issues.providers.azure.api.comments",
+	"atlas.providers.azure.completion.users",
 }
 
 describe("Azure mention completion", function()

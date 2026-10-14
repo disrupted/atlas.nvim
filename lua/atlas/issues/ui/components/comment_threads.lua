@@ -1,15 +1,14 @@
 local M = {}
 
 local threads = require("atlas.ui.components.threads")
-local emojis = require("atlas.ui.shared.emojis")
+local reactions = require("atlas.ui.shared.reactions")
 local helper = require("atlas.issues.ui.presentation")
 local icons = require("atlas.ui.shared.icons")
 local utils = require("atlas.ui.shared.utils")
 
 ---@param comment IssueComment
----@param reaction_options IssueReactionOption[]|nil
 ---@return AtlasThreadItem
-local function comment_item(comment, reaction_options)
+local function comment_item(comment)
 	local deleted = comment.deleted == true
 	local content = deleted and "(deleted comment)" or (comment.body_display or comment.body or "")
 	if content == "" then
@@ -17,9 +16,11 @@ local function comment_item(comment, reaction_options)
 	end
 
 	local footer_items = {}
-	local reactions, reaction_highlights = emojis.format(comment.reactions, reaction_options)
-	if reactions ~= "" then
-		table.insert(footer_items, { text = reactions, highlights = reaction_highlights })
+	if not deleted then
+		local reaction_text, reaction_highlights = reactions.format(comment.reactions)
+		if reaction_text ~= "" then
+			table.insert(footer_items, { text = reaction_text, highlights = reaction_highlights })
+		end
 	end
 
 	local author = helper.person_name(comment.author)
@@ -30,7 +31,7 @@ local function comment_item(comment, reaction_options)
 		icon_hl = author_hl,
 		author = author,
 		author_hl = author_hl,
-		additional = { { utils.relative_time(comment.created), "AtlasTextMuted" } },
+		additional = { { utils.relative_time(comment.created_at), "AtlasTextMuted" } },
 		content = content,
 		markdown = not deleted,
 		footer_items = footer_items,
@@ -92,8 +93,8 @@ function M.group_comments(comments)
 
 	local function sort_tree(items)
 		table.sort(items, function(left, right)
-			local left_date = tostring(left.comment.created or "")
-			local right_date = tostring(right.comment.created or "")
+			local left_date = tostring(left.comment.created_at or "")
+			local right_date = tostring(right.comment.created_at or "")
 			if left_date ~= right_date then
 				return left_date < right_date
 			end
@@ -124,7 +125,7 @@ end
 ---@return AtlasThreadItem
 local function build_item(node, opts, root)
 	root = root or node.comment
-	local item = comment_item(node.comment, opts.reaction_options)
+	local item = comment_item(node.comment)
 	item.line_map.thread_root = root
 	item.line_map.thread_has_replies = node.comment ~= root or #node.children > 0
 
@@ -146,7 +147,6 @@ end
 ---@class IssuesCommentThreadRenderOptions
 ---@field expanded fun(root: IssueComment): boolean
 ---@field padding_x integer|nil
----@field reaction_options IssueReactionOption[]|nil
 ---@field content_max_lines integer|fun(comment: IssueComment): integer|nil
 ---@field content_truncated_key string|nil
 
@@ -170,7 +170,7 @@ end
 ---@param width integer
 ---@return AtlasEditorPreview
 function M.render_comment(comment, width)
-	local lines, highlights = threads.render({ comment_item(comment, nil) }, width, render_options(1, nil, nil))
+	local lines, highlights = threads.render({ comment_item(comment) }, width, render_options(1, nil, nil))
 	return { lines = lines, highlights = highlights }
 end
 

@@ -94,7 +94,7 @@ function M.to_history(updates)
 		local actor = M.to_user(raw.revisedBy)
 		local date = fields["System.ChangedDate"] and fields["System.ChangedDate"].newValue
 		if raw.id == 1 then
-			table.insert(entries, { kind = "created", actor = actor, date = date, label = "created the work item" })
+			table.insert(entries, { kind = "other", actor = actor, date = date, label = "created the work item" })
 		else
 			for _, field in ipairs(HISTORY_FIELDS) do
 				local change = fields[field[1]]
@@ -104,7 +104,7 @@ function M.to_history(updates)
 					local empty = field[1] == "System.AssignedTo" and "Unassigned" or "None"
 					if from ~= to then
 						table.insert(entries, {
-							kind = field[1],
+							kind = "other",
 							actor = actor,
 							date = date,
 							label = "updated " .. field[2],

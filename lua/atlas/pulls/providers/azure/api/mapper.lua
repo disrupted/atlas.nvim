@@ -42,10 +42,11 @@ local activity_votes = {
 }
 
 ---@param raw table
----@return PullsAuthor
+---@return AtlasUser
 local function to_author(raw)
 	local author = users.to_user(raw) or { name = "Unknown" }
-	author.nickname = author.name
+	-- uniqueName is an email or domain login, not a handle, so PRs show the display name.
+	author.username = nil
 	return author
 end
 
@@ -62,7 +63,6 @@ function M.to_reviewers(raw_list)
 			name = author.name,
 			id = author.id,
 			username = author.username,
-			nickname = author.nickname,
 			provider_id = author.id,
 			role = "reviewer",
 			decision = decisions[raw.vote],
@@ -205,19 +205,23 @@ end
 ---@param pr PullRequest
 ---@return PullsComment
 function M.to_comment(raw, thread, pr)
+	local liked = {}
+	for _, user in ipairs(json.safe_table(raw.usersLiked)) do
+		table.insert(liked, to_author(user))
+	end
 	local comment = {
 		id = thread.id .. ":" .. raw.id,
 		parent_id = raw.parentCommentId > 0 and (thread.id .. ":" .. raw.parentCommentId) or nil,
 		thread_id = tostring(thread.id),
 		author = to_author(raw.author),
-		content_raw = raw.isDeleted and "" or raw.content,
-		created_on = raw.publishedDate,
-		state = raw.isDeleted and "DELETED" or thread_states[thread.status],
-		reactions = { like = #json.safe_table(raw.usersLiked) },
-		html_url = pr.link.html,
+		body = raw.isDeleted and "" or raw.content,
+		created_at = raw.publishedDate,
+		state = not raw.isDeleted and thread_states[thread.status] or nil,
+		deleted = raw.isDeleted or nil,
+		reactions = #liked > 0 and { { name = "thumbsup", count = #liked, users = liked } } or nil,
+		url = pr.link.html,
 	}
-	comment.content_display =
-		users.resolve_mentions(comment.content_raw, mention_authors(pr, { { comments = { raw } } }))
+	comment.body_display = users.resolve_mentions(comment.body, mention_authors(pr, { { comments = { raw } } }))
 	local context = json.nilify(thread.threadContext)
 	if context then
 		local path = context.filePath:gsub("^/", "")
@@ -249,7 +253,7 @@ function M.to_review_comments(raw_list, pr)
 			for _, raw in ipairs(thread.comments) do
 				if raw.commentType == "text" then
 					local comment = M.to_comment(raw, thread, pr)
-					comment.content_display = users.resolve_mentions(comment.content_raw, authors)
+					comment.body_display = users.resolve_mentions(comment.body, authors)
 					table.insert(comments, comment)
 				end
 			end
@@ -338,14 +342,14 @@ local function to_conversation_item(raw, thread, pr)
 		return {
 			id = "comment:" .. id,
 			kind = "comment",
-			created_on = raw.publishedDate,
+			created_at = raw.publishedDate,
 			entity = M.to_comment(raw, thread, pr),
 		}
 	elseif raw.commentType == "system" and not raw.isDeleted then
 		return {
 			id = "activity:" .. id,
 			kind = "activity",
-			created_on = raw.publishedDate,
+			created_at = raw.publishedDate,
 			entity = to_activity(raw, thread),
 		}
 	end
@@ -364,7 +368,7 @@ function M.to_conversation(raw_list, pr)
 				local item = to_conversation_item(raw, thread, pr)
 				if item then
 					if item.kind == "comment" then
-						item.entity.content_display = users.resolve_mentions(item.entity.content_raw, authors)
+						item.entity.body_display = users.resolve_mentions(item.entity.body, authors)
 					end
 					table.insert(items, item)
 				end

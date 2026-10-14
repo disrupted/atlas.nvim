@@ -121,7 +121,7 @@ function M.add_comment(pr, content, opts, on_done)
 			local comment = mapper.to_comment(result, { id = parent.thread_id }, pr)
 			comment.inline = parent.inline
 			comment.file = parent.file
-			comment.state = parent.state ~= "DELETED" and parent.state or nil
+			comment.state = parent.state
 			comment.outdated = parent.outdated
 			on_done(comment, nil)
 		end, { action = "Reply to pull request comment", repo = pr.repo_full_name, id = pr.id })
@@ -161,10 +161,11 @@ end
 
 ---@param pr PullRequest
 ---@param comment PullsComment
+---@param content string
 ---@param on_done fun(comment: PullsComment|nil, err: string|nil)
 ---@return { cancel: fun() }|nil
-function M.edit_comment(pr, comment, on_done)
-	local body = { content = comment.content_raw }
+function M.edit_comment(pr, comment, content, on_done)
+	local body = { content = content }
 	return service.request("PATCH", comment_endpoint(pr, comment), body, function(result, err)
 		if err then
 			on_done(nil, err)
@@ -190,17 +191,11 @@ function M.delete_comment(pr, comment, on_done)
 end
 
 ---@param pr PullRequest
----@param item PullsConversationItem
+---@param comment PullsComment
 ---@param _key string
 ---@param on_done fun(ok: boolean, err: string|nil)
 ---@return { cancel: fun() }|nil
-function M.add_reaction(pr, item, _key, on_done)
-	if item.kind ~= "comment" then
-		on_done(false, "This item does not support reactions")
-		return nil
-	end
-	---@type PullsComment
-	local comment = item.entity
+function M.add_reaction(pr, comment, _key, on_done)
 	return service.request("POST", comment_endpoint(pr, comment) .. "/likes", nil, function(_, err)
 		if not err then
 			service.clear_cache()

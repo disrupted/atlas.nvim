@@ -138,7 +138,6 @@ local function to_reviewer(participant, decision, role)
 		provider_id = provider_id ~= "" and provider_id or nil,
 		name = tostring(user.display_name or user.name or username),
 		username = username,
-		nickname = username ~= "" and username or nil,
 		decision = decision,
 		role = role,
 	}
@@ -245,13 +244,12 @@ function M.to_pull_requests_list(result, workspace, repo)
 end
 
 ---@param user table|nil
----@return PullsAuthor
+---@return AtlasUser
 local function actor(user)
 	local u = as_table(user) or {}
 	local username = tostring(u.nickname or u.username or "")
 	return {
 		name = tostring(u.display_name or "Unknown"),
-		nickname = username ~= "" and username or nil,
 		username = username,
 		id = tostring(u.account_id or ""),
 	}
@@ -399,19 +397,16 @@ function M.to_comment(result)
 	local is_thread_root = parent == nil
 	local outdated = raw_inline ~= nil and raw_inline.outdated == true
 	local inline, file = comment_position(raw_inline)
-	local state = entry.deleted == true and "DELETED"
-		or (resolution ~= nil and "RESOLVED")
-		or (outdated and "OUTDATED")
-		or nil
+	local state = (resolution ~= nil and "RESOLVED") or (outdated and "OUTDATED") or nil
 
 	return {
 		id = tonumber(entry.id) or 0,
 		parent_id = parent ~= nil and tonumber(parent.id) or nil,
 		author = actor(entry.user),
-		content_raw = tostring(content.raw or ""),
-		content_display = content_display(content),
-		created_on = tostring(entry.created_on or ""),
-		resolved_on = resolution
+		body = tostring(content.raw or ""),
+		body_display = content_display(content),
+		created_at = tostring(entry.created_on or ""),
+		resolved_at = resolution
 				and is_thread_root
 				and type(resolution.created_on) == "string"
 				and resolution.created_on
@@ -419,12 +414,11 @@ function M.to_comment(result)
 		resolved_by = resolution_user and is_thread_root and actor(resolution_user) or nil,
 		file = file,
 		inline = inline,
-		is_task = nil,
 		pending = entry.pending == true and entry.deleted ~= true,
 		state = state,
+		deleted = entry.deleted == true,
 		outdated = outdated,
-		url = tostring((as_table(links.self) or {}).href or ""),
-		html_url = tostring((as_table(links.html) or {}).href or ""),
+		url = tostring((as_table(links.html) or {}).href or ""),
 	}
 end
 
@@ -461,16 +455,15 @@ function M.to_tasks_list(result)
 			id = tonumber(task.id) or 0,
 			parent_id = comment ~= nil and tonumber(comment.id) or nil,
 			author = actor(task.creator),
-			content_raw = tostring(content.raw or ""),
-			content_display = content_display(content),
-			created_on = tostring(task.created_on or ""),
-			resolved_on = type(task.resolved_on) == "string" and task.resolved_on or nil,
+			body = tostring(content.raw or ""),
+			body_display = content_display(content),
+			created_at = tostring(task.created_on or ""),
+			resolved_at = type(task.resolved_on) == "string" and task.resolved_on or nil,
 			resolved_by = resolved_by and actor(resolved_by) or nil,
 			is_task = true,
 			pending = task.pending == true,
 			state = tostring(task.state or "") == "RESOLVED" and "RESOLVED" or nil,
-			url = tostring((as_table(links.self) or {}).href or ""),
-			html_url = tostring((as_table(links.html) or {}).href or ""),
+			url = tostring((as_table(links.html) or {}).href or ""),
 		})
 	end
 

@@ -42,7 +42,6 @@ local function normalize(raw)
 		kind = TARGET_KIND[target_type],
 		unread = tostring(raw.state or "") == "pending",
 		url = type(raw.target_url) == "string" and raw.target_url or nil,
-		_raw = raw,
 	}
 end
 

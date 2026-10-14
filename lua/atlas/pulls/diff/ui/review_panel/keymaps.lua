@@ -105,7 +105,7 @@ function M.setup(state, callbacks)
 	add(items, "ui.open_in_browser", "Open item in browser", 20, function()
 		local entry = current(state)
 		local target = entry and (entry.review_entry or entry.comment or entry.thread_root)
-		local url = target and (target.html_url or target.url)
+		local url = target and target.url
 		if url and url ~= "" then
 			vim.ui.open(url)
 		end

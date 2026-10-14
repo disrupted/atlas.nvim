@@ -2,12 +2,6 @@
 -- Author
 --------------------------------------------------------------------------------
 
----@class PullsAuthor
----@field name string
----@field id string
----@field username string
----@field nickname string|nil
-
 --------------------------------------------------------------------------------
 -- Refs
 --------------------------------------------------------------------------------
@@ -41,7 +35,7 @@
 ---@class PullRequest : PullRequestRef
 ---@field title string
 ---@field state "open"|"merged"|"declined"|"draft"
----@field author PullsAuthor
+---@field author AtlasUser
 ---@field source PullsRef
 ---@field destination PullsRef
 ---@field comments_count number
@@ -55,15 +49,16 @@
 
 ---@class PullRequestDetails
 ---@field description string
+---@field reactions AtlasReaction[]|nil
 ---@field is_subscribed boolean|nil
----@field assignees PullsAuthor[]|nil
+---@field assignees AtlasUser[]|nil
 ---@field labels PullsLabel[]|nil
 
 --------------------------------------------------------------------------------
 -- Reviewer
 --------------------------------------------------------------------------------
 
----@class PullsReviewer: PullsAuthor
+---@class PullsReviewer: AtlasUser
 ---@field provider_id string|nil Identifier used when updating the reviewer list.
 ---@field role "reviewer"|"participant"
 ---@field decision "approved"|"changes_requested"|"reviewed"|"pending"
@@ -98,9 +93,32 @@
 -- Activity
 --------------------------------------------------------------------------------
 
+---@alias PullsActivityKind
+---| "comment"
+---| "comment_deleted"
+---| "review"
+---| "approval"
+---| "unapproval"
+---| "changes_requested"
+---| "review_dismissed"
+---| "review_requested"
+---| "committed"
+---| "update"
+---| "force_pushed"
+---| "closed"
+---| "merged"
+---| "reopened"
+---| "ready_for_review"
+---| "convert_to_draft"
+---| "labeled"
+---| "unlabeled"
+---| "assigned"
+---| "unassigned"
+---| "renamed"
+
 ---@class PullsActivityEntry
----@field kind string
----@field actor PullsAuthor|nil
+---@field kind PullsActivityKind
+---@field actor AtlasUser|nil
 ---@field date string
 ---@field label string|nil
 ---@field body string|nil
@@ -109,11 +127,6 @@
 --------------------------------------------------------------------------------
 -- Comment
 --------------------------------------------------------------------------------
-
----@class PullsReactionOption
----@field key string         -- API key
----@field emoji string       -- display glyph
----@field label string|nil   -- optional label
 
 ---@class PullsInlineCommentPosition
 ---@field path string
@@ -134,24 +147,22 @@
 ---@field id number|string
 ---@field parent_id number|string|nil
 ---@field thread_id string|nil
----@field author PullsAuthor|nil
----@field content_raw string
----@field content_display string|nil
----@field created_on string
----@field resolved_on string|nil
----@field resolved_by PullsAuthor|nil
+---@field author AtlasUser|nil
+---@field body string
+---@field body_display string|nil
+---@field created_at string
+---@field resolved_at string|nil
+---@field resolved_by AtlasUser|nil
 ---@field inline PullsInlineCommentPosition|nil
 ---@field hunk DiffHunk|nil
 ---@field file PullsFileCommentPosition|nil
 ---@field is_task boolean|nil                            -- true = render as task (checkbox)
----@field task_label string|nil                          -- display name override; defaults to "Task"
----@field state "RESOLVED"|"DELETED"|"OUTDATED"|nil       -- nil = active/open
+---@field state "RESOLVED"|"OUTDATED"|nil                -- nil = active/open
+---@field deleted boolean|nil
 ---@field pending boolean|nil                            -- Draft comments can also be resolved.
 ---@field outdated boolean|nil                           -- may coexist with RESOLVED
----@field reactions table<string, integer>|nil
+---@field reactions AtlasReaction[]|nil
 ---@field url string|nil
----@field html_url string|nil
----@field _raw table|nil
 
 ---@class AtlasCommentThreadNode
 ---@field comment PullsComment
@@ -170,7 +181,7 @@
 
 ---@class PullsReviewHistoryEntry
 ---@field id string|nil
----@field author PullsAuthor|nil
+---@field author AtlasUser|nil
 ---@field state PullsReviewHistoryState
 ---@field submitted_on string
 ---@field body string|nil
@@ -192,12 +203,12 @@
 -- Conversation
 --------------------------------------------------------------------------------
 
----@alias PullsConversationItemKind "comment"|"review"|"activity"
+---@alias PullsConversationItemKind "description"|"comment"|"review"|"activity"
 
 ---@class PullsConversationItem
 ---@field id string
 ---@field kind PullsConversationItemKind
----@field created_on string
+---@field created_at string
 ---@field entity PullsComment|PullsReviewHistoryEntry|PullsActivityEntry
 
 --------------------------------------------------------------------------------

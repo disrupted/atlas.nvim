@@ -66,64 +66,71 @@ local function render_row(columns, row, width, first_column)
 	return line, { kind = "board_row", cells = cells }, spans
 end
 
-local function jira_card(issue, width)
-	local prefix, star_hl = "", nil
-	if issue.is_starred then
-		prefix, star_hl = icons.get("star")
-		prefix = prefix .. " "
-	end
+M.jira = {
+	column_icon = function(status)
+		local status_icons = config.options.issues.jira.project_config.status_icons
+		return status_icons[status.name] or status_icons[status.category] or icons.get("fallback")
+	end,
+	card = function(issue, width)
+		local prefix, star_hl = "", nil
+		if issue.is_starred then
+			prefix, star_hl = icons.get("star")
+			prefix = prefix .. " "
+		end
 
-	local priority, priority_hl = "", nil
-	if issue.priority and issue.priority ~= "" then
-		priority, priority_hl = icons.get(issue.priority, "priority")
-	end
+		local priority, priority_hl = "", nil
+		if issue.priority and issue.priority ~= "" then
+			priority, priority_hl = icons.get(issue.priority, "priority")
+		end
 
-	local priority_text = priority ~= "" and (priority .. " ") or ""
-	local points = issue.story_points ~= nil
-			and utils.truncate(clean(issue.story_points) .. " pts", math.floor(width / 3))
-		or ""
-	local metadata = points ~= "" and (" " .. points) or ""
+		local priority_text = priority ~= "" and (priority .. " ") or ""
+		local points = issue.story_points ~= nil
+				and utils.truncate(clean(issue.story_points) .. " pts", math.floor(width / 3))
+			or ""
+		local metadata = points ~= "" and (" " .. points) or ""
 
-	local key_width = math.min(16, width - ui_utils.text_width(prefix .. priority_text .. metadata) - 2)
-	local key = utils.truncate(clean(issue.key), key_width, true)
-	local key_text = key ~= "" and (key .. " ") or ""
-	local title_width = width - ui_utils.text_width(prefix .. priority_text .. key_text .. metadata)
-	local title = utils.truncate(clean(issue.title), title_width)
-	local text = prefix .. priority_text .. key_text .. title .. metadata
+		local key_width = math.min(16, width - ui_utils.text_width(prefix .. priority_text .. metadata) - 2)
+		local key = utils.truncate(clean(issue.key), key_width, true)
+		local key_text = key ~= "" and (key .. " ") or ""
+		local title_width = width - ui_utils.text_width(prefix .. priority_text .. key_text .. metadata)
+		local title = utils.truncate(clean(issue.title), title_width)
+		local text = prefix .. priority_text .. key_text .. title .. metadata
 
-	local spans = {}
+		local spans = {}
 
-	if key ~= "" then
-		spans[#spans + 1] = {
-			start_col = #prefix + #priority_text,
-			end_col = #prefix + #priority_text + #key,
-			hl_group = presentation.issue_hl(issue.key),
-		}
-	end
+		if key ~= "" then
+			spans[#spans + 1] = {
+				start_col = #prefix + #priority_text,
+				end_col = #prefix + #priority_text + #key,
+				hl_group = presentation.issue_hl(issue.key),
+			}
+		end
 
-	if priority ~= "" then
-		spans[#spans + 1] = {
-			start_col = #prefix,
-			end_col = #prefix + #priority,
-			hl_group = priority_hl,
-		}
-	end
+		if priority ~= "" then
+			spans[#spans + 1] = {
+				start_col = #prefix,
+				end_col = #prefix + #priority,
+				hl_group = priority_hl,
+			}
+		end
 
-	if points ~= "" then
-		spans[#spans + 1] = { start_col = #text - #points, end_col = #text, hl_group = "AtlasTextMuted" }
-	end
+		if points ~= "" then
+			spans[#spans + 1] = { start_col = #text - #points, end_col = #text, hl_group = "AtlasTextMuted" }
+		end
 
-	if star_hl then
-		spans[#spans + 1] = { start_col = 0, end_col = #prefix - 1, hl_group = star_hl }
-	end
+		if star_hl then
+			spans[#spans + 1] = { start_col = 0, end_col = #prefix - 1, hl_group = star_hl }
+		end
 
-	return { issue = issue, text = text, spans = spans }
-end
+		return { issue = issue, text = text, spans = spans }
+	end,
+}
 
 ---@param opts { width: integer, statuses?: JiraIssueStatus[], loading?: boolean, spinner?: string }
----@param issues JiraIssue[]
+---@param issues Issue[]
+---@param provider table
 ---@return string[], table<integer, table>, table[]
-function M.jira(opts, issues)
+function M.render(opts, issues, provider)
 	local loading = opts.loading and (" " .. (opts.spinner or "") .. " Loading...")
 	if loading and #issues == 0 then
 		return { loading }, {}, {}
@@ -145,10 +152,9 @@ function M.jira(opts, issues)
 		return column
 	end
 
-	local status_icons = config.options.issues.jira.project_config.status_icons
 	for _, status in ipairs(opts.statuses or {}) do
 		local column = column_for(status.id, status.name)
-		local icon = status_icons[status.name] or status_icons[status.category] or icons.get("fallback")
+		local icon = provider.column_icon(status)
 
 		column.name = clean(icon ~= "" and (icon .. " " .. status.name) or status.name)
 	end
@@ -180,7 +186,7 @@ function M.jira(opts, issues)
 	for _, column in ipairs(columns) do
 		column.cards = {}
 		for _, issue in ipairs(column.issues) do
-			table.insert(column.cards, jira_card(issue, width))
+			table.insert(column.cards, provider.card(issue, width))
 		end
 	end
 

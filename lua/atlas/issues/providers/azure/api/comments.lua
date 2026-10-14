@@ -8,15 +8,15 @@ local mapper = require("atlas.issues.providers.azure.api.mapper")
 local users = require("atlas.providers.azure.users")
 local markdown = require("atlas.issues.providers.azure.markdown")
 local service = require("atlas.providers.azure.client")
-local emojis = require("atlas.ui.shared.emojis")
 
-M.reaction_options = {
-	{ key = "like", emoji = emojis.glyph("+1"), label = "Like" },
-	{ key = "dislike", emoji = emojis.glyph("-1"), label = "Dislike" },
-	{ key = "heart", emoji = emojis.glyph("heart"), label = "Heart" },
-	{ key = "hooray", emoji = emojis.glyph("hooray"), label = "Hooray" },
-	{ key = "smile", emoji = emojis.glyph("laugh"), label = "Smile" },
-	{ key = "confused", emoji = emojis.glyph("confused"), label = "Confused" },
+---@type AtlasReactionOption[]
+M.reactions = {
+	{ name = "thumbsup", key = "like" },
+	{ name = "thumbsdown", key = "dislike" },
+	{ name = "heart" },
+	{ name = "tada", key = "hooray" },
+	{ name = "laughing", key = "smile" },
+	{ name = "confused" },
 }
 
 ---@param issue AzureIssue
@@ -29,23 +29,29 @@ end
 ---@return AzureIssueComment
 local function to_comment(raw)
 	local reactions = {}
-	for _, reaction in ipairs(raw.reactions or {}) do
-		reactions[reaction.type] = reaction.count
+	for _, reaction in ipairs(json.safe_table(raw.reactions)) do
+		local count = tonumber(reaction.count) or 0
+		if count > 0 then
+			local name = reaction.type
+			for _, option in ipairs(M.reactions) do
+				if (option.key or option.name) == reaction.type then
+					name = option.name
+				end
+			end
+			table.insert(reactions, { name = name, count = count, reacted = reaction.isCurrentUserEngaged == true })
+		end
 	end
 	local author = mapper.to_user(raw.createdBy)
 	local authors = {}
 	users.add_mention_name(authors, author)
 	return {
 		id = tostring(raw.id),
-		self = raw.url,
 		author = author,
 		body = raw.text or "",
 		body_display = users.resolve_mentions(raw.text or "", authors),
 		body_format = (raw.format or "html"):lower(),
-		created = raw.createdDate,
-		updated = raw.modifiedDate,
+		created_at = raw.createdDate or "",
 		reactions = reactions,
-		_raw = raw,
 	}
 end
 
@@ -115,7 +121,7 @@ function M.fetch_conversation(issue, opts, on_done)
 					table.insert(items, {
 						id = "comment:" .. comment.id,
 						kind = "comment",
-						created_at = comment.created,
+						created_at = comment.created_at,
 						entity = comment,
 					})
 					convert_comment(index + 1)
@@ -190,14 +196,12 @@ function M.delete_comment(issue, comment, on_done)
 end
 
 ---@param issue Issue
----@param item IssueConversationItem
+---@param comment IssueComment
 ---@param key string
 ---@param on_done fun(ok: boolean, err: string|nil)
 ---@return { cancel: fun() }|nil
-function M.add_reaction(issue, item, key, on_done)
+function M.add_reaction(issue, comment, key, on_done)
 	---@cast issue AzureIssue
-	local comment = item.entity
-	---@cast comment IssueComment
 	local endpoint = comments_endpoint(issue) .. "/" .. comment.id .. "/reactions/" .. key
 	return service.request("PUT", endpoint, nil, function(_, err)
 		if err then
@@ -207,6 +211,28 @@ function M.add_reaction(issue, item, key, on_done)
 		service.clear_cache()
 		on_done(true, nil)
 	end, { action = "Add work item comment reaction", issue_key = issue.key, comment_id = comment.id }, "7.1-preview.1")
+end
+
+---@param issue Issue
+---@param comment IssueComment
+---@param key string
+---@param on_done fun(ok: boolean, err: string|nil)
+---@return { cancel: fun() }|nil
+function M.remove_reaction(issue, comment, key, on_done)
+	---@cast issue AzureIssue
+	local endpoint = comments_endpoint(issue) .. "/" .. comment.id .. "/reactions/" .. key
+	return service.request("DELETE", endpoint, nil, function(_, err)
+		if err then
+			on_done(false, err)
+			return
+		end
+		service.clear_cache()
+		on_done(true, nil)
+	end, {
+		action = "Remove work item comment reaction",
+		issue_key = issue.key,
+		comment_id = comment.id,
+	}, "7.1-preview.1")
 end
 
 return M

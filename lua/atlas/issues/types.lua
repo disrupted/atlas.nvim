@@ -28,6 +28,7 @@
 ---@class IssueDetails
 ---@field title string|nil
 ---@field description string
+---@field reactions AtlasReaction[]|nil
 ---@field assignees AtlasUser[]
 ---@field labels IssueLabel[]
 ---@field milestone IssueMilestone|nil
@@ -86,18 +87,15 @@
 
 ---@class IssueComment
 ---@field id string
----@field self string|nil
 ---@field url string|nil
 ---@field author AtlasUser|nil
----@field body string|nil
+---@field body string
 ---@field body_display string|nil
----@field created string|nil
----@field updated string|nil
+---@field created_at string
 ---@field parent_id string|number|nil
----@field children IssueComment[]|nil
----@field reactions table<string, number>|nil
+---@field thread_id string|nil
+---@field reactions AtlasReaction[]|nil
 ---@field deleted boolean|nil
----@field _raw table|nil
 
 --------------------------------------------------------------------------------
 -- Activity / reactions
@@ -110,8 +108,23 @@
 
 ---@alias IssueActivityBodyHlFn fun(row: string, row_index: integer): IssueActivityBodyHlSpan[]|nil
 
+---@alias IssueActivityKind
+---| "labeled"
+---| "unlabeled"
+---| "assigned"
+---| "unassigned"
+---| "milestoned"
+---| "demilestoned"
+---| "renamed"
+---| "referenced"
+---| "closed"
+---| "reopened"
+---| "locked"
+---| "unlocked"
+---| "other"
+
 ---@class IssueActivityEntry
----@field kind string
+---@field kind IssueActivityKind
 ---@field actor AtlasUser|nil
 ---@field date string|nil
 ---@field label string|nil
@@ -120,15 +133,10 @@
 ---@field deleted boolean|nil
 ---@field always_render boolean|nil
 
----@alias IssueConversationItemKind "comment"|"activity"
+---@alias IssueConversationItemKind "description"|"comment"|"activity"
 
 ---@class IssueConversationItem
 ---@field id string
 ---@field kind IssueConversationItemKind
 ---@field created_at string
 ---@field entity IssueComment|IssueActivityEntry
-
----@class IssueReactionOption
----@field key string
----@field emoji string
----@field label string

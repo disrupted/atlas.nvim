@@ -1,6 +1,7 @@
 local code_preview = require("atlas.ui.components.code_preview")
 local highlight_groups = require("atlas.formats.markdown.highlights").groups
 local html = require("atlas.formats.markdown.html")
+local emojis = require("atlas.ui.shared.emojis")
 local highlights = require("atlas.ui.highlights")
 local icons = require("atlas.ui.shared.icons")
 local utils = require("atlas.ui.shared.utils")
@@ -143,6 +144,19 @@ function M.inline.mention(text, previous_character)
 	end
 end
 
+-- :tada:
+-- { text = "󱁖" }
+function M.inline.emoji(text, previous_character)
+	if previous_character:match("[%w:]") then
+		return
+	end
+
+	local name = text:match("^:([%w_+-]+):")
+	if name and name:find("%w") then
+		return { text = emojis.get(name) }, #name + 2
+	end
+end
+
 ---@type (fun(text: string, previous_character: string): table?, integer?)[]
 local inline_handlers = {
 	M.inline.escape,
@@ -151,6 +165,7 @@ local inline_handlers = {
 	M.inline.link,
 	M.inline.code,
 	html.inline.comment,
+	M.inline.emoji,
 	M.inline.emphasis,
 	M.inline.mention,
 }
@@ -174,7 +189,7 @@ function M.parse_inline(text)
 		end
 
 		if not fragment then
-			local plain_text = remaining_text:match("^[^\\%[!`*_~<@]+")
+			local plain_text = remaining_text:match("^[^\\%[!`*_~<@:]+")
 			if not plain_text then
 				plain_text = remaining_text:sub(1, 1)
 			end

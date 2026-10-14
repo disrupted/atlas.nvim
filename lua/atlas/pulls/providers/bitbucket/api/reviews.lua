@@ -10,7 +10,7 @@ local service = require("atlas.providers.bitbucket.client")
 local tasks = require("atlas.pulls.providers.bitbucket.api.tasks")
 
 ---@param user table|nil
----@return PullsAuthor|nil
+---@return AtlasUser|nil
 local function review_author(user)
 	if not user then
 		return nil
@@ -24,7 +24,6 @@ local function review_author(user)
 		id = tostring(user.account_id or user.uuid or user.id or ""),
 		name = name ~= "" and name or username,
 		username = username,
-		nickname = username ~= "" and username or nil,
 	}
 end
 

@@ -57,8 +57,11 @@ return {
 			add_comment = comments_api.add_comment,
 			edit_comment = comments_api.edit_comment,
 			delete_comment = comments_api.delete_comment,
-			add_reaction = comments_api.add_reaction,
-			reaction_options = comments_api.reaction_options,
+			reactions = {
+				options = comments_api.reactions,
+				add = comments_api.add_reaction,
+				remove = comments_api.remove_reaction,
+			},
 		},
 		actions = require("atlas.issues.providers.azure.actions.registry"),
 		ui = {

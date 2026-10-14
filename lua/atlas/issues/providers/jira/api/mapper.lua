@@ -283,17 +283,14 @@ local function normalize_comment(raw_comment, context)
 
 	return {
 		id = comment_id,
-		self = raw_comment.self and tostring(raw_comment.self) or nil,
 		url = url,
 		author = normalize_issue_user(raw_comment.author),
 		-- Jira cloud returns body as ADF, while Jira server returns it as string
 		body = type(raw_comment.body) == "table" and adf.to_markdown(raw_comment.body)
 			or type(raw_comment.body) == "string" and raw_comment.body
-			or nil,
-		created = raw_comment.created and tostring(raw_comment.created) or nil,
-		updated = raw_comment.updated and tostring(raw_comment.updated) or nil,
+			or "",
+		created_at = raw_comment.created and tostring(raw_comment.created) or "",
 		parent_id = parent_id,
-		children = nil,
 	}
 end
 
@@ -427,7 +424,7 @@ local function activity_from_history_item(raw_item, actor, date)
 	end
 
 	return {
-		kind = field ~= "" and field or "update",
+		kind = "other",
 		actor = actor,
 		date = date,
 		label = string.format("%s %s", action, FIELD_LABELS[field] or field),
