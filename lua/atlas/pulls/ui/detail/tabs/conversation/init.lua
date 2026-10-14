@@ -70,10 +70,10 @@ function M.on_enter(_pr, entry)
 		return
 	end
 	local url
-	if item.kind == "comment" then
+	if item.kind == "comment" or item.kind == "description" then
 		---@type PullsComment
 		local comment = item.entity
-		url = comment.html_url or comment.url
+		url = comment.url
 	elseif item.kind == "review" then
 		---@type PullsReviewHistoryEntry
 		local review_entry = item.entity

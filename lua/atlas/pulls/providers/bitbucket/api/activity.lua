@@ -135,7 +135,7 @@ function M.fetch_conversation(pr, opts, on_done)
 			table.insert(items, {
 				id = "comment:" .. tostring(comment.id),
 				kind = "comment",
-				created_on = comment.created_on or "",
+				created_at = comment.created_at or "",
 				entity = comment,
 			})
 		end
@@ -143,7 +143,7 @@ function M.fetch_conversation(pr, opts, on_done)
 			table.insert(items, {
 				id = "task:" .. tostring(task.id),
 				kind = "comment",
-				created_on = task.created_on or "",
+				created_at = task.created_at or "",
 				entity = task,
 			})
 		end
@@ -151,7 +151,7 @@ function M.fetch_conversation(pr, opts, on_done)
 			table.insert(items, {
 				id = table.concat({ "activity", event.date or "", event.kind or "" }, ":"),
 				kind = "activity",
-				created_on = event.date or "",
+				created_at = event.date or "",
 				entity = event,
 			})
 		end

@@ -446,7 +446,7 @@ M.open_in_browser = {
 		local items = annotations.at_cursor(session.view)
 		for _, item in ipairs(items or {}) do
 			local comment = item.thread and item.thread.comment
-			local url = comment and (comment.html_url or comment.url)
+			local url = comment and comment.url
 			if url and url ~= "" then
 				vim.ui.open(url)
 				return true

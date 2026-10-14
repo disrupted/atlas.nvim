@@ -193,7 +193,7 @@ function M.add(pr, content, opts, on_done)
 	)
 end
 
-function M.edit(pr, comment, on_done)
+function M.edit(pr, comment, content, on_done)
 	local base = endpoint(pr)
 	local id = tostring(comment.id)
 	if not base or not id:match("^%d+$") then
@@ -201,13 +201,13 @@ function M.edit(pr, comment, on_done)
 		return nil
 	end
 	return service.request("PATCH", string.format("%s/issues/comments/%s", base, id), {
-		body = comment.content_raw,
+		body = content,
 	}, function(_, err)
 		if err then
 			on_done(nil, err)
 			return
 		end
-		on_done(comment, nil)
+		on_done(vim.tbl_extend("force", comment, { body = content }), nil)
 	end)
 end
 

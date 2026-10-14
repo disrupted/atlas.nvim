@@ -2,20 +2,20 @@
 local M = {}
 
 local threads = require("atlas.ui.components.threads")
-local emojis = require("atlas.ui.shared.emojis")
+local reactions = require("atlas.ui.shared.reactions")
 local presentation = require("atlas.pulls.ui.presentation")
 local icons = require("atlas.ui.shared.icons")
 local utils = require("atlas.ui.shared.utils")
 
 ---@alias AtlasCommentThreadAction "add_comment"|"add_task"|"edit"|"delete"|"toggle_task"|"toggle_resolved"
 
----@param author PullsAuthor|nil
+---@param author AtlasUser|nil
 ---@return string|nil
 local function author_mention(author)
 	if author == nil then
 		return nil
 	end
-	local username = tostring(author.nickname or author.username or "")
+	local username = tostring(author.username or "")
 	if username ~= "" then
 		return "@" .. username
 	end
@@ -33,7 +33,7 @@ local function resolution_text(comment)
 	if resolver == nil then
 		return nil
 	end
-	local resolved_at = comment.resolved_on and utils.relative_time(comment.resolved_on) or ""
+	local resolved_at = comment.resolved_at and utils.relative_time(comment.resolved_at) or ""
 	local text = "resolved by " .. resolver
 	if resolved_at ~= "" then
 		text = text .. "  " .. resolved_at
@@ -79,7 +79,7 @@ end
 ---@param comment PullsComment
 ---@return [string, string][]
 function M.status_marker(comment)
-	if comment.state == "DELETED" then
+	if comment.deleted then
 		return { { icons.get("delete") } }
 	end
 
@@ -108,12 +108,12 @@ end
 ---@param is_root? boolean
 ---@return AtlasThreadItem
 local function comment_item(comment, opts, is_root)
-	local is_deleted = comment.state == "DELETED"
+	local is_deleted = comment.deleted
 	local is_resolved = comment.state == "RESOLVED"
 	local author = presentation.author_name(comment.author)
 	local author_hl = presentation.author_hl(author)
 	local user_icon = icons.get("user")
-	local additional = utils.relative_time(comment.created_on)
+	local additional = utils.relative_time(comment.created_at)
 	local location = is_root and opts.location and opts.location(comment) or ""
 	if location ~= "" then
 		additional = additional .. "  " .. location
@@ -138,7 +138,7 @@ local function comment_item(comment, opts, is_root)
 		item.right_text = comment_status(comment)
 	end
 
-	local text = comment.content_display or comment.content_raw or ""
+	local text = comment.body_display or comment.body or ""
 
 	if comment.is_task then
 		local checkbox = is_resolved and "[x]" or "[ ]"
@@ -163,9 +163,9 @@ local function comment_item(comment, opts, is_root)
 		item.meta.is_deleted = is_deleted
 
 		if not is_deleted then
-			local reactions, reaction_highlights = emojis.format(comment.reactions, opts.reaction_options)
-			if reactions ~= "" then
-				table.insert(footer_items, { text = reactions, highlights = reaction_highlights })
+			local reaction_text, reaction_highlights = reactions.format(comment.reactions)
+			if reaction_text ~= "" then
+				table.insert(footer_items, { text = reaction_text, highlights = reaction_highlights })
 			end
 		end
 	end
@@ -333,7 +333,6 @@ end
 ---@field action_keys? AtlasCommentThreadActionKeys
 ---@field padding_x? integer
 ---@field boxed? boolean
----@field reaction_options? PullsReactionOption[]
 ---@field location? fun(comment: PullsComment): string
 ---@field content_prefix? string
 ---@field content_max_lines? integer|fun(comment: PullsComment): integer|nil
@@ -363,9 +362,8 @@ function M.render_task_compact(node, width, opts)
 	opts.expanded = nil
 	local item = build_item(node, opts, true, nil)
 	local task = node.comment
-	local label = tostring(task.task_label or "")
-	local additional = opts.show_task_label == false and "" or (label ~= "" and label or "added a task")
-	local timestamp = utils.relative_time(task.created_on)
+	local additional = opts.show_task_label == false and "" or "added a task"
+	local timestamp = utils.relative_time(task.created_at)
 	additional = additional ~= "" and (additional .. "  " .. timestamp) or timestamp
 	item.additional = { { additional, "AtlasTextMuted" } }
 	return threads.render({ item }, width, threads_opts(opts.padding_x or 1, opts))
@@ -394,7 +392,7 @@ function M.render_compact(node, width, expanded, location, opts)
 	local replies = descendant_count(node)
 	local fields = {
 		{ location, "Normal" },
-		{ utils.relative_time(comment.created_on), "AtlasTextMuted" },
+		{ utils.relative_time(comment.created_at), "AtlasTextMuted" },
 		{
 			replies > 0 and string.format("%d %s", replies, replies == 1 and "reply" or "replies") or "",
 			"AtlasTextMuted",

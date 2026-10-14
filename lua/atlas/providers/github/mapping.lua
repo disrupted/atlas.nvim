@@ -2,26 +2,16 @@ local M = {}
 
 local json = require("atlas.core.json")
 
-local REACTION_KEY = {
-	THUMBS_UP = "+1",
-	THUMBS_DOWN = "-1",
-	LAUGH = "laugh",
-	HOORAY = "hooray",
-	CONFUSED = "confused",
-	HEART = "heart",
-	ROCKET = "rocket",
-	EYES = "eyes",
-}
-
-local REACTION_KEYS = {
-	["+1"] = true,
-	["-1"] = true,
-	laugh = true,
-	hooray = true,
-	confused = true,
-	heart = true,
-	rocket = true,
-	eyes = true,
+---@type AtlasReactionOption[]
+M.reactions = {
+	{ name = "thumbsup", key = "THUMBS_UP" },
+	{ name = "thumbsdown", key = "THUMBS_DOWN" },
+	{ name = "laughing", key = "LAUGH" },
+	{ name = "tada", key = "HOORAY" },
+	{ name = "confused", key = "CONFUSED" },
+	{ name = "heart", key = "HEART" },
+	{ name = "rocket", key = "ROCKET" },
+	{ name = "eyes", key = "EYES" },
 }
 
 ---@param raw any
@@ -40,33 +30,28 @@ function M.identity(raw)
 	}
 end
 
----@param groups any
----@return table<string, integer>|nil
-function M.reaction_groups(groups)
-	local reactions
+---@param groups any GraphQL `reactionGroups`
+---@return AtlasReaction[]
+function M.graphql_reactions(groups)
+	local reactions = {}
 	for _, group in ipairs(json.safe_table(groups)) do
 		group = json.safe_table(group)
-		local users = json.safe_table(json.nilify(group.reactors) or json.nilify(group.users))
-		local count = tonumber(users.totalCount) or 0
-		local name = REACTION_KEY[json.safe_str(group.content) or ""]
-		if name and count > 0 then
-			reactions = reactions or {}
-			reactions[name] = (reactions[name] or 0) + count
-		end
-	end
-	return reactions
-end
-
----@param raw any
----@return table<string, integer>|nil
-function M.reaction_counts(raw)
-	local reactions
-	for key, count in pairs(json.safe_table(raw)) do
-		local name = tostring(key)
-		local normalized_count = tonumber(count) or 0
-		if REACTION_KEYS[name] and normalized_count > 0 then
-			reactions = reactions or {}
-			reactions[name] = normalized_count
+		local reactors = json.safe_table(group.reactors)
+		local count = tonumber(reactors.totalCount) or 0
+		for _, option in ipairs(M.reactions) do
+			if option.key == group.content and count > 0 then
+				local users = {}
+				for _, node in ipairs(json.safe_table(reactors.nodes)) do
+					local identity = M.identity(node)
+					if identity then
+						table.insert(users, { name = identity.name, username = identity.login })
+					end
+				end
+				table.insert(
+					reactions,
+					{ name = option.name, count = count, users = users, reacted = group.viewerHasReacted == true }
+				)
+			end
 		end
 	end
 	return reactions

@@ -37,7 +37,7 @@ describe("bitbucket pull request updates", function()
 
 		local pr = { id = 5, links = {} }
 		local ok, err
-		api.update_description(pr, "New body", function(success, e)
+		api.update_pr(pr, { body = "New body" }, function(success, e)
 			ok, err = success, e
 		end)
 
@@ -59,11 +59,11 @@ describe("bitbucket pull request updates", function()
 			links = { self = "https://api.bitbucket.org/2.0/repositories/ws/repo/pullrequests/5" },
 		}
 
-		api.update_title(pr, "New title", function(success, err)
+		api.update_pr(pr, { title = "New title" }, function(success, err)
 			assert.is_true(success)
 			assert.is_nil(err)
 		end)
-		api.update_description(pr, "New body", function(success, err)
+		api.update_pr(pr, { body = "New body" }, function(success, err)
 			assert.is_true(success)
 			assert.is_nil(err)
 		end)
@@ -135,7 +135,7 @@ describe("bitbucket pull request updates", function()
 
 		local pr = { id = 5, links = { self = "url" } }
 		local ok, err
-		api.update_description(pr, "New body", function(success, e)
+		api.update_pr(pr, { body = "New body" }, function(success, e)
 			ok, err = success, e
 		end)
 

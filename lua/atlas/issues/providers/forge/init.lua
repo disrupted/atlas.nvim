@@ -62,7 +62,7 @@ function M.new(provider_id)
 				table.insert(items, {
 					id = "comment:" .. comment.id,
 					kind = "comment",
-					created_at = comment.created or "",
+					created_at = comment.created_at,
 					entity = comment,
 				})
 			end
@@ -88,14 +88,6 @@ function M.new(provider_id)
 			updated.reactions = comment.reactions
 			on_done(updated, nil)
 		end)
-	end
-
-	local function add_reaction(issue, item, key, on_done)
-		if item.kind ~= "comment" then
-			on_done(false, "This item does not support reactions")
-			return nil
-		end
-		return comments.add_reaction(issue, item.entity.id, key, on_done)
 	end
 
 	local function views()
@@ -130,14 +122,18 @@ function M.new(provider_id)
 				fetch_issue = issues.get,
 			},
 			comments = {
-				reaction_options = require("atlas.ui.shared.emojis").github(),
 				fetch_conversation = fetch_conversation,
 				add_comment = comments.add,
 				edit_comment = edit_comment,
 				delete_comment = function(issue, comment, on_done)
 					return comments.delete(issue, comment.id, on_done)
 				end,
-				add_reaction = add_reaction,
+				reactions = {
+					options = require("atlas.providers.forge.mapping").reactions,
+					add = function(issue, comment, key, on_done)
+						return comments.add_reaction(issue, comment.id, key, on_done)
+					end,
+				},
 			},
 			ui = {
 				detail = require("atlas.issues.providers.forge.ui.detail"),

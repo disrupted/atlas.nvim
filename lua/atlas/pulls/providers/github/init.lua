@@ -6,7 +6,7 @@
 ---@field lines_removed number
 
 ---@class GitHubPullRequestDetails : PullRequestDetails
----@field assignees PullsAuthor[]
+---@field assignees AtlasUser[]
 ---@field labels PullsLabel[]
 
 local activity_api = require("atlas.pulls.providers.github.api.activity")
@@ -14,7 +14,7 @@ local changes_api = require("atlas.pulls.providers.github.api.changes")
 local checks_api = require("atlas.pulls.providers.github.api.checks")
 local config = require("atlas.config")
 local comments_api = require("atlas.pulls.providers.github.api.comments")
-local emojis = require("atlas.ui.shared.emojis")
+local github_mapping = require("atlas.providers.github.mapping")
 local git = require("atlas.core.git")
 local links_api = require("atlas.providers.github.links")
 local pullrequests_api = require("atlas.pulls.providers.github.api.pullrequests")
@@ -24,21 +24,6 @@ local search_query = require("atlas.providers.github.query")
 local ui_detail = require("atlas.pulls.providers.github.ui.detail")
 local ui_repository = require("atlas.providers.github.ui.repository")
 local users_api = require("atlas.providers.github.users")
-
----@param ref PullRequestRef
----@param opts PullsFetchOpts
----@param on_done fun(details: PullRequestDetails|nil, err: string|nil)
----@return { cancel: fun() }|nil
-local function fetch_pullrequest(ref, opts, on_done)
-	local owner, repo = ref.repo_full_name:match("^([^/]+)/(.+)$")
-	if owner == nil or repo == nil then
-		vim.schedule(function()
-			on_done(nil, "Missing repository info")
-		end)
-		return nil
-	end
-	return pullrequests_api.get_pr(owner, repo, ref.id, on_done, { force_refresh = opts.force_refresh == true })
-end
 
 ---@return AtlasGitHubViewConfig[]
 local function views()
@@ -115,7 +100,7 @@ return {
 		core = {
 			fetch_pullrequests = fetch_pullrequests,
 			fetch_by_refs = pullrequests_api.fetch_by_refs,
-			fetch_pullrequest = fetch_pullrequest,
+			fetch_pullrequest = pullrequests_api.fetch_pullrequest,
 			fetch_links = links_api.fetch_pr,
 			fetch_reviewers = reviews_api.fetch_reviewers,
 			merge = pullrequests_api.merge,
@@ -135,12 +120,15 @@ return {
 			end,
 		},
 		comments = {
-			reaction_options = emojis.github(),
 			fetch_conversation = activity_api.fetch_conversation,
 			add_comment = comments_api.add_comment,
 			edit_comment = comments_api.edit_comment,
 			delete_comment = comments_api.delete_comment,
-			add_reaction = comments_api.add_reaction,
+			reactions = {
+				options = github_mapping.reactions,
+				add = comments_api.add_reaction,
+				remove = comments_api.remove_reaction,
+			},
 			set_thread_resolved = comments_api.set_thread_resolved,
 		},
 		reviews = {

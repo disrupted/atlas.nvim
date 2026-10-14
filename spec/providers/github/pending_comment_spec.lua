@@ -24,14 +24,11 @@ end
 
 local function pending_comment(overrides)
 	return vim.tbl_extend("force", {
-		id = 4242,
-		content_raw = "updated body",
+		id = "PRRC_node",
+		body = "updated body",
 		pending = true,
 		inline = { path = "lua/init.lua", to = 12 },
 		thread_id = "PRRT_node",
-		_raw = {
-			comment_id = "PRRC_node",
-		},
 	}, overrides or {})
 end
 
@@ -58,7 +55,6 @@ describe("github review comments", function()
 							updatePullRequestReviewComment = {
 								pullRequestReviewComment = {
 									id = "PRRC_node",
-									databaseId = 4242,
 									body = "updated body",
 									pullRequestReview = { id = "PRR_node", state = review_state },
 								},
@@ -78,7 +74,7 @@ describe("github review comments", function()
 				local comment = pending_comment()
 				comment.pending = state == "PENDING"
 				local updated, err
-				api.edit_comment(pull_request(), comment, function(result, e)
+				api.edit_comment(pull_request(), comment, "updated body", function(result, e)
 					updated, err = result, e
 				end)
 
@@ -88,34 +84,43 @@ describe("github review comments", function()
 				assert.equal("PRRC_node", flags.commentId)
 				assert.equal("updated body", flags.body)
 				assert.is_truthy(flags.query:find("updatePullRequestReviewComment", 1, true))
-				assert.equal(4242, updated.id)
-				assert.equal("updated body", updated.content_raw)
+				assert.equal("PRRC_node", updated.id)
+				assert.equal("updated body", updated.body)
 				assert.equal(comment.pending, updated.pending)
 				assert.equal("lua/init.lua", updated.inline.path)
 				assert.equal(12, updated.inline.to)
 				assert.equal("PRRT_node", updated.thread_id)
-				assert.equal("PRRC_node", updated._raw.comment_id)
 			end
 			assert.equal(0, #api_calls)
 			assert.equal(2, #gh_calls)
 		end)
 
-		it("fails when the pending comment has no node id", function()
+		it("updates conversation comments over GraphQL and keeps their reactions", function()
 			github_client.install({
-				gh = function(args)
+				gh = function(args, callback)
 					table.insert(gh_calls, args)
+					callback({
+						data = { updateIssueComment = { issueComment = { id = "IC_node", body = "updated body" } } },
+					}, nil)
 				end,
 			})
 			local api = fresh_module()
+			local reactions = { { name = "heart", count = 1 } }
 
-			local updated, err
-			api.edit_comment(pull_request(), pending_comment({ _raw = {} }), function(result, e)
-				updated, err = result, e
-			end)
+			local updated
+			api.edit_comment(
+				pull_request(),
+				{ id = "IC_node", body = "old body", created_at = "", reactions = reactions },
+				"updated body",
+				function(result)
+					updated = result
+				end
+			)
 
-			assert.is_nil(updated)
-			assert.equal("Missing review comment id", err)
-			assert.equal(0, #gh_calls)
+			local flags = gh_flags(gh_calls[1])
+			assert.equal("IC_node", flags.commentId)
+			assert.is_truthy(flags.query:find("updateIssueComment", 1, true))
+			assert.same({ "IC_node", "updated body", reactions }, { updated.id, updated.body, updated.reactions })
 		end)
 
 		it("propagates GraphQL errors", function()
@@ -128,7 +133,7 @@ describe("github review comments", function()
 			local api = fresh_module()
 
 			local updated, err
-			api.edit_comment(pull_request(), pending_comment(), function(result, e)
+			api.edit_comment(pull_request(), pending_comment(), "updated body", function(result, e)
 				updated, err = result, e
 			end)
 
@@ -169,22 +174,24 @@ describe("github review comments", function()
 			assert.equal(2, #gh_calls)
 		end)
 
-		it("fails when the pending comment has no node id", function()
+		it("deletes conversation comments over GraphQL", function()
 			github_client.install({
-				gh = function(args)
+				gh = function(args, callback)
 					table.insert(gh_calls, args)
+					callback({ data = { deleteIssueComment = {} } }, nil)
 				end,
 			})
 			local api = fresh_module()
 
-			local ok, err
-			api.delete_comment(pull_request(), pending_comment({ _raw = {} }), function(success, e)
-				ok, err = success, e
+			local ok
+			api.delete_comment(pull_request(), { id = "IC_node", body = "", created_at = "" }, function(success)
+				ok = success
 			end)
 
-			assert.is_false(ok)
-			assert.equal("Missing review comment id", err)
-			assert.equal(0, #gh_calls)
+			assert.is_true(ok)
+			local flags = gh_flags(gh_calls[1])
+			assert.equal("IC_node", flags.commentId)
+			assert.is_truthy(flags.query:find("deleteIssueComment", 1, true))
 		end)
 	end)
 end)

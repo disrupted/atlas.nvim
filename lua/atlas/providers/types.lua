@@ -3,6 +3,21 @@
 ---@field name string
 ---@field username string|nil
 
+---@class AtlasReaction
+---@field name string
+---@field count integer
+---@field users AtlasUser[]|nil Who reacted, when the provider returns it (GitHub: first 10 only). So in the future maybe we can fetch that data async when the picker opens ?
+---@field reacted boolean|nil Whether the current user reacted
+
+---@class AtlasReactionOption
+---@field name string
+---@field key string|nil API key, when it differs from the name
+
+---@class AtlasReactionsCapability
+---@field options AtlasReactionOption[]
+---@field add fun(target: Issue|PullRequest, comment: IssueComment|PullsComment, key: string, on_done: fun(ok: boolean, err: string|nil)): { cancel: fun() }|nil
+---@field remove (fun(target: Issue|PullRequest, comment: IssueComment|PullsComment, key: string, on_done: fun(ok: boolean, err: string|nil)): { cancel: fun() }|nil)|nil
+
 ---@class AtlasProviderCapabilities
 ---@field repository AtlasRepositoryCapability|nil
 ---@field notifications AtlasNotificationsCapability|nil

@@ -1,6 +1,8 @@
 local modules = {
 	"atlas.providers.bitbucket.client",
 	"atlas.providers.bitbucket.completion",
+	"atlas.providers.bitbucket.completion.users",
+	"atlas.providers.bitbucket.completion.pulls",
 	"atlas.ui.shared.icons",
 }
 

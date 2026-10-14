@@ -257,19 +257,16 @@ function M.resolve_target(value)
 		return normalize_target({ provider = provider, host = host, repository = repository, id = id })
 	end
 
-	local target, resolve_error = providers.resolve(value)
-	if not target then
-		return nil, resolve_error
-	end
-	if target.domain ~= "pulls" or target.entity ~= "pr" then
-		return nil, "Expected a pull request URL or canonical reference"
+	local target, err = providers.resolve(value)
+	if not target or target.entity ~= "pr" then
+		return nil, err or "Expected a pull request URL or canonical reference"
 	end
 	return normalize_target({
 		provider = target.provider,
 		host = target.host,
 		repository = target.repo_full_name,
 		id = target.id,
-		url = target.url,
+		url = value,
 	})
 end
 

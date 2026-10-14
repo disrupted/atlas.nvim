@@ -11,8 +11,8 @@ local M = {}
 ---@return AtlasIssuesViewLayout
 function M.resolve(layout, provider_id)
 	layout = layout or "plain"
-	local providers = layouts[layout]
-	if providers and (providers[provider_id] or providers.default) then
+	local module = layouts[layout]
+	if module and (module[provider_id] or module.default) then
 		return layout
 	end
 	return "plain"
@@ -30,10 +30,8 @@ end
 ---@param issues Issue[]
 ---@return string[], table<integer, table>, table[]
 function M.render(opts, issues)
-	local layout = M.resolve(opts.layout, opts.provider_id)
-	local providers = layouts[layout]
-	local render = providers[opts.provider_id] or providers.default
-	return render(opts, issues)
+	local layout = layouts[M.resolve(opts.layout, opts.provider_id)]
+	return layout.render(opts, issues, layout[opts.provider_id] or layout.default)
 end
 
 return M

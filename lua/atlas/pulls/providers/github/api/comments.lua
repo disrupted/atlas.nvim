@@ -1,23 +1,13 @@
 local M = {}
 
 local cli = require("atlas.providers.github.client")
+local github_reactions = require("atlas.providers.github.reactions")
 local json = require("atlas.core.json")
 local mapper = require("atlas.pulls.providers.github.api.mapper")
 local reviews = require("atlas.pulls.providers.github.api.reviews")
 local request_scope = require("atlas.core.requests")
 
-local REVIEW_COMMENT_FIELDS = [[
-id
-databaseId
-body
-url
-createdAt
-author { login ... on User { databaseId } ... on Bot { databaseId } }
-reactionGroups { content users { totalCount } }
-pullRequestReview { id state commit { oid } }
-]]
-
-local ADD_REVIEW_THREAD_MUTATION = ([[
+local ADD_REVIEW_THREAD_MUTATION = [[
 mutation($reviewId:ID!,$path:String!,$body:String!,$subjectType:PullRequestReviewThreadSubjectType!,$line:Int,$side:DiffSide,$startLine:Int,$startSide:DiffSide){
   addPullRequestReviewThread(input:{
     pullRequestReviewId:$reviewId
@@ -41,11 +31,17 @@ mutation($reviewId:ID!,$path:String!,$body:String!,$subjectType:PullRequestRevie
       originalStartLine
       diffSide
       startDiffSide
-      comments(last:1){nodes{%s}}
+      comments(last:1){
+        nodes{
+          id body url createdAt
+          author{login ...on User{databaseId} ...on Bot{databaseId}}
+          pullRequestReview{id state commit{oid}}
+        }
+      }
     }
   }
 }
-]]):format(REVIEW_COMMENT_FIELDS)
+]]
 
 ---@param pr PullRequest
 ---@param content string
@@ -92,7 +88,7 @@ local function add_review_thread(pr, content, target, file_level, review_id, pen
 		end
 		local nodes = json.safe_table(json.safe_table(thread.comments).nodes)
 		local node = json.nilify(nodes[#nodes])
-		if not node or json.nilify(node.databaseId) == nil then
+		if not node or json.nilify(node.id) == nil then
 			on_done(nil, "GitHub did not return the created review comment")
 			return
 		end
@@ -166,6 +162,14 @@ local function publish_comment(pr, review, commit_oid, add_comment, on_done)
 	return requests
 end
 
+local ADD_COMMENT_MUTATION = [[
+mutation($id:ID!,$body:String!){
+  addComment(input:{subjectId:$id,body:$body}){
+    commentEdge{node{id url body createdAt author{login ...on User{databaseId} ...on Bot{databaseId}}}}
+  }
+}
+]]
+
 local reply_comment
 
 ---@param pr PullRequest
@@ -202,33 +206,48 @@ function M.add_comment(pr, content, opts, on_done)
 		end, on_done)
 	end
 
-	return cli.api(
-		"POST",
-		string.format("repos/%s/issues/%s/comments", repo_slug, tostring(pr.id)),
-		{ body = content },
-		function(result, err)
-			if err or type(result) ~= "table" then
-				on_done(nil, err or "Failed to create comment")
-				return
-			end
-			on_done(mapper.to_comment(result), nil)
-		end,
-		{
-			action = "Add comment",
-			repo = pr.repo_full_name,
-			number = pr.id,
-			inline = false,
-		}
-	)
+	---@cast pr GitHubPullRequest
+	return cli.gh({
+		"api",
+		"graphql",
+		"-f",
+		"id=" .. tostring(pr.node_id or ""),
+		"-f",
+		"body=" .. content,
+		"-f",
+		"query=" .. ADD_COMMENT_MUTATION,
+	}, function(result, err)
+		if err or type(result) ~= "table" then
+			on_done(nil, err or "Failed to create comment")
+			return
+		end
+		local edge = json.safe_table(json.safe_table(json.safe_table(result.data).addComment).commentEdge)
+		local node = json.nilify(edge.node)
+		if not node or json.nilify(node.id) == nil then
+			on_done(nil, "GitHub did not return the created comment")
+			return
+		end
+		on_done(mapper.to_comment(node), nil)
+	end, {
+		action = "Add comment",
+		repo = pr.repo_full_name,
+		number = pr.id,
+		inline = false,
+	})
 end
 
-local UPDATE_REVIEW_COMMENT_MUTATION = ([[
+local UPDATE_REVIEW_COMMENT_MUTATION = [[
 mutation($commentId:ID!,$body:String!){
   updatePullRequestReviewComment(input:{pullRequestReviewCommentId:$commentId,body:$body}){
-    pullRequestReviewComment{%s}
+    pullRequestReviewComment{
+      id body url createdAt
+      author{login ...on User{databaseId} ...on Bot{databaseId}}
+      reactionGroups{content viewerHasReacted reactors(first:10){totalCount nodes{...on User{login name} ...on Bot{login}}}}
+      pullRequestReview{id state commit{oid}}
+    }
   }
 }
-]]):format(REVIEW_COMMENT_FIELDS)
+]]
 
 local DELETE_REVIEW_COMMENT_MUTATION = [[
 mutation($commentId:ID!){
@@ -238,19 +257,35 @@ mutation($commentId:ID!){
 }
 ]]
 
+local UPDATE_COMMENT_MUTATION = [[
+mutation($commentId:ID!,$body:String!){
+  updateIssueComment(input:{id:$commentId,body:$body}){
+    issueComment{id url body createdAt author{login ...on User{databaseId} ...on Bot{databaseId}}}
+  }
+}
+]]
+
+local DELETE_COMMENT_MUTATION = [[
+mutation($commentId:ID!){
+  deleteIssueComment(input:{id:$commentId}){
+    clientMutationId
+  }
+}
+]]
+
 ---@param pr PullRequest
 ---@param comment PullsComment
----@param node_id string
+---@param content string
 ---@param on_done fun(comment: PullsComment|nil, err: string|nil)
 ---@return { cancel: fun() }|nil
-local function edit_review_comment(pr, comment, node_id, on_done)
+local function edit_review_comment(pr, comment, content, on_done)
 	return cli.gh({
 		"api",
 		"graphql",
 		"-f",
-		"commentId=" .. node_id,
+		"commentId=" .. tostring(comment.id),
 		"-f",
-		"body=" .. tostring(comment.content_raw or ""),
+		"body=" .. content,
 		"-f",
 		"query=" .. UPDATE_REVIEW_COMMENT_MUTATION,
 	}, function(result, err)
@@ -261,11 +296,11 @@ local function edit_review_comment(pr, comment, node_id, on_done)
 		local data = json.safe_table(result.data)
 		local payload = json.safe_table(json.nilify(data.updatePullRequestReviewComment))
 		local node = json.nilify(payload.pullRequestReviewComment)
-		if not node or json.nilify(node.databaseId) == nil then
+		if not node or json.nilify(node.id) == nil then
 			on_done(nil, "GitHub did not return the updated comment")
 			return
 		end
-		local updated = mapper.to_review_comment(node, mapper.review_thread(comment), comment.parent_id)
+		local updated = mapper.to_thread_comment(node, comment, comment.parent_id)
 		updated.resolved_by = comment.resolved_by
 		on_done(updated, nil)
 	end, {
@@ -277,63 +312,37 @@ local function edit_review_comment(pr, comment, node_id, on_done)
 end
 
 ---@param pr PullRequest
----@param target PullsComment
----@param node_id string
----@param on_done fun(ok: boolean, err: string|nil)
+---@param comment PullsComment
+---@param content string
+---@param on_done fun(comment: PullsComment|nil, err: string|nil)
 ---@return { cancel: fun() }|nil
-local function delete_review_comment(pr, target, node_id, on_done)
+function M.edit_comment(pr, comment, content, on_done)
+	if comment.inline or comment.file or comment.pending == true then
+		return edit_review_comment(pr, comment, content, on_done)
+	end
+
 	return cli.gh({
 		"api",
 		"graphql",
 		"-f",
-		"commentId=" .. node_id,
+		"commentId=" .. tostring(comment.id),
 		"-f",
-		"query=" .. DELETE_REVIEW_COMMENT_MUTATION,
-	}, function(_, err)
-		if err then
-			on_done(false, err)
-			return
-		end
-		on_done(true, nil)
-	end, {
-		action = "Delete comment",
-		repo = pr.repo_full_name,
-		number = pr.id,
-		comment_id = target.id,
-	})
-end
-
----@param pr PullRequest
----@param comment PullsComment
----@param on_done fun(comment: PullsComment|nil, err: string|nil)
----@return { cancel: fun() }|nil
-function M.edit_comment(pr, comment, on_done)
-	local repo_slug = pr.repo_full_name or ""
-	if repo_slug == "" then
-		vim.schedule(function()
-			on_done(nil, "Missing repo")
-		end)
-		return nil
-	end
-
-	if comment.inline or comment.file or comment.pending == true then
-		local node_id = tostring((comment._raw or {}).comment_id or "")
-		if node_id == "" then
-			on_done(nil, "Missing review comment id")
-			return nil
-		end
-		return edit_review_comment(pr, comment, node_id, on_done)
-	end
-
-	local endpoint = string.format("repos/%s/issues/comments/%s", repo_slug, tostring(comment.id))
-	local body = tostring(comment.content_raw or "")
-
-	return cli.api("PATCH", endpoint, { body = body }, function(result, err)
+		"body=" .. content,
+		"-f",
+		"query=" .. UPDATE_COMMENT_MUTATION,
+	}, function(result, err)
 		if err or type(result) ~= "table" then
 			on_done(nil, err or "Failed to edit comment")
 			return
 		end
-		local updated = mapper.to_comment(result)
+		local payload = json.safe_table(json.safe_table(result.data).updateIssueComment)
+		local node = json.nilify(payload.issueComment)
+		if not node or json.nilify(node.id) == nil then
+			on_done(nil, "GitHub did not return the updated comment")
+			return
+		end
+		local updated = mapper.to_comment(node)
+		updated.reactions = comment.reactions
 		on_done(updated, nil)
 	end, {
 		action = "Edit comment",
@@ -348,31 +357,16 @@ end
 ---@param on_done fun(ok: boolean, err: string|nil)
 ---@return { cancel: fun() }|nil
 function M.delete_comment(pr, target, on_done)
-	local repo_slug = pr.repo_full_name or ""
-	if repo_slug == "" then
-		vim.schedule(function()
-			on_done(false, "Missing repo")
-		end)
-		return nil
-	end
-
-	if target.inline or target.file or target.pending == true then
-		local node_id = tostring((target._raw or {}).comment_id or "")
-		if node_id == "" then
-			on_done(false, "Missing review comment id")
-			return nil
-		end
-		return delete_review_comment(pr, target, node_id, on_done)
-	end
-
-	local endpoint = string.format("repos/%s/issues/comments/%s", repo_slug, tostring(target.id))
-
-	return cli.api("DELETE", endpoint, nil, function(_, err)
-		if err then
-			on_done(false, err)
-			return
-		end
-		on_done(true, nil)
+	local review_comment = target.inline or target.file or target.pending == true
+	return cli.gh({
+		"api",
+		"graphql",
+		"-f",
+		"commentId=" .. tostring(target.id),
+		"-f",
+		"query=" .. (review_comment and DELETE_REVIEW_COMMENT_MUTATION or DELETE_COMMENT_MUTATION),
+	}, function(_, err)
+		on_done(err == nil, err)
 	end, {
 		action = "Delete comment",
 		repo = pr.repo_full_name,
@@ -428,17 +422,21 @@ function M.set_thread_resolved(pr, root, resolved, on_done)
 	})
 end
 
-local ADD_REVIEW_REPLY_MUTATION = ([[
+local ADD_REVIEW_REPLY_MUTATION = [[
 mutation($threadId:ID!,$reviewId:ID!,$body:String!){
   addPullRequestReviewThreadReply(input:{
     pullRequestReviewThreadId:$threadId
     pullRequestReviewId:$reviewId
     body:$body
   }){
-    comment{%s}
+    comment{
+      id body url createdAt
+      author{login ...on User{databaseId} ...on Bot{databaseId}}
+      pullRequestReview{id state commit{oid}}
+    }
   }
 }
-]]):format(REVIEW_COMMENT_FIELDS)
+]]
 
 ---@param pr PullRequest
 ---@param parent PullsComment
@@ -484,7 +482,7 @@ reply_comment = function(pr, parent, content, opts, on_done)
 				end
 				local payload = json.nilify(result.data.addPullRequestReviewThreadReply)
 				local reply = payload and json.nilify(payload.comment)
-				if not reply or json.nilify(reply.databaseId) == nil then
+				if not reply or json.nilify(reply.id) == nil then
 					done(nil, "GitHub did not return the created reply")
 					return
 				end
@@ -492,8 +490,7 @@ reply_comment = function(pr, parent, content, opts, on_done)
 				if pending then
 					reviews.update(opts.review, review)
 				end
-				local created =
-					mapper.to_review_comment(reply, mapper.review_thread(parent), parent.parent_id or parent.id)
+				local created = mapper.to_thread_comment(reply, parent, parent.parent_id or parent.id)
 				done(created, nil)
 			end, {
 				action = "Reply comment",
@@ -512,38 +509,22 @@ reply_comment = function(pr, parent, content, opts, on_done)
 	return M.add_comment(pr, content, nil, on_done)
 end
 
----@param pr PullRequest
----@param item PullsConversationItem
+---@param _pr PullRequest
+---@param comment PullsComment
 ---@param key string
 ---@param on_done fun(ok: boolean, err: string|nil)
 ---@return { cancel: fun() }|nil
-function M.add_reaction(pr, item, key, on_done)
-	local repo_slug = pr.repo_full_name
-	if repo_slug == "" then
-		on_done(false, "Missing repo")
-		return nil
-	end
+function M.add_reaction(_pr, comment, key, on_done)
+	return github_reactions.add(comment, key, on_done)
+end
 
-	if item.kind ~= "comment" then
-		on_done(false, "This item does not support reactions")
-		return nil
-	end
-	---@type PullsComment
-	local comment = item.entity
-	local endpoint
-	if comment.inline or comment.file then
-		endpoint = string.format("repos/%s/pulls/comments/%s/reactions", repo_slug, tostring(comment.id))
-	else
-		endpoint = string.format("repos/%s/issues/comments/%s/reactions", repo_slug, tostring(comment.id))
-	end
-	return cli.gh({ "api", "-X", "POST", endpoint, "-f", "content=" .. key }, function(_, err)
-		on_done(err == nil, err)
-	end, {
-		action = "Add PR reaction",
-		repo = repo_slug,
-		number = pr.id,
-		reaction = key,
-	})
+---@param _pr PullRequest
+---@param comment PullsComment
+---@param key string
+---@param on_done fun(ok: boolean, err: string|nil)
+---@return { cancel: fun() }|nil
+function M.remove_reaction(_pr, comment, key, on_done)
+	return github_reactions.remove(comment, key, on_done)
 end
 
 return M

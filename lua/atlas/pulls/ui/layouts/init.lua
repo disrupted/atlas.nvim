@@ -16,10 +16,8 @@ end
 ---@param pulls PullRequest[]
 ---@return string[], table<integer, table>, table[]
 function M.render(opts, pulls)
-	local providers = layouts[opts.layout] or layouts.compact
-	local render = providers[opts.provider_id] or providers.default
-
-	return render(opts, pulls)
+	local layout = layouts[opts.layout] or layouts.compact
+	return layout.render(opts, pulls, layout[opts.provider_id] or layout.default)
 end
 
 return M

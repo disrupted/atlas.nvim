@@ -377,8 +377,7 @@ end
 ---@return { cancel: fun() }|nil
 function M.delete(pr, comment, on_done)
 	local base = M.endpoint(pr)
-	local raw = comment._raw
-	local review_id = raw and tostring(raw.review_id or "") or ""
+	local review_id = tostring(comment.thread_id or "")
 	local comment_id = tostring(comment.id)
 	if not base or not review_id:match("^%d+$") or not comment_id:match("^%d+$") then
 		on_done(false, "Invalid Forgejo review comment")

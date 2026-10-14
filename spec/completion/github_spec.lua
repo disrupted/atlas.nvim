@@ -2,6 +2,9 @@ local modules = {
 	"atlas.providers.github.client",
 	"atlas.providers.github.users",
 	"atlas.providers.github.completion",
+	"atlas.providers.github.completion.users",
+	"atlas.providers.github.completion.issues",
+	"atlas.providers.github.completion.pulls",
 	"atlas.ui.shared.icons",
 }
 

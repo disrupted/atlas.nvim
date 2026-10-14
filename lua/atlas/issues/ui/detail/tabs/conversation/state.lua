@@ -89,7 +89,7 @@ function M.upsert_comment(comment)
 		return
 	end
 	local id = "comment:" .. tostring(comment.id)
-	local item = { id = id, kind = "comment", created_at = comment.created or "", entity = comment }
+	local item = { id = id, kind = "comment", created_at = comment.created_at or "", entity = comment }
 	for index, current in ipairs(M.items) do
 		if current.id == id then
 			M.items[index] = item
@@ -109,7 +109,7 @@ function M.remove_comment(comment)
 			---@type IssueComment
 			local current = item.entity
 			if tostring(current.parent_id or "") == tostring(comment.id) then
-				comment.body = nil
+				comment.body = ""
 				comment.deleted = true
 				return
 			end
@@ -176,6 +176,10 @@ end
 ---@param threads IssuesCommentThreadNode[]
 ---@return boolean
 function M.toggle_all_threads(threads)
+	local items = M.items
+	if type(items) ~= "table" then
+		return false
+	end
 	local roots = {}
 	local comment_keys = {}
 	local expand = false
@@ -187,8 +191,10 @@ function M.toggle_all_threads(threads)
 			end
 		end
 	end
-	for _, comment in ipairs(M.comments()) do
-		if is_comment_long(comment) then
+	for _, item in ipairs(items) do
+		local comment = item.entity
+		---@cast comment IssueComment
+		if (item.kind == "comment" or item.kind == "description") and is_comment_long(comment) then
 			local key = tostring(comment.id)
 			table.insert(comment_keys, key)
 			if M.expanded_comments[key] ~= true then

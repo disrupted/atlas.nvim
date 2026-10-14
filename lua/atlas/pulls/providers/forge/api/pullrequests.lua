@@ -418,7 +418,6 @@ local function new(service, mapper)
 			local author = opts.pr and opts.pr.author or nil
 			if author then
 				exclude(author.username)
-				exclude(author.nickname)
 			end
 			local selected = {}
 			for _, reviewer in ipairs((values.reviews and values.reviews.reviewers) or {}) do

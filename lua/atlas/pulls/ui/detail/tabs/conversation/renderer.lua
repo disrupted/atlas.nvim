@@ -9,7 +9,6 @@ local review_actions = require("atlas.pulls.actions.review")
 local comment_threads = require("atlas.pulls.ui.components.comment_threads")
 local activity_component = require("atlas.pulls.ui.detail.components.activity")
 local state = require("atlas.pulls.ui.detail.tabs.conversation.state")
-local detail = require("atlas.pulls.ui.detail.state")
 
 local PADDING_X = 1
 
@@ -31,8 +30,6 @@ end
 ---@param collapsed boolean
 ---@param width integer
 local function render_thread(thread, collapsed, width)
-	local provider = detail.provider
-	local comments = provider and provider.capabilities.comments
 	local fold_keys = keymaps.resolve("ui.toggle_fold")
 	local fold_key = fold_keys and fold_keys[1]
 	local opts = {
@@ -41,7 +38,6 @@ local function render_thread(thread, collapsed, width)
 			return not collapsed
 		end,
 		padding_x = PADDING_X,
-		reaction_options = comments and comments.reaction_options,
 		content_max_lines = fold_key and state.comment_max_lines or nil,
 		content_truncated_key = fold_key,
 	}
@@ -82,16 +78,19 @@ end
 local function build_timeline(items)
 	local mixed = {}
 	local comments, by_entity = {}, {}
+	local description
 	for _, item in ipairs(items) do
 		by_entity[item.entity] = item
-		if item.kind == "comment" then
+		if item.kind == "description" then
+			description = review_actions.group_comments({ item.entity })[1]
+		elseif item.kind == "comment" then
 			---@type PullsComment
 			local comment = item.entity
 			table.insert(comments, comment)
 		else
 			table.insert(mixed, {
 				kind = item.kind,
-				timestamp = item.created_on,
+				timestamp = item.created_at,
 				item = item,
 			})
 		end
@@ -99,7 +98,7 @@ local function build_timeline(items)
 	for _, thread in ipairs(review_actions.group_comments(comments)) do
 		table.insert(mixed, {
 			kind = "comment",
-			timestamp = thread.comment.created_on or "",
+			timestamp = thread.comment.created_at or "",
 			thread = thread,
 		})
 	end
@@ -113,9 +112,13 @@ local function build_timeline(items)
 	end)
 	-- Collapse consecutive activities into a single activity_run entry.
 	local entries, run = {}, {}
+	if description then
+		-- Not sorted by time: commits can be authored before the PR was opened.
+		table.insert(entries, { type = "comment", timestamp = description.comment.created_at, thread = description })
+	end
 	local function flush_run()
 		if #run > 0 then
-			table.insert(entries, { type = "activity_run", timestamp = run[1].created_on, items = run })
+			table.insert(entries, { type = "activity_run", timestamp = run[1].created_at, items = run })
 			run = {}
 		end
 	end
@@ -188,7 +191,7 @@ local function render_review(item, width, has_next)
 			{
 				icon = icon,
 				icon_hl = icon_hl,
-				author = review.author and (review.author.nickname or review.author.name) or "Unknown",
+				author = review.author and (review.author.username or review.author.name) or "Unknown",
 				additional = additional,
 				content = body ~= "" and body or nil,
 				markdown = true,

@@ -4,6 +4,7 @@ local help = require("atlas.ui.popups.help")
 local keymaps = require("atlas.core.keymaps")
 local utils = require("atlas.ui.shared.utils")
 local markdown = require("atlas.formats.markdown")
+local reactions = require("atlas.ui.shared.reactions")
 
 local view_mode = "markdown"
 
@@ -21,6 +22,7 @@ function M.render(_issue, details, width)
 	local content_width = math.max(1, width - 2)
 
 	local description = details.description or ""
+	local content
 	if description == "" then
 		utils.push(lines, spans, "No description", "AtlasTextMuted")
 	elseif view_mode == "raw" then
@@ -28,11 +30,20 @@ function M.render(_issue, details, width)
 			utils.push(lines, spans, line)
 		end
 	else
-		local content = markdown.render(description, { width = width, padding = 1 })
-		return content.lines, content.highlights, {}
+		content = markdown.render(description, { width = width, padding = 1 })
 	end
+	content = content or utils.wrap_content({ lines = lines, highlights = spans }, content_width, " ")
 
-	local content = utils.wrap_content({ lines = lines, highlights = spans }, content_width, " ")
+	local reaction_text, reaction_spans = reactions.format(details.reactions)
+	if reaction_text ~= "" then
+		table.insert(content.lines, "")
+		utils.append_block(
+			content.lines,
+			content.highlights,
+			{ lines = { reaction_text }, highlights = reaction_spans },
+			1
+		)
+	end
 	return content.lines, content.highlights, {}
 end
 

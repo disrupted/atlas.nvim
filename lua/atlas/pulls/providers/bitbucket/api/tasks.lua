@@ -52,7 +52,7 @@ function M.fetch_tasks(pr, opts, on_done)
 		end
 		local tasks = mapper.to_tasks_list(result)
 		table.sort(tasks, function(a, b)
-			return a.created_on < b.created_on
+			return a.created_at < b.created_at
 		end)
 		service.set_cache(key, tasks)
 		on_done(tasks, nil)
@@ -101,8 +101,8 @@ function M.edit_task(task, on_done)
 	end
 
 	local payload = { state = task.state == "RESOLVED" and "RESOLVED" or "UNRESOLVED" }
-	if task.content_raw ~= "" then
-		payload.content = { raw = task.content_raw }
+	if task.body ~= "" then
+		payload.content = { raw = task.body }
 	end
 	return service.request("PUT", url, nil, vim.json.encode(payload), function(result, err)
 		if err then

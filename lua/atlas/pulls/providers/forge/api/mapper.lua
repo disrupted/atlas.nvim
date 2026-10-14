@@ -9,7 +9,7 @@ local users = require("atlas.providers.forge.users")
 ---@field start_to integer|nil
 
 ---@class ForgePullMapper
----@field author fun(raw: table): PullsAuthor
+---@field author fun(raw: table): AtlasUser
 ---@field pull_state fun(raw: table): "open"|"merged"|"declined"|"draft"
 ---@field review_lines fun(raw: table): ForgeReviewLines
 ---@field to_review_data fun(pr: PullRequest, raw_reviews: table[]): { reviewers: PullsReviewer[], raw: table[], pending_requests: integer, history: PullsReviewHistoryEntry[] }
@@ -27,7 +27,7 @@ local function new(provider)
 	local M = {}
 
 	---@param raw table
-	---@return PullsAuthor
+	---@return AtlasUser
 	local function author(raw)
 		local login = raw.login
 		local name = raw.full_name or ""
@@ -35,12 +35,11 @@ local function new(provider)
 			id = tostring(raw.id or ""),
 			name = name ~= "" and name or login,
 			username = login,
-			nickname = login,
 		}
 	end
 
 	---@param values table[]
-	---@return PullsAuthor[]
+	---@return AtlasUser[]
 	local function authors(values)
 		local result = {}
 		for _, value in ipairs(values) do
@@ -59,7 +58,6 @@ local function new(provider)
 				provider_id = value.username,
 				name = value.name,
 				username = value.username,
-				nickname = value.nickname,
 				role = "reviewer",
 				decision = "pending",
 			})
@@ -261,7 +259,6 @@ local function new(provider)
 					provider_id = mapped_author.username,
 					name = mapped_author.name,
 					username = mapped_author.username,
-					nickname = mapped_author.nickname,
 					role = role,
 					decision = decision,
 				})
@@ -272,7 +269,6 @@ local function new(provider)
 					provider_id = configured.provider_id,
 					name = configured.name,
 					username = configured.username,
-					nickname = configured.nickname,
 					role = "reviewer",
 					decision = "pending",
 				})
@@ -463,20 +459,19 @@ local function new(provider)
 			id = raw.id,
 			parent_id = nil,
 			author = raw.user and author(raw.user) or nil,
-			content_raw = raw.body or "",
-			created_on = raw.created_at or "",
+			body = raw.body or "",
+			created_at = raw.created_at or "",
 			inline = inline,
 			hunk = hunk,
 			state = comment_state,
 			pending = review_state == "PENDING",
 			resolved_by = resolver and author(resolver) or nil,
 			outdated = outdated,
-			html_url = json.nilify(raw.html_url),
+			url = json.nilify(raw.html_url),
 		}
 		if provider == "forgejo" and inline then
-			comment._raw = {
-				review_id = json.nilify(raw.pull_request_review_id) or (review and json.nilify(review.id)) or nil,
-			}
+			local review_id = json.nilify(raw.pull_request_review_id) or (review and json.nilify(review.id)) or nil
+			comment.thread_id = review_id and tostring(review_id) or nil
 		end
 		return comment
 	end
@@ -527,10 +522,10 @@ local function new(provider)
 			reopen = { "reopened", "reopened" },
 			merge_pull = { "merged", "merged" },
 			delete_branch = { "update", "deleted the source branch" },
-			lock = { "locked", "locked conversation" },
-			unlock = { "unlocked", "unlocked conversation" },
-			pin = { "pinned", "pinned" },
-			unpin = { "unpinned", "unpinned" },
+			lock = { "update", "locked conversation" },
+			unlock = { "update", "unlocked conversation" },
+			pin = { "update", "pinned" },
+			unpin = { "update", "unpinned" },
 		}
 		if events[event] then
 			return { kind = events[event][1], actor = actor, date = date, label = events[event][2] }
@@ -590,7 +585,7 @@ local function new(provider)
 			local before = object_name(raw.old_milestone, "title")
 			local after = object_name(raw.milestone, "title")
 			return {
-				kind = after and "milestoned" or "demilestoned",
+				kind = "update",
 				actor = actor,
 				date = date,
 				label = after and (before and "changed milestone" or "added milestone") or "removed milestone",
@@ -626,7 +621,7 @@ local function new(provider)
 		}
 		if references[event] then
 			return {
-				kind = "referenced",
+				kind = "update",
 				actor = actor,
 				date = date,
 				label = references[event],

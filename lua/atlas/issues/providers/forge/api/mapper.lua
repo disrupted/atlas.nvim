@@ -73,8 +73,8 @@ function M.new(provider_id)
 		pull_ref = { "referenced", "referenced from a pull request" },
 		lock = { "locked", "locked conversation" },
 		unlock = { "unlocked", "unlocked conversation" },
-		pin = { "pinned", "pinned" },
-		unpin = { "unpinned", "unpinned" },
+		pin = { "other", "pinned" },
+		unpin = { "other", "unpinned" },
 	}
 
 	---@param value string|nil
@@ -179,15 +179,10 @@ function M.new(provider_id)
 	function mapper.to_comment(raw)
 		return {
 			id = tostring(raw.id),
-			self = nil,
 			url = raw.html_url,
 			author = user(raw.user),
-			body = raw.body,
-			created = raw.created_at,
-			updated = json.nilify(raw.updated_at),
-			parent_id = nil,
-			children = nil,
-			reactions = nil,
+			body = json.nilify(raw.body) or "",
+			created_at = json.nilify(raw.created_at) or "",
 		}
 	end
 
@@ -202,7 +197,7 @@ function M.new(provider_id)
 		local event = timeline_events[raw_type]
 		---@type IssueActivityEntry
 		local entry = {
-			kind = event and event[1] or raw_type,
+			kind = event and event[1] or "other",
 			actor = user(raw.user),
 			date = nonempty(raw.created_at),
 			label = event and event[2] or raw_type:gsub("_", " "),

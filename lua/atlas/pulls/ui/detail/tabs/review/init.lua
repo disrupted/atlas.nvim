@@ -96,7 +96,7 @@ end
 function M.on_enter(_pr, entry)
 	local comment = entry.comment
 	if comment ~= nil and (entry.entity_kind == "comment" or entry.entity_kind == "task") then
-		local url = tostring(comment.html_url or comment.url or "")
+		local url = tostring(comment.url or "")
 		if url ~= "" then
 			vim.ui.open(url)
 			return true
@@ -112,22 +112,22 @@ function M.show_details(entry, buf)
 		return
 	end
 
-	local content = utils.task_text(task.content_display or task.content_raw or "")
-	local empty = string.format("(empty %s)", (task.task_label or "task"):lower())
+	local content = utils.task_text(task.body_display or task.body or "")
+	local empty = "(empty task)"
 	local lines = vim.split(content ~= "" and content or empty, "\n", { plain = true })
 	lines[1] = (task.state == "RESOLVED" and "[x] " or "[ ] ") .. lines[1]
 
 	local author = task.author
 	local author_name = "Unknown"
 	if author then
-		if author.nickname and author.nickname ~= "" then
-			author_name = author.nickname
+		if author.username and author.username ~= "" then
+			author_name = author.username
 		elseif author.name and author.name ~= "" then
 			author_name = author.name
 		end
 	end
 	table.insert(lines, "")
-	table.insert(lines, string.format("by @%s  %s", author_name, utils.relative_time(task.created_on)))
+	table.insert(lines, string.format("by @%s  %s", author_name, utils.relative_time(task.created_at)))
 	require("atlas.ui.popups.info").show({ lines = lines, source_buf = buf })
 end
 

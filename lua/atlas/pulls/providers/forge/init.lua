@@ -70,33 +70,33 @@ function M.new(provider_id)
 
 			local ordered = {}
 			local sequence = 0
-			local function add(kind, created_on, entity, id)
+			local function add(kind, created_at, entity, id)
 				sequence = sequence + 1
 				table.insert(ordered, {
 					sequence = sequence,
 					item = {
 						id = id,
 						kind = kind,
-						created_on = created_on,
+						created_at = created_at,
 						entity = entity,
 					},
 				})
 			end
 
 			for _, comment in ipairs(result.comments) do
-				add("comment", comment.created_on, comment, "comment:" .. tostring(comment.id))
+				add("comment", comment.created_at, comment, "comment:" .. tostring(comment.id))
 			end
 			for index, event in ipairs(result.events) do
-				local created_on = event.date
-				local id = table.concat({ "activity", created_on, event.kind, tostring(index) }, ":")
-				add("activity", created_on, event, id)
+				local created_at = event.date
+				local id = table.concat({ "activity", created_at, event.kind, tostring(index) }, ":")
+				add("activity", created_at, event, id)
 			end
 
 			table.sort(ordered, function(left, right)
-				if left.item.created_on == right.item.created_on then
+				if left.item.created_at == right.item.created_at then
 					return left.sequence < right.sequence
 				end
-				return left.item.created_on < right.item.created_on
+				return left.item.created_at < right.item.created_at
 			end)
 
 			local items = {}
@@ -105,19 +105,6 @@ function M.new(provider_id)
 			end
 			on_done(items, nil)
 		end)
-	end
-
-	---@param pr PullRequest
-	---@param item PullsConversationItem
-	---@param key string
-	---@param on_done fun(ok: boolean, err: string|nil)
-	---@return { cancel: fun() }|nil
-	local function add_reaction(pr, item, key, on_done)
-		if item.kind ~= "comment" then
-			on_done(false, "This item does not support reactions")
-			return nil
-		end
-		return comments_api.add_reaction(pr, item.entity, key, on_done)
 	end
 
 	return {
@@ -155,11 +142,13 @@ function M.new(provider_id)
 			},
 			comments = {
 				fetch_conversation = fetch_conversation,
-				reaction_options = require("atlas.ui.shared.emojis").github(),
 				add_comment = comments_api.add,
 				edit_comment = comments_api.edit,
 				delete_comment = comments_api.delete,
-				add_reaction = add_reaction,
+				reactions = {
+					options = require("atlas.providers.forge.mapping").reactions,
+					add = comments_api.add_reaction,
+				},
 				set_thread_resolved = comments_api.set_thread_resolved,
 			},
 			reviews = {

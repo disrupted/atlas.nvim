@@ -34,31 +34,15 @@ function M.draw_signs(ns, buf, lookup)
 	end
 end
 
----@param result AtlasDiffResult
 ---@param expanded_threads table<string, boolean>|nil
 ---@return AtlasCommentThreadRenderOptions
-function M.comment_options(result, expanded_threads)
+function M.comment_options(expanded_threads)
 	local options = {}
 	if expanded_threads then
 		options.expanded = function(comment)
 			return thread_ui.is_thread_expanded(comment, expanded_threads)
 		end
 	end
-
-	local pr = result.pr
-	if not pr then
-		return options
-	end
-
-	local provider = providers.load(pr.provider, "pulls")
-	---@cast provider PullsProvider|nil
-	local comments = provider and provider.capabilities.comments
-	if not comments then
-		return options
-	end
-
-	options.reaction_options = comments.reaction_options
-
 	return options
 end
 
@@ -206,9 +190,9 @@ function M.render_virtual_text(items)
 			markers = note_renderer.status_marker(item.note, item.outdated)
 		elseif item.thread then
 			local comment = item.thread.comment
-			body = comment.content_display or comment.content_raw
+			body = comment.body_display or comment.body
 			markers = thread_ui.status_marker(comment)
-			if comment.state == "DELETED" then
+			if comment.deleted then
 				body = "(deleted comment)"
 			end
 		end
@@ -252,7 +236,6 @@ function M.render_virtual_lines(items, width, options)
 			end,
 			padding_x = 0,
 			location = comment_location,
-			reaction_options = options.reaction_options,
 		})
 		local rendered = box.render({ { lines = lines, spans = spans } }, { width = width, padding_x = 0 })
 		vim.list_extend(result, virtual_lines.render(rendered.lines, rendered.highlights))
@@ -383,7 +366,6 @@ function M.open(owner, result, path, items, on_action)
 	---@cast provider PullsProvider|nil
 	local tasks = provider and provider.capabilities.tasks
 	local can_add_task = tasks and tasks.add_task ~= nil
-	local comment_options = M.comment_options(result)
 
 	local keys = {
 		close = keymaps.resolve("ui.close"),
@@ -413,7 +395,6 @@ function M.open(owner, result, path, items, on_action)
 				padding_x = 2,
 				action_keys = labels,
 				location = comment_location,
-				reaction_options = comment_options.reaction_options,
 			})
 		else
 			content, spans, entries = note_renderer.render_cards({ item.note }, math.max(6, width), {
