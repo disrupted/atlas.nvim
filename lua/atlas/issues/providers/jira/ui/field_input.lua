@@ -1,8 +1,11 @@
 local M = {}
 
 local picker = require("atlas.ui.picker")
+local popup_editor = require("atlas.ui.popups.editor")
 local icons = require("atlas.ui.shared.icons")
 local ui_utils = require("atlas.ui.utils")
+local service = require("atlas.providers.jira.client")
+local adf = require("atlas.formats.adf.from_markdown")
 
 ---@param field_id string
 ---@param field JiraMetaField
@@ -12,6 +15,9 @@ function M.display(field_id, field, current)
 	if current and field_id == "priority" then
 		local icon, hl = icons.get(current.label, "priority")
 		return icon .. " " .. current.label, hl
+	elseif current and field.kind == "paragraph" then
+		local lines = vim.split(current.label, "\n")
+		return lines[1] .. (#lines > 1 and " …" or ""), nil
 	elseif current then
 		return current.label, nil
 	end
@@ -69,6 +75,22 @@ function M.edit(field_id, field, current, on_set, on_error)
 					return { id = option.id }
 				end, selected)
 				on_set(#selected > 0 and { label = table.concat(names, ", "), value = ids } or nil)
+			end,
+		})
+	elseif field.kind == "paragraph" then
+		popup_editor.open({
+			key = "jira-field-" .. field_id,
+			title = " " .. field.name .. " ",
+			initial_text = current and current.label,
+			width_ratio = 0.7,
+			height_ratio = 0.5,
+			on_save = function(text)
+				text = vim.trim(text)
+				if text == "" then
+					on_set(nil)
+				else
+					on_set({ label = text, value = service.is_server() and text or adf.to_adf(text) })
+				end
 			end,
 		})
 	else

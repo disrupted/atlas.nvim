@@ -98,6 +98,15 @@ describe("Jira issue mapping", function()
 			mapper.to_meta_field({ schema = { type = "array", items = "string" } }, { "one", "two" }).initial
 		)
 		assert.same({ label = "5", value = 5 }, mapper.to_meta_field({ schema = { type = "number" } }, 5).initial)
+		local document = {
+			type = "doc",
+			version = 1,
+			content = { { type = "paragraph", content = { { type = "text", text = "macOS 15" } } } },
+		}
+		assert.same(
+			{ label = "macOS 15", value = document },
+			mapper.to_meta_field({ schema = { type = "string", system = "environment" } }, document).initial
+		)
 		assert.is_nil(mapper.to_meta_field({ schema = { type = "array", items = "string" } }, {}).initial)
 		assert.is_nil(mapper.to_meta_field({ schema = { type = "user" } }, "someone").initial)
 		assert.is_nil(mapper.to_meta_field({ schema = { type = "option" } }, vim.NIL).initial)
@@ -109,7 +118,11 @@ describe("Jira issue mapping", function()
 		assert.equal("number", kind({ type = "number" }))
 		assert.equal("date", kind({ type = "date" }))
 		assert.equal("labels", kind({ type = "array", items = "string" }))
-		assert.is_nil(kind({ type = "string", custom = "com.atlassian.jira.plugin.system.customfieldtypes:textarea" }))
+		assert.equal("paragraph", kind({ type = "string", system = "environment" }))
+		assert.equal(
+			"paragraph",
+			kind({ type = "string", custom = "com.atlassian.jira.plugin.system.customfieldtypes:textarea" })
+		)
 		assert.is_nil(kind({ type = "string", custom = "com.pyxis.greenhopper.jira:jsw-issue-color" }))
 		assert.is_nil(kind({ type = "user" }))
 	end)

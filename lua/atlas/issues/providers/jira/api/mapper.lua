@@ -254,6 +254,9 @@ local function to_field_value(kind, value)
 		}
 	elseif kind == "labels" then
 		return { label = table.concat(value, ", "), value = value }
+	elseif kind == "paragraph" then
+		local text = vim.trim(type(value) == "table" and adf.to_markdown(value) or tostring(value))
+		return text ~= "" and { label = text, value = value } or nil
 	end
 	return { label = tostring(value), value = value }
 end
@@ -278,6 +281,11 @@ function M.to_meta_field(raw, value)
 		kind = "date"
 	elseif schema.type == "array" and schema.items == "string" then
 		kind = "labels"
+	elseif
+		schema.system == "environment"
+		or schema.custom == "com.atlassian.jira.plugin.system.customfieldtypes:textarea"
+	then
+		kind = "paragraph"
 	elseif
 		schema.custom == "com.atlassian.jira.plugin.system.customfieldtypes:textfield"
 		or schema.custom == "com.atlassian.jira.plugin.system.customfieldtypes:url"

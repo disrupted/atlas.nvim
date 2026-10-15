@@ -26,7 +26,7 @@
 ---@class JiraMetaField
 ---@field name string
 ---@field required boolean
----@field kind "select"|"multi_select"|"text"|"number"|"date"|"labels"|nil
+---@field kind "select"|"multi_select"|"text"|"paragraph"|"number"|"date"|"labels"|nil
 ---@field options { id: string, name: string }[]
 ---@field initial JiraFieldValue|nil
 
