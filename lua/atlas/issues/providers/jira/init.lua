@@ -19,12 +19,16 @@
 ---@field hl_group string|nil
 ---@field display "chip"|"table"
 
+---@class JiraFieldValue
+---@field label string
+---@field value any
+
 ---@class JiraMetaField
 ---@field name string
 ---@field required boolean
 ---@field kind "select"|"multi_select"|"text"|"number"|"date"|"labels"|nil
 ---@field options { id: string, name: string }[]
----@field default { label: string, value: any }|nil
+---@field initial JiraFieldValue|nil
 
 ---@class JiraIssueDetails : IssueDetails
 ---@field type IssueType|nil

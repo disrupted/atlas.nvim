@@ -237,9 +237,9 @@ local function option_name(option)
 end
 
 ---@param kind string|nil
----@param value any Decoded API value.
----@return { label: string, value: any }|nil
-local function to_default(kind, value)
+---@param value any
+---@return JiraFieldValue|nil
+local function to_field_value(kind, value)
 	value = json.nilify(value)
 	if not kind or value == nil or (type(value) == "table" and next(value) == nil) then
 		return nil
@@ -258,9 +258,10 @@ local function to_default(kind, value)
 	return { label = tostring(value), value = value }
 end
 
----@param raw table Create metadata field.
+---@param raw table
+---@param value any
 ---@return JiraMetaField
-function M.to_meta_field(raw)
+function M.to_meta_field(raw, value)
 	local schema = json.safe_table(raw.schema)
 	local options = {}
 	for _, option in ipairs(json.safe_table(raw.allowedValues)) do
@@ -291,7 +292,7 @@ function M.to_meta_field(raw)
 		required = raw.required == true,
 		kind = kind,
 		options = options,
-		default = to_default(kind, raw.defaultValue),
+		initial = to_field_value(kind, value),
 	}
 end
 

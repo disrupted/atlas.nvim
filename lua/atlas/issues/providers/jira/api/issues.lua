@@ -469,7 +469,7 @@ function M.get_create_fields(project_key, issue_type_id, callback)
 
 			local raw_fields = (service.is_server() and result.values or result.fields) or {}
 			for _, raw in ipairs(raw_fields) do
-				fields[raw.fieldId] = normalizer.to_meta_field(raw)
+				fields[raw.fieldId] = normalizer.to_meta_field(raw, raw.defaultValue)
 			end
 			local next_start = start_at + #raw_fields
 			if #raw_fields > 0 and result.isLast ~= true and next_start < result.total then
@@ -481,6 +481,30 @@ function M.get_create_fields(project_key, issue_type_id, callback)
 	end
 	fetch(0)
 	return requests
+end
+
+---@param issue_key string
+---@param callback fun(fields: table<string, JiraMetaField>|nil, err: string|nil)
+---@return { job_id: integer, cancel: fun() }|nil
+function M.get_edit_fields(issue_key, callback)
+	local endpoint = string.format("/issue/%s?expand=editmeta&fields=*all", issue_key)
+
+	return service.request("GET", endpoint, nil, function(result, err)
+		if err or not result then
+			callback(nil, err or "Empty response")
+			return
+		end
+
+		local values = result.fields or {}
+		local fields = {}
+		for field_id, raw in pairs((result.editmeta or {}).fields or {}) do
+			fields[field_id] = normalizer.to_meta_field(raw, values[field_id])
+		end
+		callback(fields, nil)
+	end, {
+		action = "Fetch edit fields",
+		issue_key = issue_key,
+	})
 end
 
 ---@param opts { project: string|nil, issue_key: string|nil }

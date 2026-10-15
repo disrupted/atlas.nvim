@@ -81,30 +81,26 @@ describe("Jira issue mapping", function()
 		)
 		assert.same(
 			{ label = "Medium", value = { id = "3" } },
-			mapper.to_meta_field({
-				schema = { type = "priority" },
-				allowedValues = { { id = "3", name = "Medium" } },
-				defaultValue = { id = "3", name = "Medium" },
-			}).default
+			mapper.to_meta_field(
+				{ schema = { type = "priority" }, allowedValues = { { id = "3", name = "Medium" } } },
+				{ id = "3", name = "Medium" }
+			).initial
 		)
 		assert.same(
 			{ label = "A, B", value = { { id = "1" }, { id = "2" } } },
 			mapper.to_meta_field({
 				schema = { type = "array", items = "option" },
 				allowedValues = { { id = "1", value = "A" }, { id = "2", value = "B" } },
-				defaultValue = { { id = "1", value = "A" }, { id = "2", value = "B" } },
-			}).default
+			}, { { id = "1", value = "A" }, { id = "2", value = "B" } }).initial
 		)
 		assert.same(
 			{ label = "one, two", value = { "one", "two" } },
-			mapper.to_meta_field({ schema = { type = "array", items = "string" }, defaultValue = { "one", "two" } }).default
+			mapper.to_meta_field({ schema = { type = "array", items = "string" } }, { "one", "two" }).initial
 		)
-		assert.same(
-			{ label = "5", value = 5 },
-			mapper.to_meta_field({ schema = { type = "number" }, defaultValue = 5 }).default
-		)
-		assert.is_nil(mapper.to_meta_field({ schema = { type = "user" }, defaultValue = "someone" }).default)
-		assert.is_nil(mapper.to_meta_field({ schema = { type = "option" }, defaultValue = vim.NIL }).default)
+		assert.same({ label = "5", value = 5 }, mapper.to_meta_field({ schema = { type = "number" } }, 5).initial)
+		assert.is_nil(mapper.to_meta_field({ schema = { type = "array", items = "string" } }, {}).initial)
+		assert.is_nil(mapper.to_meta_field({ schema = { type = "user" } }, "someone").initial)
+		assert.is_nil(mapper.to_meta_field({ schema = { type = "option" } }, vim.NIL).initial)
 		assert.equal("multi_select", kind({ type = "array", items = "option" }, { { id = "1", value = "A" } }))
 		assert.equal(
 			"text",
