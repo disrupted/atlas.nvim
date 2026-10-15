@@ -685,7 +685,7 @@ issues = {
         ["Blocked"] = "",
       },
 
-      -- Fields per project; see "Project fields" below.
+      -- Fields and defaults per project; see "Project fields" below.
       KAN = { ... },
     },
   },
@@ -698,15 +698,12 @@ issues = {
 
 Custom fields to display go under `fields` in the project's entry, keyed by Jira field ID. Replace `KAN` with your project key.
 
-- `format` shows the field in the detail panel, as a chip or a table row (`display`).
-- `name` is the field's label.
-
 ```lua
 KAN = {
   fields = {
     customfield_10003 = {
-      name = "Approvers",
-      format = function(value)
+      name = "Approvers", -- the field's label
+      format = function(value) -- what the detail panel shows
         if type(value) ~= "table" or #value == 0 then
           return nil -- nil hides the field
         end
@@ -714,6 +711,16 @@ KAN = {
       end,
       hl_group = "AtlasChipActive",
       display = "chip", -- "chip" or "table"
+    },
+  },
+  -- Pre-fills new issues, with values as Jira shows them.
+  defaults = {
+    issue_type = "Story",
+    fields = {
+      priority = "High",
+      labels = { "backend" },
+      components = { "Backend", "Frontend" },
+      customfield_10050 = "Platform",
     },
   },
 },
