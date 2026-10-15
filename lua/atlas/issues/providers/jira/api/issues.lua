@@ -187,7 +187,7 @@ function M.fetch_issue(ref, opts, callback)
 	end
 
 	local project_key = issue_key:match("^([^-]+)-")
-	local configured = config.options.issues.jira.project_config[project_key] or {}
+	local configured = (config.options.issues.jira.project_config[project_key] or {}).fields or {}
 	local extra_fields = custom_field_ids(configured)
 	local endpoint = string.format("/issue/%s?fields=%s", issue_key, table.concat(detail_fields(extra_fields), ","))
 

@@ -13,7 +13,7 @@ local spinner = require("atlas.ui.components.spinner")
 ---@return boolean
 local function has_fields(issue, display)
 	local project_key = issue.project and issue.project.key or issue.key:match("^([^-]+)-")
-	for _, field in pairs(config.options.issues.jira.project_config[project_key] or {}) do
+	for _, field in pairs((config.options.issues.jira.project_config[project_key] or {}).fields or {}) do
 		if (field.display or "chip") == display then
 			return true
 		end

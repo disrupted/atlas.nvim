@@ -116,6 +116,38 @@ function M.edit(field_id, field, current, on_set, on_error)
 	end
 end
 
+---@param field JiraMetaField
+---@param value any
+---@return JiraFieldValue|nil
+function M.from_config(field, value)
+	local list = type(value) == "table" and value or { value }
+	if field.kind == "select" or field.kind == "multi_select" then
+		local names, ids = {}, {}
+		for _, name in ipairs(list) do
+			for _, option in ipairs(field.options) do
+				if option.name:lower() == tostring(name):lower() then
+					table.insert(names, option.name)
+					table.insert(ids, { id = option.id })
+				end
+			end
+		end
+
+		if #ids == 0 or #ids ~= #list or (field.kind == "select" and #ids > 1) then
+			return nil
+		end
+		return { label = table.concat(names, ", "), value = field.kind == "select" and ids[1] or ids }
+	elseif field.kind == "labels" then
+		return { label = table.concat(list, ", "), value = list }
+	elseif field.kind == "number" then
+		local number = tonumber(value)
+		return number and { label = tostring(number), value = number } or nil
+	elseif field.kind == "paragraph" then
+		local text = tostring(value)
+		return { label = text, value = service.is_server() and text or adf.to_adf(text) }
+	end
+	return { label = tostring(value), value = value }
+end
+
 ---@param fields table<string, JiraMetaField>
 ---@param values table<string, JiraFieldValue>
 ---@param on_select fun(field_id: string, field: JiraMetaField)

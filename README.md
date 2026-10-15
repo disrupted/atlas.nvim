@@ -670,7 +670,7 @@ issues = {
     project_config = {
       -- The Jira custom field ID used for story points. Defaults to "customfield_10016".
       story_points_field = "customfield_10016",
-      -- Override issue type styles by name (case-insensitive).
+      -- Override issue type styles by name (lowercase).
       issue_types = {
         bug = { icon = "" },
         maintenance = { icon = "", hl_group = "AtlasTextWarning" },
@@ -696,23 +696,25 @@ issues = {
 
 **Project fields**
 
-Custom fields to display per project under `project_config`, keyed by Jira field ID. Replace `KAN` with your project key.
+Custom fields to display go under `fields` in the project's entry, keyed by Jira field ID. Replace `KAN` with your project key.
 
 - `format` shows the field in the detail panel, as a chip or a table row (`display`).
 - `name` is the field's label.
 
 ```lua
 KAN = {
-  customfield_10003 = {
-    name = "Approvers",
-    format = function(value)
-      if type(value) ~= "table" or #value == 0 then
-        return nil -- nil hides the field
-      end
-      return table.concat(value, ", ")
-    end,
-    hl_group = "AtlasChipActive",
-    display = "chip", -- "chip" or "table"
+  fields = {
+    customfield_10003 = {
+      name = "Approvers",
+      format = function(value)
+        if type(value) ~= "table" or #value == 0 then
+          return nil -- nil hides the field
+        end
+        return table.concat(value, ", ")
+      end,
+      hl_group = "AtlasChipActive",
+      display = "chip", -- "chip" or "table"
+    },
   },
 },
 ```

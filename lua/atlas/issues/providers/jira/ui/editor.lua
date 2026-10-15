@@ -1,5 +1,6 @@
 local M = {}
 
+local config = require("atlas.config")
 local form = require("atlas.ui.form")
 local issues = require("atlas.issues.providers.jira.api.issues")
 local service = require("atlas.providers.jira.client")
@@ -35,6 +36,7 @@ local adf = require("atlas.formats.adf.from_markdown")
 ---@field issue_type IssueType|nil
 ---@field fields table<string, JiraFieldValue>
 ---@field meta_fields table<string, JiraMetaField>|nil
+---@field defaults AtlasJiraProjectDefaultsConfig
 ---@field raw_description table|string|nil
 ---@field initial JiraIssueEditorValues
 ---@field requests AtlasRequestScope
@@ -197,9 +199,21 @@ local function load_create_fields(state, editor, on_loaded)
 	state.requests.run(function(done)
 		return issues.get_create_fields(state.project_key, issue_type.id, done)
 	end, function(fields, err)
-		if state.issue_type == issue_type then
-			apply_fields(state, editor, fields, err, on_loaded)
+		if state.issue_type ~= issue_type then
+			return
 		end
+
+		for field_id, value in pairs(state.defaults.fields or {}) do
+			local field = fields and fields[field_id]
+			if field and field.kind then
+				local initial = field_input.from_config(field, value)
+				if not initial then
+					notify.warn("Invalid default for " .. field.name)
+				end
+				field.initial = initial or field.initial
+			end
+		end
+		apply_fields(state, editor, fields, err, on_loaded)
 	end)
 end
 
@@ -274,6 +288,35 @@ local function select_issue_type(state, editor, on_selected)
 				end
 			end,
 		})
+	end)
+end
+
+---@param state JiraIssueEditorState
+---@param editor AtlasForm
+local function load_default_type(state, editor)
+	state.loading.type = true
+	editor.statusline:notify("loading", "Loading issue types...")
+	form.render_meta(editor)
+
+	state.requests.run(function(done)
+		return issues.get_issue_types(state.project_key, done)
+	end, function(items, err)
+		state.loading.type = nil
+		local name = state.defaults.issue_type:lower()
+		for _, item in ipairs(items or {}) do
+			if item.name:lower() == name then
+				state.issue_type = item
+			end
+		end
+		render_loading(state, editor)
+
+		if state.submitting then
+			return
+		elseif state.issue_type then
+			load_create_fields(state, editor)
+		else
+			editor.statusline:notify("error", err or ("Unknown issue type " .. state.defaults.issue_type))
+		end
 	end)
 end
 
@@ -569,6 +612,7 @@ local function open_editor(project_key, issue, details, on_done)
 		reporter = reporter,
 		issue_type = issue_type,
 		fields = {},
+		defaults = (config.options.issues.jira.project_config[project_key] or {}).defaults or {},
 		raw_description = details and details.raw_description,
 		initial = {
 			title = vim.trim(details and details.title or ""),
@@ -657,6 +701,9 @@ local function open_editor(project_key, issue, details, on_done)
 		load_edit_fields(state, editor)
 	else
 		load_reporter(state, editor)
+	end
+	if not issue and state.defaults.issue_type then
+		load_default_type(state, editor)
 	end
 	return editor
 end
