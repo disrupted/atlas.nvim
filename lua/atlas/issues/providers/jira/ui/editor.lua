@@ -9,6 +9,7 @@ local picker = require("atlas.ui.picker")
 local requests = require("atlas.core.requests")
 local keymaps = require("atlas.core.keymaps")
 local icons = require("atlas.ui.shared.icons")
+local ui_utils = require("atlas.ui.utils")
 local presentation = require("atlas.issues.ui.presentation")
 local adf = require("atlas.formats.adf.from_markdown")
 
@@ -23,7 +24,7 @@ local adf = require("atlas.formats.adf.from_markdown")
 ---@field assignee string|false
 ---@field reporter string|false
 ---@field issue_type string|false
----@field fields table<string, { name: string, label: string, value: any }>
+---@field fields table<string, { label: string, value: any }>
 
 ---@class JiraIssueEditorState
 ---@field project_key string
@@ -32,7 +33,8 @@ local adf = require("atlas.formats.adf.from_markdown")
 ---@field assignee AtlasUser|nil
 ---@field reporter AtlasUser|nil
 ---@field issue_type IssueType|nil
----@field fields table<string, { name: string, label: string, value: any }>
+---@field fields table<string, { label: string, value: any }>
+---@field type_fields table<string, JiraMetaField>|nil
 ---@field raw_description table|string|nil
 ---@field initial JiraIssueEditorValues
 ---@field requests AtlasRequestScope
@@ -59,6 +61,14 @@ end
 ---@return boolean
 local function is_modified(state, editor)
 	return not vim.deep_equal(values(state, editor), state.initial)
+end
+
+---@param state JiraIssueEditorState
+---@param editor AtlasForm
+---@return boolean
+local function content_modified(state, editor)
+	local current = values(state, editor)
+	return current.title ~= state.initial.title or current.body ~= state.initial.body
 end
 
 ---@param state JiraIssueEditorState
@@ -141,6 +151,52 @@ end
 
 ---@param state JiraIssueEditorState
 ---@param editor AtlasForm
+---@param on_loaded (fun())|nil
+local function load_fields(state, editor, on_loaded)
+	local issue_type = assert(state.issue_type)
+	state.loading.fields = true
+	editor.statusline:notify("loading", "Loading fields...")
+	form.render_meta(editor)
+
+	state.requests.run(function(done)
+		return issues.get_create_fields(state.project_key, issue_type.id, done)
+	end, function(fields, err)
+		if state.issue_type ~= issue_type then
+			return
+		end
+
+		state.loading.fields = nil
+		if fields then
+			local handled = {
+				summary = true,
+				description = true,
+				issuetype = true,
+				project = true,
+				assignee = true,
+				reporter = true,
+			}
+			state.type_fields = {}
+			for field_id, field in pairs(fields) do
+				if field.kind and not handled[field_id] then
+					state.type_fields[field_id] = field
+					state.fields[field_id] = field.default
+				end
+			end
+		end
+		render_loading(state, editor)
+
+		if state.submitting then
+			return
+		elseif not fields then
+			editor.statusline:notify("error", err or "Unable to load fields")
+		elseif on_loaded then
+			on_loaded()
+		end
+	end)
+end
+
+---@param state JiraIssueEditorState
+---@param editor AtlasForm
 ---@param on_selected (fun())|nil
 local function select_issue_type(state, editor, on_selected)
 	if state.submitting or state.loading.type then
@@ -177,17 +233,19 @@ local function select_issue_type(state, editor, on_selected)
 			title = "Issue type",
 			items = items,
 			format_item = function(item)
-				return (item.icon and item.icon.icon or icons.get("issue")) .. " " .. item.name
+				local icon = (item.icon and item.icon.icon or icons.get("issue")) .. " "
+				return icon .. item.name, { { icon, item.icon and item.icon.hl_group }, { item.name } }
 			end,
 			on_select = function(item)
-				if item and not editor.closed and not state.submitting then
-					if not state.issue_type or state.issue_type.id ~= item.id then
-						state.fields = {}
-					end
+				local changed = item and (not state.issue_type or state.issue_type.id ~= item.id)
+				if changed and not editor.closed and not state.submitting then
 					state.issue_type = item
-					form.render_meta(editor)
-					if on_selected then
-						on_selected()
+					if state.issue then
+						form.render_meta(editor)
+					else
+						state.fields = {}
+						state.type_fields = nil
+						load_fields(state, editor, on_selected)
 					end
 				end
 			end,
@@ -214,6 +272,20 @@ local function load_reporter(state, editor)
 	end)
 end
 
+---@param field_id string
+---@param field JiraMetaField
+---@param current { label: string, value: any }|nil
+---@return string, string|nil
+local function field_display(field_id, field, current)
+	if current and field_id == "priority" then
+		local icon, hl = icons.get(current.label, "priority")
+		return icon .. " " .. current.label, hl
+	elseif current then
+		return current.label, nil
+	end
+	return "None", field.required and "AtlasTextWarning" or "AtlasTextMuted"
+end
+
 ---@param state JiraIssueEditorState
 ---@param editor AtlasForm
 ---@param field_id string
@@ -224,7 +296,7 @@ local function edit_field(state, editor, field_id, field)
 	---@param value any
 	local function set(label, value)
 		if not editor.closed and not state.submitting then
-			state.fields[field_id] = label and { name = field.name, label = label, value = value } or nil
+			state.fields[field_id] = label and { label = label, value = value } or nil
 			form.render_meta(editor)
 		end
 	end
@@ -235,7 +307,11 @@ local function edit_field(state, editor, field_id, field)
 			title = field.name,
 			items = vim.list_extend({ none }, field.options),
 			format_item = function(option)
-				return option.name
+				if field_id ~= "priority" or option == none then
+					return option.name
+				end
+				local icon, hl = icons.get(option.name, "priority")
+				return icon .. " " .. option.name, { { icon .. " ", hl }, { option.name } }
 			end,
 			on_select = function(option)
 				if option == none then
@@ -299,68 +375,46 @@ end
 local function select_field(state, editor)
 	if state.submitting or state.loading.fields then
 		return
-	end
-
-	local issue_type = state.issue_type
-	if not issue_type then
+	elseif not state.issue_type then
 		select_issue_type(state, editor, function()
+			select_field(state, editor)
+		end)
+		return
+	elseif not state.type_fields then
+		load_fields(state, editor, function()
 			select_field(state, editor)
 		end)
 		return
 	end
 
-	state.loading.fields = true
-	editor.statusline:notify("loading", "Loading fields...")
-	form.render_meta(editor)
-
-	state.requests.run(function(done)
-		return issues.get_create_fields(state.project_key, issue_type.id, done)
-	end, function(fields, err)
-		state.loading.fields = nil
-		render_loading(state, editor)
-		if state.submitting or state.issue_type ~= issue_type then
-			return
-		elseif not fields then
-			editor.statusline:notify("error", err or "Unable to load fields")
-			return
+	local items = {}
+	local name_width = 0
+	for field_id, field in pairs(state.type_fields) do
+		local name = field.name .. (field.required and "*" or "")
+		name_width = math.max(name_width, vim.fn.strdisplaywidth(name))
+		table.insert(items, { id = field_id, field = field, name = name })
+	end
+	table.sort(items, function(a, b)
+		if a.field.required ~= b.field.required then
+			return a.field.required
 		end
-
-		local handled = {
-			summary = true,
-			description = true,
-			issuetype = true,
-			project = true,
-			assignee = true,
-			reporter = true,
-		}
-		local items = {}
-		for field_id, field in pairs(fields) do
-			if field.kind and not handled[field_id] then
-				table.insert(items, { id = field_id, field = field })
-			end
-		end
-		table.sort(items, function(a, b)
-			if a.field.required ~= b.field.required then
-				return a.field.required
-			end
-			return a.field.name < b.field.name
-		end)
-
-		picker.select({
-			title = "Fields",
-			items = items,
-			format_item = function(item)
-				local current = state.fields[item.id]
-				local required = item.field.required and " *" or ""
-				return item.field.name .. required .. ": " .. (current and current.label or "None")
-			end,
-			on_select = function(item)
-				if item and not editor.closed and not state.submitting then
-					edit_field(state, editor, item.id, item.field)
-				end
-			end,
-		})
+		return a.field.name < b.field.name
 	end)
+
+	picker.select({
+		title = "Fields",
+		items = items,
+		format_item = function(item)
+			local name = ui_utils.pad_right(item.name, name_width) .. "  "
+			local value, hl = field_display(item.id, item.field, state.fields[item.id])
+			return name .. value, { { name }, { value, hl } }
+		end,
+		on_select = function(item)
+			if item and not editor.closed and not state.submitting then
+				edit_field(state, editor, item.id, item.field)
+			end
+		end,
+	})
 end
 
 ---@param state JiraIssueEditorState
@@ -381,9 +435,9 @@ local function render_meta(state)
 				hl = "AtlasJiraKey",
 			},
 			{
-				key = "Type:",
+				key = "Type*:",
 				value = type_name and type_icon .. " " .. type_name or "None",
-				hl = type_hl,
+				hl = type_name and type_hl or "AtlasTextWarning",
 				loading = state.loading.type,
 			},
 		},
@@ -403,14 +457,28 @@ local function render_meta(state)
 		},
 	}
 
-	local fields = vim.tbl_values(state.fields)
+	local fields = {}
+	for field_id, field in pairs(state.type_fields or {}) do
+		local current = state.fields[field_id]
+		if current or field.required then
+			local value, hl = field_display(field_id, field, current)
+			table.insert(fields, { name = field.name, required = field.required, value = value, hl = hl })
+		end
+	end
 	table.sort(fields, function(a, b)
+		if a.required ~= b.required then
+			return a.required
+		end
 		return a.name < b.name
 	end)
 	for i = 1, #fields, 2 do
 		local row = {}
 		for _, field in ipairs({ fields[i], fields[i + 1] }) do
-			table.insert(row, { key = field.name .. ":", value = field.label })
+			table.insert(row, {
+				key = field.name .. (field.required and "*" or "") .. ":",
+				value = field.value,
+				hl = field.hl,
+			})
 		end
 		table.insert(rows, row)
 	end
@@ -509,7 +577,7 @@ end
 local function close(state, editor)
 	if state.submitting then
 		return
-	elseif not is_modified(state, editor) then
+	elseif not content_modified(state, editor) then
 		form.close(editor)
 	else
 		vim.ui.input({ prompt = "Discard issue changes? [y/N]: " }, function(answer)
@@ -620,8 +688,8 @@ local function open_editor(project_key, issue, details, on_done)
 		completion = {
 			context = { provider = "jira", project = project_key, issue = issue and { key = issue.key } },
 		},
-		is_modified = issue and function(form_editor)
-			return is_modified(state, form_editor)
+		is_modified = function(form_editor)
+			return content_modified(state, form_editor)
 		end,
 		meta = function()
 			return render_meta(state)

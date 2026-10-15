@@ -230,6 +230,34 @@ function M.to_issue_details(raw, fields_config)
 	return details
 end
 
+---@param option table
+---@return string
+local function option_name(option)
+	return tostring(option.value or option.name or option.id)
+end
+
+---@param kind string|nil
+---@param value any Decoded API value.
+---@return { label: string, value: any }|nil
+local function to_default(kind, value)
+	value = json.nilify(value)
+	if not kind or value == nil or (type(value) == "table" and next(value) == nil) then
+		return nil
+	elseif kind == "select" then
+		return { label = option_name(value), value = { id = tostring(value.id) } }
+	elseif kind == "multi_select" then
+		return {
+			label = table.concat(vim.tbl_map(option_name, value), ", "),
+			value = vim.tbl_map(function(option)
+				return { id = tostring(option.id) }
+			end, value),
+		}
+	elseif kind == "labels" then
+		return { label = table.concat(value, ", "), value = value }
+	end
+	return { label = tostring(value), value = value }
+end
+
 ---@param raw table Create metadata field.
 ---@return JiraMetaField
 function M.to_meta_field(raw)
@@ -257,11 +285,13 @@ function M.to_meta_field(raw)
 	elseif schema.type == "number" then
 		kind = "number"
 	end
+
 	return {
 		name = json.safe_str(raw.name) or tostring(raw.fieldId),
 		required = raw.required == true,
 		kind = kind,
 		options = options,
+		default = to_default(kind, raw.defaultValue),
 	}
 end
 

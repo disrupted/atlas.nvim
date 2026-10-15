@@ -65,6 +65,14 @@ end
 
 ---@param state GitHubIssueEditorState
 ---@param editor AtlasForm
+---@return boolean
+local function content_modified(state, editor)
+	local current = values(state, editor)
+	return current.title ~= state.initial.title or current.body ~= state.initial.body
+end
+
+---@param state GitHubIssueEditorState
+---@param editor AtlasForm
 local function load_reporter(state, editor)
 	local statusline = editor.statusline
 	state.loading.reporter = true
@@ -403,7 +411,7 @@ end
 local function close(state, editor)
 	if state.submitting then
 		return
-	elseif not is_modified(state, editor) then
+	elseif not content_modified(state, editor) then
 		form.close(editor)
 	else
 		vim.ui.input({ prompt = "Discard issue changes? [y/N]: " }, function(answer)
@@ -452,8 +460,8 @@ local function open_editor(repo_slug, issue, details, on_done)
 		completion = {
 			context = { provider = "github", repository = repo_slug, issue = issue and { key = issue.key } },
 		},
-		is_modified = issue and function(editor)
-			return is_modified(state, editor)
+		is_modified = function(editor)
+			return content_modified(state, editor)
 		end,
 		meta = function()
 			return render_meta(state)

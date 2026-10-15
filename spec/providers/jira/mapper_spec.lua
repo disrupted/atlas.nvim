@@ -79,6 +79,32 @@ describe("Jira issue mapping", function()
 				allowedValues = { { id = "1", value = "Platform" }, { id = 2, name = "High" }, { name = "No id" } },
 			})
 		)
+		assert.same(
+			{ label = "Medium", value = { id = "3" } },
+			mapper.to_meta_field({
+				schema = { type = "priority" },
+				allowedValues = { { id = "3", name = "Medium" } },
+				defaultValue = { id = "3", name = "Medium" },
+			}).default
+		)
+		assert.same(
+			{ label = "A, B", value = { { id = "1" }, { id = "2" } } },
+			mapper.to_meta_field({
+				schema = { type = "array", items = "option" },
+				allowedValues = { { id = "1", value = "A" }, { id = "2", value = "B" } },
+				defaultValue = { { id = "1", value = "A" }, { id = "2", value = "B" } },
+			}).default
+		)
+		assert.same(
+			{ label = "one, two", value = { "one", "two" } },
+			mapper.to_meta_field({ schema = { type = "array", items = "string" }, defaultValue = { "one", "two" } }).default
+		)
+		assert.same(
+			{ label = "5", value = 5 },
+			mapper.to_meta_field({ schema = { type = "number" }, defaultValue = 5 }).default
+		)
+		assert.is_nil(mapper.to_meta_field({ schema = { type = "user" }, defaultValue = "someone" }).default)
+		assert.is_nil(mapper.to_meta_field({ schema = { type = "option" }, defaultValue = vim.NIL }).default)
 		assert.equal("multi_select", kind({ type = "array", items = "option" }, { { id = "1", value = "A" } }))
 		assert.equal(
 			"text",

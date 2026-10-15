@@ -24,6 +24,7 @@
 ---@field required boolean
 ---@field kind "select"|"multi_select"|"text"|"number"|"date"|"labels"|nil
 ---@field options { id: string, name: string }[]
+---@field default { label: string, value: any }|nil
 
 ---@class JiraIssueDetails : IssueDetails
 ---@field type IssueType|nil
