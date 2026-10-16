@@ -98,6 +98,19 @@ describe("Jira issue mapping", function()
 			mapper.to_meta_field({ schema = { type = "array", items = "string" } }, { "one", "two" }).initial
 		)
 		assert.same({ label = "5", value = 5 }, mapper.to_meta_field({ schema = { type = "number" } }, 5).initial)
+		assert.same(
+			{ label = "Sprint 3", value = 3 },
+			mapper.to_meta_field({ schema = { custom = "com.pyxis.greenhopper.jira:gh-sprint" } }, {
+				{ id = 2, name = "Sprint 2", state = "closed" },
+				{ id = 3, name = "Sprint 3", state = "active" },
+			}).initial
+		)
+		assert.is_nil(
+			mapper.to_meta_field(
+				{ schema = { custom = "com.pyxis.greenhopper.jira:gh-sprint" } },
+				{ { id = 2, name = "Sprint 2", state = "closed" } }
+			).initial
+		)
 		local document = {
 			type = "doc",
 			version = 1,
@@ -118,6 +131,10 @@ describe("Jira issue mapping", function()
 		assert.equal("number", kind({ type = "number" }))
 		assert.equal("date", kind({ type = "date" }))
 		assert.equal("labels", kind({ type = "array", items = "string" }))
+		assert.equal(
+			"sprint",
+			kind({ type = "array", items = "json", custom = "com.pyxis.greenhopper.jira:gh-sprint" })
+		)
 		assert.equal("paragraph", kind({ type = "string", system = "environment" }))
 		assert.equal(
 			"paragraph",

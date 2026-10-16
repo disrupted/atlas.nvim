@@ -483,6 +483,54 @@ function M.get_create_fields(project_key, issue_type_id, callback)
 	return requests
 end
 
+---@param project_key string
+---@param callback fun(sprints: { id: string, name: string }[]|nil, err: string|nil)
+---@return AtlasRequestScope
+function M.get_sprints(project_key, callback)
+	local requests = request_scope.new()
+	requests.run(function(done)
+		return service.request(
+			"GET",
+			"/rest/agile/1.0/board?type=scrum,simple&projectKeyOrId=" .. url_encode(project_key),
+			nil,
+			done,
+			{ action = "Fetch boards", project_key = project_key }
+		)
+	end, function(boards, err)
+		-- Just the first board for now. Company-managed projects could have more I guess, but one has been enough so far (for me :))
+		local board = boards and (boards.values or {})[1]
+		if err or not boards then
+			callback(nil, err or "Empty response")
+			return
+		elseif not board then
+			callback({}, nil)
+			return
+		end
+
+		requests.run(function(done)
+			return service.request(
+				"GET",
+				string.format("/rest/agile/1.0/board/%s/sprint?state=active,future", board.id),
+				nil,
+				done,
+				{ action = "Fetch sprints", board_id = board.id }
+			)
+		end, function(sprints, sprints_err)
+			if sprints_err or not sprints then
+				callback(nil, sprints_err or "Empty response")
+				return
+			end
+			callback(
+				vim.tbl_map(function(sprint)
+					return { id = tostring(sprint.id), name = tostring(sprint.name) }
+				end, sprints.values or {}),
+				nil
+			)
+		end)
+	end)
+	return requests
+end
+
 ---@param issue_key string
 ---@param callback fun(fields: table<string, JiraMetaField>|nil, err: string|nil)
 ---@return { job_id: integer, cancel: fun() }|nil

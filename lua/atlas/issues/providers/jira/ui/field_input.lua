@@ -50,6 +50,22 @@ function M.edit(field_id, field, current, on_set, on_error)
 				end
 			end,
 		})
+	elseif field.kind == "sprint" then
+		local none = { id = "", name = "None" }
+		picker.select({
+			title = field.name,
+			items = vim.list_extend({ none }, field.options),
+			format_item = function(option)
+				return option.name
+			end,
+			on_select = function(option)
+				if option == none then
+					on_set(nil)
+				elseif option then
+					on_set({ label = option.name, value = tonumber(option.id) })
+				end
+			end,
+		})
 	elseif field.kind == "multi_select" then
 		local chosen = {}
 		for _, option in ipairs(current and current.value or {}) do
@@ -141,6 +157,8 @@ function M.from_config(field, value)
 	elseif field.kind == "number" then
 		local number = tonumber(value)
 		return number and { label = tostring(number), value = number } or nil
+	elseif field.kind == "sprint" then
+		return nil
 	elseif field.kind == "paragraph" then
 		local text = tostring(value)
 		return { label = text, value = service.is_server() and text or adf.to_adf(text) }

@@ -36,11 +36,12 @@ local adf = require("atlas.formats.adf.from_markdown")
 ---@field issue_type IssueType|nil
 ---@field fields table<string, JiraFieldValue>
 ---@field meta_fields table<string, JiraMetaField>|nil
+---@field sprints { id: string, name: string }[]|nil
 ---@field defaults AtlasJiraProjectDefaultsConfig
 ---@field raw_description table|string|nil
 ---@field initial JiraIssueEditorValues
 ---@field requests AtlasRequestScope
----@field loading { assignee?: boolean, reporter?: boolean, type?: boolean, fields?: boolean }
+---@field loading { assignee?: boolean, reporter?: boolean, type?: boolean, fields?: boolean, sprints?: boolean }
 ---@field submitting boolean
 
 ---@param state JiraIssueEditorState
@@ -341,8 +342,57 @@ end
 
 ---@param state JiraIssueEditorState
 ---@param editor AtlasForm
+---@param on_loaded fun()
+local function load_sprints(state, editor, on_loaded)
+	state.loading.sprints = true
+	editor.statusline:notify("loading", "Loading sprints...")
+	form.render_meta(editor)
+
+	state.requests.run(function(done)
+		return issues.get_sprints(state.project_key, done)
+	end, function(sprints, err)
+		state.loading.sprints = nil
+		state.sprints = sprints
+		render_loading(state, editor)
+
+		if state.submitting then
+			return
+		elseif not sprints then
+			editor.statusline:notify("error", err or "Unable to load sprints")
+		else
+			on_loaded()
+		end
+	end)
+end
+
+---@param state JiraIssueEditorState
+---@param editor AtlasForm
+---@param field_id string
+---@param field JiraMetaField
+local function edit_field(state, editor, field_id, field)
+	if field.kind == "sprint" and not state.sprints then
+		load_sprints(state, editor, function()
+			edit_field(state, editor, field_id, field)
+		end)
+		return
+	elseif field.kind == "sprint" then
+		field.options = state.sprints
+	end
+
+	field_input.edit(field_id, field, state.fields[field_id], function(value)
+		if not editor.closed and not state.submitting then
+			state.fields[field_id] = value
+			form.render_meta(editor)
+		end
+	end, function(err)
+		editor.statusline:notify("error", err)
+	end)
+end
+
+---@param state JiraIssueEditorState
+---@param editor AtlasForm
 local function select_field(state, editor)
-	if state.submitting or state.loading.fields then
+	if state.submitting or state.loading.fields or state.loading.sprints then
 		return
 	elseif not state.issue_type then
 		select_issue_type(state, editor, function()
@@ -362,17 +412,9 @@ local function select_field(state, editor)
 	end
 
 	field_input.select(state.meta_fields, state.fields, function(field_id, field)
-		if editor.closed or state.submitting then
-			return
+		if not editor.closed and not state.submitting then
+			edit_field(state, editor, field_id, field)
 		end
-		field_input.edit(field_id, field, state.fields[field_id], function(value)
-			if not editor.closed and not state.submitting then
-				state.fields[field_id] = value
-				form.render_meta(editor)
-			end
-		end, function(err)
-			editor.statusline:notify("error", err)
-		end)
 	end)
 end
 
