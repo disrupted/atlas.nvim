@@ -671,28 +671,28 @@ local function open_editor(project_key, issue, details, on_done)
 
 	local editor_keys = {
 		{
-			key = "ga",
+			key = keymaps.resolve("editor.assignees"),
 			desc = "assignee",
 			action = function(editor)
 				select_user(state, editor, "assignee")
 			end,
 		},
 		{
-			key = "gr",
+			key = keymaps.resolve("editor.reporter"),
 			desc = "reporter",
 			action = function(editor)
 				select_user(state, editor, "reporter")
 			end,
 		},
 		{
-			key = "gt",
+			key = keymaps.resolve("editor.issue_type"),
 			desc = "issue type",
 			action = function(editor)
 				select_issue_type(state, editor)
 			end,
 		},
 		{
-			key = "gf",
+			key = keymaps.resolve("editor.fields"),
 			desc = "fields",
 			action = function(editor)
 				select_field(state, editor)

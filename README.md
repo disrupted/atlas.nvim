@@ -913,6 +913,18 @@ keymaps = {
     edit_issue = "ge",
     create_issue = "c",
   },
+  editor = {
+    assignees = "ga",
+    labels = "gl", -- GitHub and GitLab only.
+    milestone = "gm", -- GitHub and GitLab only.
+    reporter = "gr", -- Jira only.
+    reviewers = "gr", -- Pull requests only.
+    base = "gb", -- Pull requests only.
+    draft = "gD", -- Pull requests only.
+    issue_type = "gt", -- Jira only.
+    fields = "gf", -- Jira only.
+    templates = "gT",
+  },
   pulls = {
     open_diff = "gd",
     checkout = "gc",

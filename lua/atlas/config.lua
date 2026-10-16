@@ -355,6 +355,18 @@ local defaults = {
 			edit_issue = "ge",
 			create_issue = "c",
 		},
+		editor = {
+			assignees = "ga",
+			labels = "gl",
+			milestone = "gm",
+			reporter = "gr",
+			reviewers = "gr",
+			base = "gb",
+			draft = "gD",
+			issue_type = "gt",
+			fields = "gf",
+			templates = "gT",
+		},
 	},
 }
 

@@ -411,7 +411,7 @@ local function open_editor(state)
 	if state.pr.state == "open" or state.pr.state == "draft" then
 		if state.provider.capabilities.repository then
 			form_keymaps[#form_keymaps + 1] = {
-				key = "gb",
+				key = keymaps.resolve("editor.base"),
 				desc = "base",
 				action = function(editor)
 					select_base(state, editor)
@@ -420,7 +420,7 @@ local function open_editor(state)
 		end
 		if write.fetch_reviewer_candidates then
 			form_keymaps[#form_keymaps + 1] = {
-				key = "gr",
+				key = keymaps.resolve("editor.reviewers"),
 				desc = "reviewers",
 				action = function(editor)
 					select_reviewers(state, editor)
@@ -428,7 +428,7 @@ local function open_editor(state)
 			}
 		end
 		form_keymaps[#form_keymaps + 1] = {
-			key = "gD",
+			key = keymaps.resolve("editor.draft"),
 			desc = "draft",
 			action = function(editor)
 				if state.submitting then
@@ -441,7 +441,7 @@ local function open_editor(state)
 	end
 	if write.fetch_assignees then
 		form_keymaps[#form_keymaps + 1] = {
-			key = "ga",
+			key = keymaps.resolve("editor.assignees"),
 			desc = "assignees",
 			action = function(editor)
 				select_assignees(state, editor)
@@ -450,7 +450,7 @@ local function open_editor(state)
 	end
 	if write.fetch_labels then
 		form_keymaps[#form_keymaps + 1] = {
-			key = "gl",
+			key = keymaps.resolve("editor.labels"),
 			desc = "labels",
 			action = function(editor)
 				select_labels(state, editor)

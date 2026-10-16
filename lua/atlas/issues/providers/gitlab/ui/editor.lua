@@ -10,6 +10,7 @@ local users = require("atlas.providers.gitlab.users")
 local highlights = require("atlas.ui.highlights")
 local icons = require("atlas.ui.shared.icons")
 local presentation = require("atlas.issues.ui.presentation")
+local keymaps = require("atlas.core.keymaps")
 
 ---@class GitLabIssueEditorResult
 ---@field key string
@@ -509,21 +510,21 @@ local function open_editor(project_path, issue, details, on_done)
 		end,
 		keymaps = {
 			{
-				key = "ga",
+				key = keymaps.resolve("editor.assignees"),
 				desc = "assignees",
 				action = function(editor)
 					select_assignees(state, editor)
 				end,
 			},
 			{
-				key = "gl",
+				key = keymaps.resolve("editor.labels"),
 				desc = "labels",
 				action = function(editor)
 					select_labels(state, editor)
 				end,
 			},
 			{
-				key = "gm",
+				key = keymaps.resolve("editor.milestone"),
 				desc = "milestone",
 				action = function(editor)
 					select_milestone(state, editor)
