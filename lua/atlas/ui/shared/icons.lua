@@ -40,6 +40,7 @@ local ICONS = {
 
 	user = { icon = "", hl_group = "AtlasTextMuted" },
 	comment = { icon = "", hl_group = "AtlasTextMuted" },
+	upvote = { icon = "", hl_group = "AtlasTextMuted" },
 	conversation = { icon = "", hl_group = "AtlasTextMuted" },
 	review = { icon = "", hl_group = "AtlasTextMuted" },
 
@@ -56,6 +57,7 @@ local ICONS = {
 	pending = { icon = "○", hl_group = "AtlasTextMuted" },
 	progress = { icon = "󰦖", hl_group = "AtlasTextWarning" },
 	success = { icon = "", hl_group = "AtlasTextPositive" },
+	check_circle = { icon = "", hl_group = "AtlasTextPositive" },
 	info = { icon = "", hl_group = "AtlasTextMuted" },
 	warning = { icon = "", hl_group = "AtlasTextMuted" },
 	error = { icon = "", hl_group = "AtlasLogError" },

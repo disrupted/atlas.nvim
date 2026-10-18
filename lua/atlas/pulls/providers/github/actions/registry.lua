@@ -8,6 +8,7 @@
 ---| "toggle_subscription"
 
 local M = {}
+---@cast M AtlasActionsCapability
 
 local actions = require("atlas.pulls.actions")
 local action_utils = require("atlas.pulls.actions.utils")
@@ -120,7 +121,7 @@ local function edit_assignees(ctx, done)
 	local pr = assert(ctx.pr)
 
 	local slug = pr.repo_full_name
-	---@param assignees PullsAuthor[]
+	---@param assignees AtlasUser[]
 	local function open_picker(assignees)
 		users_api.get_assignable_users(slug, nil, function(items, err)
 			if err then
@@ -197,7 +198,7 @@ local function edit_assignees(ctx, done)
 		open_picker(details.assignees)
 		return
 	end
-	pullrequests.get_pr(pr.repo.owner, pr.repo.repo_name, pr.id, function(details, err)
+	pullrequests.fetch_pullrequest(pr, nil, function(details, err)
 		if err or details == nil then
 			local message = tostring(err or "Failed to load pull request")
 			notify(ctx, "error", "Failed to load assignees: " .. message)
@@ -216,7 +217,7 @@ local function edit_labels(ctx, done)
 	local slug = pr.repo_full_name
 
 	notify(ctx, "loading", "Loading labels...")
-	pullrequests.get_pr(pr.repo.owner, pr.repo.repo_name, pr.id, function(current, current_err)
+	pullrequests.fetch_pullrequest(pr, nil, function(current, current_err)
 		if current_err or current == nil then
 			notify(ctx, "error", current_err or "Failed to load PR labels")
 			done(nil, current_err or "Failed to load PR labels")
@@ -379,7 +380,7 @@ local function search_results(repo, ctx, done)
 		end,
 		preview_item = function(item, preview_done)
 			local pr = item.value
-			return pullrequests.get_pr(pr.repo.owner, pr.repo.repo_name, pr.id, function(details, err)
+			return pullrequests.fetch_pullrequest(pr, nil, function(details, err)
 				if err or details == nil then
 					preview_done({ title = item.label, lines = { err or "Failed to load pull request" } })
 					return
@@ -500,7 +501,7 @@ local function toggle_subscription(ctx, done)
 		update(ctx.details)
 		return
 	end
-	pullrequests.get_pr(pr.repo.owner, pr.repo.repo_name, pr.id, function(details, fetch_err)
+	pullrequests.fetch_pullrequest(pr, nil, function(details, fetch_err)
 		if fetch_err or details == nil then
 			local message = tostring(fetch_err or "Failed to load pull request details")
 			notify(ctx, "error", message)
@@ -590,7 +591,7 @@ register({
 			title = "Browse Repository",
 			include_all = false,
 			on_select = function(repo)
-				require("atlas.ui.repository").open(repo, ctx.provider)
+				require("atlas.ui.repository").open(repo, ctx.provider, { page = ctx.page })
 				done(nil, nil)
 			end,
 			on_cancel = function()

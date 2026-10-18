@@ -13,7 +13,7 @@ local function text(value, marks)
 end
 
 local function converts(content, expected)
-	assert.equals(expected, adf.to_markdown(doc(content)))
+	assert.equal(expected, adf.to_markdown(doc(content)))
 end
 
 local function list_item(value)
@@ -133,10 +133,7 @@ describe("Jira ADF to Markdown", function()
 		}, "@user")
 	end)
 
-	it("converts known and unknown emoji", function()
-		converts({
-			paragraph({ { type = "emoji", attrs = { shortName = ":smile:" } } }),
-		}, "")
+	it("keeps emoji shortcodes", function()
 		converts({
 			paragraph({
 				{
@@ -148,10 +145,7 @@ describe("Jira ADF to Markdown", function()
 					},
 				},
 			}),
-		}, "")
-		converts({
-			paragraph({ { type = "emoji", attrs = { shortName = ":party_parrot:" } } }),
-		}, ":party_parrot:")
+		}, ":check_mark:")
 	end)
 
 	it("converts statuses", function()
@@ -218,8 +212,8 @@ describe("Jira ADF to Markdown", function()
 	end)
 
 	it("handles nil and node arrays", function()
-		assert.equals("", adf.to_markdown(nil))
-		assert.equals(
+		assert.equal("", adf.to_markdown(nil))
+		assert.equal(
 			"a\n\nb",
 			adf.to_markdown({
 				paragraph({ text("a") }),

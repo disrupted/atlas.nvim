@@ -40,7 +40,7 @@ function M.render(view)
 	end
 
 	local expanded = view.result.options.comment_display == "virtual_lines"
-	local options = ui.comment_options(view.result, view.expanded_threads)
+	local options = ui.comment_options(view.expanded_threads)
 	local placed = {}
 	for _, pane in pairs(panes) do
 		view.annotations[pane.buf] = {}

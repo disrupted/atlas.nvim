@@ -10,6 +10,9 @@
 ---@field project JiraIssueProject|nil
 ---@field priority string|nil
 
+---@class JiraIssueStatus : IssueStatus
+---@field category string|nil
+
 ---@class JiraIssueCustomField
 ---@field name string
 ---@field formatted string
@@ -28,19 +31,18 @@ local comments_api = require("atlas.issues.providers.jira.api.comments")
 local config = require("atlas.config")
 local detail_ui = require("atlas.issues.providers.jira.ui.detail")
 local issues_api = require("atlas.issues.providers.jira.api.issues")
+local projects_api = require("atlas.issues.providers.jira.api.projects")
 local links_api = require("atlas.issues.providers.jira.api.links")
+local requests = require("atlas.core.requests")
+local notify = require("atlas.core.notify")
+
+local CATEGORY_ORDER = { new = 1, indeterminate = 2, done = 3 }
 
 ---@param view IssuesViewConfig
 ---@return string
 local function resolve_search(view)
 	---@cast view AtlasJiraViewConfig
 	return tostring(view.jql or view.search or "")
-end
-
----@param target AtlasTarget
----@return AtlasJiraViewConfig
-local function view_for_target(target)
-	return { name = "Search", layout = "compact", jql = "key = " .. target.issue_key }
 end
 
 ---@param target AtlasTarget
@@ -62,104 +64,55 @@ local function fetch_issues(view, opts, on_done)
 		return nil
 	end
 
-	return issues_api.search_issues(jql, function(page, err)
+	local scope = requests.new()
+	scope.run(function(done)
+		return issues_api.search_issues(jql, done, {
+			force_refresh = opts.force_refresh == true,
+			pagelen = opts.pagelen,
+			cursor = opts.cursor,
+		})
+	end, function(page, err)
 		if err or page == nil then
 			on_done({ items = {}, query = jql }, err or "Failed to fetch issues")
 			return
 		end
 		page.query = jql
-		on_done(page, nil)
-	end, {
-		force_refresh = opts.force_refresh == true,
-		pagelen = opts.pagelen,
-		cursor = opts.cursor,
-	})
-end
-
----@param refs IssueRef[]
----@param opts IssuesFetchOpts
----@param on_done fun(issues: Issue[], err: string|nil)
----@return { cancel: fun() }|nil
-local function fetch_by_refs(refs, opts, on_done)
-	if #refs == 0 then
-		on_done({}, nil)
-		return nil
-	end
-
-	local quoted = {}
-	for _, ref in ipairs(refs) do
-		table.insert(quoted, string.format('"%s"', ref.key:gsub('"', '\\"')))
-	end
-
-	return issues_api.search_issues("key in (" .. table.concat(quoted, ",") .. ")", function(page, err)
-		if err or page == nil then
-			on_done({}, err or "Failed to fetch issues")
+		if view.layout ~= "board" then
+			on_done(page, nil)
 			return
 		end
-		on_done(page.items, nil)
-	end, {
-		force_refresh = opts.force_refresh == true,
-		pagelen = #refs,
-	})
-end
-
----@param issue Issue
----@param content string
----@param opts { parent?: IssueComment }|nil
----@param on_done fun(comment: IssueComment|nil, err: string|nil)
----@return { cancel: fun() }|nil
-local function add_comment(issue, content, opts, on_done)
-	local issue_key = tostring(issue.key or "")
-	local parent = opts and opts.parent
-	return comments_api.add_comment(issue_key, content, { parent_id = parent and tostring(parent.id) or nil }, on_done)
-end
-
----@param issue Issue
----@param comment IssueComment
----@param content string
----@param on_done fun(comment: IssueComment|nil, err: string|nil)
----@return { cancel: fun() }|nil
-local function edit_comment(issue, comment, content, on_done)
-	local issue_key = tostring(issue.key or "")
-	return comments_api.edit_comment(issue_key, tostring(comment.id), content, on_done)
-end
-
----@param issue Issue
----@param opts { force_refresh: boolean|nil }|nil
----@param on_done fun(items: IssueConversationItem[]|nil, err: string|nil)
----@return { cancel: fun() }|nil
-local function fetch_conversation(issue, opts, on_done)
-	local issue_key = tostring(issue.key or "")
-	if issue_key == "" then
-		on_done(nil, "Invalid issue key")
-		return nil
-	end
-
-	return comments_api.get_comments(issue_key, function(comments, err)
-		if err or comments == nil then
-			on_done(nil, err or "Failed to fetch comments")
-			return
+		local projects = {}
+		for _, issue in ipairs(page.items) do
+			local project = issue.project and (issue.project.id or issue.project.key)
+			if project and project ~= "" then
+				projects[project] = function(done)
+					return projects_api.get_statuses(project, done)
+				end
+			end
 		end
-		local items = {}
-		for _, comment in ipairs(comments) do
-			table.insert(items, {
-				id = "comment:" .. tostring(comment.id),
-				kind = "comment",
-				created_at = comment.created or "",
-				entity = comment,
-			})
-		end
-		on_done(items, nil)
-	end, opts)
-end
-
----@param issue Issue
----@param comment IssueComment
----@param on_done fun(ok: boolean, err: string|nil)
----@return { cancel: fun() }|nil
-local function delete_comment(issue, comment, on_done)
-	local issue_key = tostring(issue.key or "")
-	return comments_api.delete_comment(issue_key, tostring(comment.id), on_done)
+		scope.all(projects, function(results, errors)
+			---@type JiraIssueStatus[]
+			local statuses = {}
+			for _, result in pairs(results) do
+				vim.list_extend(statuses, result)
+			end
+			table.sort(statuses, function(a, b)
+				local a_rank, b_rank = CATEGORY_ORDER[a.category] or 4, CATEGORY_ORDER[b.category] or 4
+				if a_rank ~= b_rank then
+					return a_rank < b_rank
+				end
+				if a.name:lower() ~= b.name:lower() then
+					return a.name:lower() < b.name:lower()
+				end
+				return a.id < b.id
+			end)
+			if next(errors) then
+				notify.warn("Failed to load board statuses: " .. table.concat(vim.tbl_values(errors), "; "))
+			end
+			on_done(vim.tbl_extend("force", page, { statuses = statuses }), nil)
+		end)
+	end)
+	return { cancel = scope.cancel }
 end
 
 ---@return AtlasJiraViewConfig[]
@@ -179,26 +132,22 @@ end
 
 return {
 	views = views,
-	view_for_target = view_for_target,
 	issue_ref = target_issue_ref,
 	capabilities = {
 		actions = require("atlas.issues.providers.jira.actions.registry"),
 		core = {
 			fetch_issues = fetch_issues,
-			fetch_by_refs = fetch_by_refs,
+			fetch_by_refs = issues_api.fetch_by_refs,
 			fetch_issue = issues_api.fetch_issue,
 			fetch_links = links_api.fetch,
 		},
 		comments = {
-			fetch_activity = function(issue, opts, on_done)
-				return issues_api.get_issue_history(tostring(issue.key or ""), on_done, opts)
-			end,
-			fetch_conversation = fetch_conversation,
-			add_comment = add_comment,
-			edit_comment = edit_comment,
-			delete_comment = delete_comment,
-			-- add_reaction = nil,
-			-- reaction_options = nil,
+			fetch_activity = issues_api.fetch_activity,
+			fetch_conversation = comments_api.fetch_conversation,
+			add_comment = comments_api.add_comment,
+			edit_comment = comments_api.edit_comment,
+			delete_comment = comments_api.delete_comment,
+			-- reactions = nil,
 		},
 		ui = {
 			detail = detail_ui,

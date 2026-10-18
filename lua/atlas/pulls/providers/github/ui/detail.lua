@@ -32,7 +32,7 @@ function M.chips(_pr, details, _loading)
 	local chips = {}
 
 	for _, lbl in ipairs(details and details.labels or {}) do
-		table.insert(chips, { label = lbl.name, hl = highlights.chip(lbl.color) })
+		table.insert(chips, { label = lbl.name, hl = highlights.label(lbl.color) })
 	end
 
 	return chips

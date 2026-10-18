@@ -209,7 +209,7 @@ end
 
 local function start_refresh_timer()
 	stop_refresh_timer()
-	refresh_timer = vim.loop.new_timer()
+	refresh_timer = vim.uv.new_timer()
 	if refresh_timer == nil then
 		return
 	end

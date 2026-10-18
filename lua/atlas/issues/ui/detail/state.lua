@@ -10,9 +10,10 @@ local request_scope = require("atlas.core.requests")
 ---@field current_tab string|nil
 ---@field tabs IssuesDetailTabDefinition[]
 ---@field on_update fun(issue: Issue|nil, result: IssuesActionResult|nil)|nil
+---@field back fun()|nil
 ---@field line_map table<integer, table>
 ---@field details_loading boolean
----@field links AtlasDetailLinks|nil
+---@field links { items: AtlasRelatedItem[], loading: boolean, error: string|nil }|nil
 ---@field issue_loading boolean
 ---@field requests AtlasRequestScope
 ---@field spinner_timer uv.uv_timer_t|nil

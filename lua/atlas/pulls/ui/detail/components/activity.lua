@@ -5,6 +5,7 @@ local icons = require("atlas.ui.shared.icons")
 local activity = require("atlas.ui.components.activity")
 local presentation = require("atlas.pulls.ui.presentation")
 
+---@type table<PullsActivityKind, string>
 local EVENT = {
 	approval = icons.get("successful", "status"),
 	unapproval = icons.get("inprogress", "status"),

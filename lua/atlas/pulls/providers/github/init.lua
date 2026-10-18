@@ -6,7 +6,7 @@
 ---@field lines_removed number
 
 ---@class GitHubPullRequestDetails : PullRequestDetails
----@field assignees PullsAuthor[]
+---@field assignees AtlasUser[]
 ---@field labels PullsLabel[]
 
 local activity_api = require("atlas.pulls.providers.github.api.activity")
@@ -14,7 +14,7 @@ local changes_api = require("atlas.pulls.providers.github.api.changes")
 local checks_api = require("atlas.pulls.providers.github.api.checks")
 local config = require("atlas.config")
 local comments_api = require("atlas.pulls.providers.github.api.comments")
-local emojis = require("atlas.ui.shared.emojis")
+local github_mapper = require("atlas.providers.github.mapper")
 local git = require("atlas.core.git")
 local links_api = require("atlas.providers.github.links")
 local pullrequests_api = require("atlas.pulls.providers.github.api.pullrequests")
@@ -24,21 +24,6 @@ local search_query = require("atlas.providers.github.query")
 local ui_detail = require("atlas.pulls.providers.github.ui.detail")
 local ui_repository = require("atlas.providers.github.ui.repository")
 local users_api = require("atlas.providers.github.users")
-
----@param ref PullRequestRef
----@param opts PullsFetchOpts
----@param on_done fun(details: PullRequestDetails|nil, err: string|nil)
----@return { cancel: fun() }|nil
-local function fetch_pullrequest(ref, opts, on_done)
-	local owner, repo = ref.repo_full_name:match("^([^/]+)/(.+)$")
-	if owner == nil or repo == nil then
-		vim.schedule(function()
-			on_done(nil, "Missing repository info")
-		end)
-		return nil
-	end
-	return pullrequests_api.get_pr(owner, repo, ref.id, on_done, { force_refresh = opts.force_refresh == true })
-end
 
 ---@return AtlasGitHubViewConfig[]
 local function views()
@@ -92,12 +77,16 @@ local function fetch_pullrequests(view, opts, on_done)
 	return requests
 end
 
----@param target AtlasTarget
+---@param repository AtlasTarget
+---@param branch string|nil
 ---@return AtlasPullsViewConfig
-local function view_for_target(target)
-	local search = string.format("repo:%s/%s is:pr", target.owner, target.repo)
-	if target.number then
-		search = search .. " " .. tostring(target.number)
+local function repository_view(repository, branch)
+	local search = string.format("repo:%s/%s is:pr", repository.owner, repository.repo)
+	if repository.number then
+		search = search .. " " .. tostring(repository.number)
+	end
+	if branch then
+		search = search .. " head:" .. branch
 	end
 	return {
 		name = "Search",
@@ -108,14 +97,14 @@ end
 
 return {
 	views = views,
-	view_for_target = view_for_target,
+	repository_view = repository_view,
 	resolve_search = search_query.query,
 	capabilities = {
 		actions = require("atlas.pulls.providers.github.actions.registry"),
 		core = {
 			fetch_pullrequests = fetch_pullrequests,
 			fetch_by_refs = pullrequests_api.fetch_by_refs,
-			fetch_pullrequest = fetch_pullrequest,
+			fetch_pullrequest = pullrequests_api.fetch_pullrequest,
 			fetch_links = links_api.fetch_pr,
 			fetch_reviewers = reviews_api.fetch_reviewers,
 			merge = pullrequests_api.merge,
@@ -135,12 +124,15 @@ return {
 			end,
 		},
 		comments = {
-			reaction_options = emojis.github(),
 			fetch_conversation = activity_api.fetch_conversation,
 			add_comment = comments_api.add_comment,
 			edit_comment = comments_api.edit_comment,
 			delete_comment = comments_api.delete_comment,
-			add_reaction = comments_api.add_reaction,
+			reactions = {
+				options = github_mapper.reactions,
+				add = comments_api.add_reaction,
+				remove = comments_api.remove_reaction,
+			},
 			set_thread_resolved = comments_api.set_thread_resolved,
 		},
 		reviews = {
@@ -153,7 +145,7 @@ return {
 			approve = reviews_api.approve,
 			request_changes = reviews_api.request_changes,
 			discard_review = reviews_api.discard,
-			set_file_reviewed = reviews_api.set_file_reviewed,
+			set_files_reviewed = reviews_api.set_files_reviewed,
 		},
 		-- tasks = {
 		-- 	add_task = nil,

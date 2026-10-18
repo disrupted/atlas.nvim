@@ -4,7 +4,7 @@ local utils = require("atlas.ui.shared.utils")
 local MAX_COMMENT_LINES = 8
 
 ---@class PullsConversationState
----@field items PullsConversationItem[]|"loading"|nil
+---@field conversation PullsConversation|"loading"|nil
 ---@field error string|nil
 ---@field collapsed table<string, boolean>
 ---@field expanded_comments table<string, boolean>
@@ -12,7 +12,7 @@ local MAX_COMMENT_LINES = 8
 ---@field requests AtlasRequestScope
 ---@field current_pr PullRequest|nil
 local M = {
-	items = nil,
+	conversation = nil,
 	error = nil,
 	collapsed = {},
 	expanded_comments = {},
@@ -25,7 +25,7 @@ function M.reset()
 	M.current_pr = nil
 	M.requests.cancel()
 	M.requests = request_scope.new()
-	M.items = nil
+	M.conversation = nil
 	M.error = nil
 	M.collapsed = {}
 	M.expanded_comments = {}
@@ -68,19 +68,23 @@ end
 ---@return PullsComment[]
 function M.comments(is_task)
 	local result = {}
-	if type(M.items) ~= "table" then
+	local conversation = M.conversation
+	if type(conversation) ~= "table" then
 		return result
 	end
-	for _, item in ipairs(M.items) do
-		if item.kind == "comment" then
-			---@type PullsComment
-			local comment = item.entity
-			if is_task == nil or (comment.is_task == true) == is_task then
-				table.insert(result, comment)
-			end
+	for _, comment in ipairs(conversation.comments) do
+		if is_task == nil or (comment.is_task == true) == is_task then
+			table.insert(result, comment)
 		end
 	end
 	return result
+end
+
+---@param comment PullsComment
+---@return boolean
+function M.is_description(comment)
+	local conversation = M.conversation
+	return type(conversation) == "table" and conversation.description == comment
 end
 
 ---@param comment PullsComment
@@ -91,29 +95,30 @@ end
 
 ---@param comment PullsComment
 function M.upsert_comment(comment)
-	if type(M.items) ~= "table" then
+	local conversation = M.conversation
+	if type(conversation) ~= "table" then
 		return
 	end
-	local id = comment_key(comment)
-	local entry = { id = id, kind = "comment", created_on = comment.created_on or "", entity = comment }
-	for index, item in ipairs(M.items) do
-		if item.id == id then
-			M.items[index] = entry
+	local key = comment_key(comment)
+	for index, existing in ipairs(conversation.comments) do
+		if comment_key(existing) == key then
+			conversation.comments[index] = comment
 			return
 		end
 	end
-	table.insert(M.items, entry)
+	table.insert(conversation.comments, comment)
 end
 
 ---@param comment PullsComment
 function M.remove_comment(comment)
-	if type(M.items) ~= "table" then
+	local conversation = M.conversation
+	if type(conversation) ~= "table" then
 		return
 	end
-	local id = comment_key(comment)
-	for index = #M.items, 1, -1 do
-		if M.items[index].id == id then
-			table.remove(M.items, index)
+	local key = comment_key(comment)
+	for index = #conversation.comments, 1, -1 do
+		if comment_key(conversation.comments[index]) == key then
+			table.remove(conversation.comments, index)
 			return
 		end
 	end
@@ -122,10 +127,10 @@ end
 ---@param comment PullsComment
 ---@return boolean
 local function is_comment_long(comment)
-	if comment.is_task or comment.state == "DELETED" then
+	if comment.is_task or comment.deleted then
 		return false
 	end
-	local content = utils.strip_markup(comment.content_display or comment.content_raw or "")
+	local content = utils.strip_markup(comment.body_display or comment.body or "")
 	local lines = utils.sanitize_lines(content)
 	while #lines > 0 and vim.trim(lines[#lines]) == "" do
 		table.remove(lines)
@@ -179,6 +184,10 @@ end
 ---@param threads AtlasCommentThreadNode[]
 ---@return boolean
 function M.toggle_all_threads(threads)
+	local conversation = M.conversation
+	if type(conversation) ~= "table" then
+		return false
+	end
 	local roots = {}
 	local comment_keys = {}
 	local expand = false
@@ -190,7 +199,12 @@ function M.toggle_all_threads(threads)
 			end
 		end
 	end
-	for _, comment in ipairs(M.comments()) do
+	local comments = {}
+	if conversation.description then
+		table.insert(comments, conversation.description)
+	end
+	vim.list_extend(comments, conversation.comments)
+	for _, comment in ipairs(comments) do
 		if is_comment_long(comment) then
 			local key = comment_key(comment)
 			table.insert(comment_keys, key)

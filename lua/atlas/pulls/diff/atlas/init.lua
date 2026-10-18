@@ -385,6 +385,12 @@ local function setup_autocmds(view)
 	vim.api.nvim_create_autocmd("WinResized", {
 		group = view.group,
 		callback = function()
+			if
+				not vim.api.nvim_win_is_valid(view.right.win)
+				or (view.left.win and not vim.api.nvim_win_is_valid(view.left.win))
+			then
+				return
+			end
 			local windows = vim.v.event.windows
 			---@cast windows integer[]
 			if vim.tbl_contains(windows, view.right.win) or vim.tbl_contains(windows, view.left.win) then

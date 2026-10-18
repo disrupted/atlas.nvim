@@ -214,19 +214,21 @@ Use `ctx.write(text)` to show output and `done(ok, message)` to finish the actio
 :Atlas
         Pick an Atlas command.
 
-:Atlas pulls [provider]
-:Atlas issues [provider]
-        Open a provider dashboard. Without an argument, Atlas opens the only
-        configured provider or asks you to choose.
+:Atlas pulls [provider|.]
+:Atlas issues [provider|.]
+        Open a provider dashboard. Without an argument, it opens the only
+        configured provider or asks you to choose. `.` uses the current
+        repository's provider.
 
-:Atlas review [pull-request-url]
-        Infer the provider and repository from the current Git remote, pick
-        an open or draft pull request, and open its diff. With a URL, open that
-        pull request directly.
+:Atlas review [pull-request-url|number|.]
+        Pick an open or draft pull request in the current repository and open
+        its diff. With a URL or a number (`12`, `#12`, or GitLab `!12`), open
+        that pull request directly. `.` opens the current branch's pull
+        request.
 
-:Atlas diff <target>
-        Open a Git range (`base...head`) or pull-request URL with the configured
-        diff viewer (`pulls.diff.open_cmd`). A target is required.
+:Atlas diff <base...head>
+        Open a Git range with the configured diff viewer
+        (`pulls.diff.open_cmd`).
 
 :Atlas pipelines [target|.]
         Open pipelines by branch name, PR URL or number (`123`, `#123`, or
@@ -234,25 +236,34 @@ Use `ctx.write(text)` to show output and `done(ok, message)` to finish the actio
         Pipelines build URL. Branch names use the local repository;
         `.` uses the current branch.
 
-:Atlas notes [target]
-        Open the notes manager, optionally filtered to a target.
+:Atlas notes [target|.]
+        Open the notes manager, optionally filtered to a pull request. `.`
+        shows the notes of the current repository's pull requests.
 
-:Atlas create [pr|issue]
-        Start the pull-request or issue creation flow. Without an argument,
-        Atlas asks which one to create.
+:Atlas create pr
+        Create a pull request from the current branch.
 
-:Atlas search [provider]
-        Search configured pull-request and issue providers.
+:Atlas create issue [provider|.]
+        Create an issue. Without a provider, it uses the only one that can
+        create issues or asks you to choose. `.` uses the current repository's
+        provider.
+
+:Atlas search [provider|.]
+        Search configured pull-request and issue providers. `.` uses the
+        current repository's provider.
 
 :Atlas open [target|.]
-        Open a provider URL or Jira key. A PR/issue number (`123` or `#123`)
-        or GitLab merge request (`!123`) is resolved in the current Git
-        repository. Use `.` to open the current repository.
-        Without a target, Atlas prompts for one.
+        Open a pull request or issue by provider URL, Jira key, or PR/issue
+        number (`123`, `#123`, or GitLab `!123`) in the current Git
+        repository. `.` opens the current branch's pull request. Without a
+        target, it prompts for one.
 
-:Atlas browse [repository URL|.] [page]
+:Atlas browse [repository URL|.|page] [page]
         Open the repository browser. Use `.` for the current repository.
-        Example: `:Atlas browse . branches`
+        With only a page name, pick a repository first. A URL to a
+        repository page or item, such as `/issues` or `/pull/3`, opens
+        that page.
+        Examples: `:Atlas browse . branches`, `:Atlas browse issues`
 
 :Atlas clear [cache|notes|stars]
         Clear all Atlas data, or only cached data and cloned repositories,
@@ -267,9 +278,9 @@ Use `ctx.write(text)` to show output and `done(ok, message)` to finish the actio
 ==============================================================================
 5. PULLS                                                          *atlas-pulls*
 
-Use `:Atlas pulls [provider]` to browse and manage pull requests from GitHub,
-Bitbucket, and GitLab. Shared authentication and endpoints are configured in
-|atlas-configuration|.
+Use `:Atlas pulls [provider|.]` to browse and manage pull requests from
+GitHub, Bitbucket, and GitLab. Shared authentication and endpoints are
+configured in |atlas-configuration|.
 
 PULLS CONFIGURATION                              *atlas-pulls-configuration*
 
@@ -369,8 +380,8 @@ Set `pulls.diff.lsp.enabled = true` to use your configured language servers for
 hover and go-to-definition on the new side of AtlasDiff or CodeDiff. This is off
 by default.
 
-Atlas uses a detached worktree at the head revision and removes it when the
-diff closes. The default directory is
+The diff uses a detached worktree at the head revision, removed when the diff
+closes. The default directory is
 `stdpath("cache")/atlas/worktrees/<repo>/pr-<id>`, or
 `stdpath("cache")/atlas/worktrees/<repo>/<sha>` without a pull request.
 
@@ -379,7 +390,7 @@ Set `pulls.diff.lsp.dir` to an absolute path, or a function receiving
 or nil.
 
 Set `pulls.diff.lsp.link` to dependency folders such as `node_modules` or `.venv`.
-Atlas symlinks them from your checkout into the worktree so language servers
+They are symlinked from your checkout into the worktree so language servers
 can resolve dependencies. These are the same directories on disk, not copies.
 
 ------------------------------------------------------------------------------
@@ -388,7 +399,7 @@ PIPELINES                                             *atlas-pulls-pipelines*
 View pipelines and their jobs, inspect their status, and read job logs directly
 in Atlas. See |atlas-commands| for `:Atlas pipelines` targets.
 
-Atlas uses your provider's CI by default. Set `ci.backend` to use your own.
+Pipelines use your provider's CI by default. Set `ci.backend` to use your own.
 For Bamboo on Bitbucket, use `require("atlas.pulls.pipelines.bamboo").new(opts)`
 with `host`, `user`, and `password`.
 
@@ -433,8 +444,7 @@ a severity color or `hl_group` for an existing Neovim highlight group.
 GITHUB PULLS                                              *atlas-pulls-github*
 
 Uses the `gh` CLI. No tokens to configure in the plugin - run
-`gh auth login` once and Atlas picks up the auth. Views accept any
-GitHub search expression.
+`gh auth login` once. Views accept any GitHub search expression.
 
 >lua
   pulls = {
@@ -537,7 +547,7 @@ self-hosted URL.
 
 6. ISSUES                                                        *atlas-issues*
 
-Use `:Atlas issues [provider]` to browse and manage Jira, GitHub, and GitLab
+Use `:Atlas issues [provider|.]` to browse and manage Jira, GitHub, and GitLab
 issues. Shared authentication and endpoints are configured in
 |atlas-configuration|.
 
@@ -550,6 +560,9 @@ Shared config that applies to all issue providers:
     custom_actions = {}, -- see |atlas-issues-custom-actions|
   }
 <
+
+Issue views support "plain" and "compact" layouts. Jira also supports "board",
+which groups the current page by workflow status.
 
 ------------------------------------------------------------------------------
 JIRA                                                       *atlas-issues-jira*
@@ -600,7 +613,7 @@ overview tab can toggle between Markdown and ADF to inspect the conversion.
         },
       },
       views = {
-        { name = "My Board",  key = "M", layout = "plain",
+        { name = "My Board",  key = "M", layout = "board",
           jql = "project = KAN AND assignee = currentUser() ORDER BY updated DESC" },
         { name = "Team Board", key = "T", layout = "compact",
           jql = "project = KAN ORDER BY updated DESC" },
@@ -681,10 +694,10 @@ Uses the shared `providers.gitlab` authentication from |atlas-configuration|.
 ==============================================================================
 7. EVENTS                                                        *atlas-events*
 
-Atlas emits these `User` events after setup or cleanup completes:
+These `User` events fire after setup or cleanup completes:
 
   AtlasUIClosed
-      The main pulls/issues dashboard closed.
+      The pull request or issue dashboard closed.
 
   AtlasDiffOpened, AtlasDiffClosed
       A diff session in AtlasDiff, CodeDiff, or Diffview opened or closed.
@@ -703,6 +716,8 @@ Atlas emits these `User` events after setup or cleanup completes:
         close                   = "q",     -- `false` will disable the keymap
         next_item               = "j",
         previous_item           = "k",
+        previous_column         = "h",
+        next_column             = "l",
         first_item              = "gg",
         last_item               = "G",
         select                  = "<CR>",
@@ -715,6 +730,7 @@ Atlas emits these `User` events after setup or cleanup completes:
           react  = "gr",
         },
         toggle_panel            = "p",
+        cycle_layout            = "t",
         toggle_fold             = "za",
         toggle_all_folds        = "zA",
         toggle_description_mode = "<leader>m",

@@ -1,7 +1,7 @@
 local M = {}
 
 local help = require("atlas.ui.popups.help")
-local detail_ui = require("atlas.ui.detail")
+local detail_window = require("atlas.pulls.ui.detail.window")
 local resolver = require("atlas.core.keymaps")
 local utils = require("atlas.ui.shared.utils")
 local state = require("atlas.pulls.ui.detail.state")
@@ -10,6 +10,18 @@ local notify = require("atlas.core.notify")
 local links = require("atlas.ui.links")
 
 local registrations = {}
+
+local function open_links()
+	local pr, provider = state.current_pr, state.provider
+	if pr == nil or provider == nil then
+		return
+	end
+	local loaded = state.links
+	if loaded and (loaded.loading or loaded.error) then
+		loaded = nil
+	end
+	links.select(provider, pr, "pr", loaded and loaded.items, require("atlas.pulls.ui.detail").way_back())
+end
 
 ---@param lnum integer
 ---@return boolean
@@ -132,7 +144,7 @@ function M.register(buf)
 			opts = { nowait = true, silent = true },
 			hidden = true,
 			callback = function()
-				detail_ui.move_cursor("down", is_selectable)
+				detail_window.move_cursor("down", is_selectable)
 			end,
 		})
 	)
@@ -143,7 +155,7 @@ function M.register(buf)
 			opts = { nowait = true, silent = true },
 			hidden = true,
 			callback = function()
-				detail_ui.move_cursor("up", is_selectable)
+				detail_window.move_cursor("up", is_selectable)
 			end,
 		})
 	)
@@ -199,7 +211,13 @@ function M.register(buf)
 						local on_update = state.on_update
 						actions.open(context, function(result)
 							complete_action(pr, on_update, result)
-						end, { links.action(state) })
+						end, {
+							{
+								label = "Open related items",
+								icon = require("atlas.ui.shared.icons").get("link"),
+								callback = open_links,
+							},
+						})
 					end
 				end,
 			})
@@ -270,7 +288,15 @@ function M.register(buf)
 
 	M.remove(buf)
 	local general = items
-	vim.list_extend(general, links.keymaps(state))
+	utils.insert_if(
+		general,
+		item("ui.open_references", {
+			desc = "Open references",
+			index = 3,
+			opts = { nowait = true, silent = true },
+			callback = open_links,
+		})
+	)
 
 	utils.insert_if(
 		general,
@@ -333,7 +359,11 @@ function M.register(buf)
 				if help.is_open() then
 					return
 				end
-				require("atlas.pulls.ui.detail").close()
+				if state.back then
+					state.back()
+				else
+					require("atlas.pulls.ui.detail").close()
+				end
 			end,
 		})
 	)

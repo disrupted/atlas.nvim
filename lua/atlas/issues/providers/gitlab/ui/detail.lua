@@ -18,7 +18,7 @@ end
 
 ---@param issue Issue
 ---@param details IssueDetails|nil
----@param loading boolean
+---@param _loading boolean
 ---@return IssuesDetailHeaderField[]
 function M.header_fields(issue, details, _loading)
 	local user_icon = icons.get("user")

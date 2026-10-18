@@ -4,7 +4,7 @@ local cli = require("atlas.providers.github.client")
 local json = require("atlas.core.json")
 local diff_parser = require("atlas.core.git.diff_parser")
 local mapper = require("atlas.pulls.providers.github.api.mapper")
-local github_mapping = require("atlas.providers.github.mapping")
+local github_mapper = require("atlas.providers.github.mapper")
 local request_scope = require("atlas.core.requests")
 
 local REVIEW_QUERY = [[
@@ -33,15 +33,14 @@ query($owner:String!,$name:String!,$number:Int!,$endCursor:String,$includeHunks:
           comments(first:100){
             nodes{
               id
-              databaseId
               body
               diffHunk @include(if:$includeHunks)
               url
               createdAt
-              author{login ... on User{databaseId} ... on Bot{databaseId}}
-              replyTo{databaseId}
+              authorAssociation author{__typename login ... on User{databaseId} ... on Bot{databaseId}}
+              replyTo{id}
               pullRequestReview{id state}
-              reactionGroups{content users{totalCount}}
+              reactionGroups{content viewerHasReacted reactors(first:10){totalCount nodes{...on User{login name} ...on Bot{login}}}}
             }
           }
         }
@@ -154,19 +153,6 @@ local function reviewer_query(query)
 	return query
 end
 
-local SET_FILE_REVIEWED_MUTATIONS = {
-	[true] = [[
-mutation($pullRequestId:ID!,$path:String!){
-  markFileAsViewed(input:{pullRequestId:$pullRequestId,path:$path}){clientMutationId}
-}
-]],
-	[false] = [[
-mutation($pullRequestId:ID!,$path:String!){
-  unmarkFileAsViewed(input:{pullRequestId:$pullRequestId,path:$path}){clientMutationId}
-}
-]],
-}
-
 ---@param node table|nil
 ---@return PullsReview
 local function from_node(node)
@@ -181,13 +167,13 @@ local function from_node(node)
 end
 
 ---@param raw table|nil
----@return PullsAuthor|nil
+---@return AtlasUser|nil
 local function review_author(raw)
 	raw = json.nilify(raw)
 	if type(raw) ~= "table" then
 		return nil
 	end
-	local user = github_mapping.identity(raw) or { id = "", login = "", name = "" }
+	local user = github_mapper.identity(raw) or { id = "", login = "", name = "" }
 	local slug = json.safe_str(raw.slug) or ""
 	local organization = json.safe_table(raw.organization)
 	local organization_login = json.safe_str(organization.login) or ""
@@ -201,7 +187,6 @@ local function review_author(raw)
 		id = user.id ~= "" and user.id or login,
 		name = user.name ~= "" and user.name or (json.safe_str(raw.teamName) or login),
 		username = login,
-		nickname = login,
 	}
 end
 
@@ -556,8 +541,8 @@ local function review_details(pages)
 		for _, node in ipairs(((current.reviews or {}).nodes or {})) do
 			table.insert(review_nodes, node)
 			local state = HISTORY_STATES[tostring(node.state or "")]
-			local body = json.safe_str(node.body) or ""
-			if vim.trim(body) == "" then
+			local body = json.safe_str(node.body)
+			if body and vim.trim(body) == "" then
 				body = nil
 			end
 			if state then
@@ -801,8 +786,8 @@ local function fetch_comments(pr, include_hunks, on_done)
 		for _, thread in ipairs(threads) do
 			local nodes = thread.comments and thread.comments.nodes or {}
 			for index, node in ipairs(nodes) do
-				local root_id = index > 1 and nodes[1] and nodes[1].databaseId or nil
-				local comment = mapper.to_review_comment(node, thread, root_id)
+				local root_id = index > 1 and nodes[1] and nodes[1].id or nil
+				local comment = mapper.to_review_comment(node, thread, root_id, pr.author.username)
 				table.insert(comments, comment)
 				if include_hunks then
 					comment.hunk = diff_parser.parse_hunk(json.safe_str(node.diffHunk) or "")
@@ -810,8 +795,8 @@ local function fetch_comments(pr, include_hunks, on_done)
 			end
 		end
 		table.sort(comments, function(a, b)
-			local left = tostring(a.created_on or "")
-			local right = tostring(b.created_on or "")
+			local left = tostring(a.created_at or "")
+			local right = tostring(b.created_at or "")
 			return left == right and tostring(a.id) < tostring(b.id) or left < right
 		end)
 		on_done({
@@ -820,47 +805,6 @@ local function fetch_comments(pr, include_hunks, on_done)
 		}, nil)
 	end, {
 		action = "Fetch comments",
-		repo = pr.repo_full_name,
-		number = pr.id,
-	})
-end
-
----@param pr PullRequest
----@param on_done fun(tasks: PullsComment[]|nil, err: string|nil)
----@return { cancel: fun() }|nil
-local function fetch_tasks(pr, on_done)
-	local repo_slug = pr.repo_full_name or ""
-	if repo_slug == "" then
-		vim.schedule(function()
-			on_done(nil, "Missing repo")
-		end)
-		return nil
-	end
-
-	return cli.gh({
-		"api",
-		"--paginate",
-		"--slurp",
-		string.format("repos/%s/issues/%s/comments?per_page=100", repo_slug, tostring(pr.id)),
-	}, function(result, err)
-		if err or type(result) ~= "table" then
-			on_done(nil, err or "Missing pull request checklist data")
-			return
-		end
-		local tasks = {}
-		for _, page in ipairs(result) do
-			for _, raw in ipairs(page) do
-				vim.list_extend(tasks, mapper.to_tasks(raw))
-			end
-		end
-		table.sort(tasks, function(a, b)
-			local left = tostring(a.created_on or "")
-			local right = tostring(b.created_on or "")
-			return left == right and tostring(a.id) < tostring(b.id) or left < right
-		end)
-		on_done(tasks, nil)
-	end, {
-		action = "Fetch checklists",
 		repo = pr.repo_full_name,
 		number = pr.id,
 	})
@@ -877,9 +821,6 @@ local function fetch_review(pr, opts, include_hunks, on_done)
 		comments = function(done)
 			return fetch_comments(pr, include_hunks, done)
 		end,
-		tasks = function(done)
-			return fetch_tasks(pr, done)
-		end,
 		details = function(done)
 			return fetch_review_details(pr, opts, done)
 		end,
@@ -891,7 +832,7 @@ local function fetch_review(pr, opts, include_hunks, on_done)
 		on_done({
 			review = results.comments.review,
 			comments = results.comments.comments,
-			tasks = results.tasks or {},
+			tasks = {},
 			reviewers = results.details.reviewers,
 			history = results.details.history,
 		}, nil)
@@ -916,36 +857,46 @@ function M.fetch_threads(pr, opts, on_done)
 end
 
 ---@param pr PullRequest
----@param path string
+---@param paths string[]
 ---@param reviewed boolean
 ---@param on_done fun(ok: boolean, err: string|nil)
 ---@return { cancel: fun() }|nil
-function M.set_file_reviewed(pr, path, reviewed, on_done)
+function M.set_files_reviewed(pr, paths, reviewed, on_done)
 	---@cast pr GitHubPullRequest
 	local pull_request_id = pr.node_id
 	if not pull_request_id then
 		on_done(false, "Missing pull request node id")
 		return nil
 	end
-	return cli.gh({
-		"api",
-		"graphql",
+
+	local mutation = reviewed and "markFileAsViewed" or "unmarkFileAsViewed"
+	local variables, fields = { "$pullRequestId:ID!" }, {}
+	local args = { "api", "graphql", "-f", "pullRequestId=" .. pull_request_id }
+	for index, path in ipairs(paths) do
+		variables[#variables + 1] = string.format("$path%d:String!", index)
+		fields[#fields + 1] = string.format(
+			"  file%d: %s(input:{pullRequestId:$pullRequestId,path:$path%d}){clientMutationId}",
+			index,
+			mutation,
+			index
+		)
+		vim.list_extend(args, { "-f", string.format("path%d=%s", index, path) })
+	end
+	vim.list_extend(args, {
 		"-f",
-		"query=" .. SET_FILE_REVIEWED_MUTATIONS[reviewed],
-		"-f",
-		"pullRequestId=" .. pull_request_id,
-		"-f",
-		"path=" .. path,
-	}, function(_, err)
+		string.format("query=mutation(%s){\n%s\n}", table.concat(variables, ","), table.concat(fields, "\n")),
+	})
+
+	return cli.gh(args, function(_, err)
 		if err == nil then
 			cli.delete_mem(string.format("github:review-context:%s:%s", pr.repo_full_name, tostring(pr.id)))
 		end
 		on_done(err == nil, err)
 	end, {
-		action = reviewed and "Mark file reviewed" or "Mark file unreviewed",
+		action = reviewed and "Mark files reviewed" or "Mark files unreviewed",
 		repo = pr.repo_full_name,
 		number = pr.id,
-		path = path,
+		files = #paths,
 	})
 end
 

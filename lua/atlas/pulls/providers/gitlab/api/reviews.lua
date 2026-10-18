@@ -81,7 +81,7 @@ local function invalidate_details_cache(pr)
 end
 
 ---@param raw table|nil
----@return PullsAuthor|nil
+---@return AtlasUser|nil
 local function to_author(raw)
 	raw = json.safe_table(raw)
 	local username = json.safe_str(raw.username) or ""
@@ -93,7 +93,6 @@ local function to_author(raw)
 		id = json.safe_str(raw.id) or "",
 		name = name ~= "" and name or username,
 		username = username,
-		nickname = username ~= "" and username or nil,
 	}
 end
 
@@ -259,15 +258,9 @@ local function mark_outdated(comments, current)
 		return
 	end
 	for _, comment in ipairs(comments) do
-		local refs = (comment._raw or {}).diff_refs
-		if
-			complete_diff_refs(refs)
-			and (
-				refs.base_sha ~= current.base_sha
-				or refs.start_sha ~= current.start_sha
-				or refs.head_sha ~= current.head_sha
-			)
-		then
+		local position = comment.inline or comment.file
+		local commit_hash = position and position.commit_hash
+		if commit_hash and commit_hash ~= current.head_sha then
 			comment.outdated = true
 			comment.state = comment.state or "OUTDATED"
 		end

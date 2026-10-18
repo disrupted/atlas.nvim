@@ -7,12 +7,13 @@
 ---@field merge_status string|nil
 ---@field detailed_merge_status string|nil
 ---@field diff_refs GitLabPullRequestDiffRefs|nil
+---@field node_id string|nil
 
 ---@class GitLabPullsLabel : PullsLabel
 ---@field text_color string|nil
 
 ---@class GitLabPullRequestDetails : PullRequestDetails
----@field assignees PullsAuthor[]
+---@field assignees AtlasUser[]
 ---@field labels GitLabPullsLabel[]
 
 ---@class GitLabPullsActivityEntry : PullsActivityEntry
@@ -33,7 +34,7 @@ local repository_ui = require("atlas.providers.gitlab.ui.repository")
 local gitlab_query = require("atlas.providers.gitlab.query")
 local request_scope = require("atlas.core.requests")
 local users_api = require("atlas.providers.gitlab.users")
-local GITLAB_REACTION_OPTIONS = require("atlas.ui.shared.emojis").gitlab()
+local gitlab_mapper = require("atlas.providers.gitlab.mapper")
 
 ---@return AtlasGitLabPullsViewConfig[]
 local function views()
@@ -89,20 +90,22 @@ local function fetch_pullrequests(view, opts, on_done)
 	return requests
 end
 
----@param target AtlasTarget
+---@param repository AtlasTarget
+---@param branch string|nil
 ---@return AtlasPullsViewConfig
-local function view_for_target(target)
+local function repository_view(repository, branch)
 	return {
 		name = "Search",
 		layout = "compact",
-		project = target.project_path,
+		project = repository.project_path,
 		scope = "all",
+		source_branch = branch,
 	}
 end
 
 return {
 	views = views,
-	view_for_target = view_for_target,
+	repository_view = repository_view,
 	resolve_search = gitlab_query.query,
 	capabilities = {
 		actions = require("atlas.pulls.providers.gitlab.actions.registry"),
@@ -129,12 +132,15 @@ return {
 			end,
 		},
 		comments = {
-			reaction_options = GITLAB_REACTION_OPTIONS,
 			fetch_conversation = activity_api.fetch_conversation,
 			add_comment = comments_api.add_comment,
 			edit_comment = comments_api.edit_comment,
 			delete_comment = comments_api.delete_comment,
-			add_reaction = comments_api.add_reaction,
+			reactions = {
+				options = gitlab_mapper.reactions,
+				add = comments_api.add_reaction,
+				remove = comments_api.remove_reaction,
+			},
 			set_thread_resolved = comments_api.set_thread_resolved,
 		},
 		reviews = {
@@ -147,7 +153,7 @@ return {
 			approve = reviews_api.approve,
 			request_changes = reviews_api.request_changes,
 			discard_review = reviews_api.discard,
-			-- set_file_reviewed = nil,
+			-- set_files_reviewed = nil,
 		},
 		-- tasks = {
 		-- 	add_task = nil,

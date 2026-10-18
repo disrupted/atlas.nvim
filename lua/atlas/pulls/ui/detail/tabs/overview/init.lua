@@ -3,6 +3,7 @@ local M = {}
 local utils = require("atlas.ui.shared.utils")
 local markdown = require("atlas.formats.markdown")
 local icons = require("atlas.ui.shared.icons")
+local reactions = require("atlas.ui.shared.reactions")
 local spinner = require("atlas.ui.components.spinner")
 local box = require("atlas.ui.components.box")
 local table_tree = require("atlas.ui.components.table_tree")
@@ -150,18 +151,19 @@ end
 ---@param lines string[]
 ---@param spans table[]
 local function render_reviewers(width, lines, spans)
-	if state.reviewers == nil or state.reviewers == "loading" then
+	local reviewers = state.reviewers
+	if reviewers == nil or reviewers == "loading" then
 		return
 	end
 
-	if type(state.reviewers) == "string" then
-		render_error("Reviewers", state.reviewers, width, lines, spans)
+	if type(reviewers) == "string" then
+		render_error("Reviewers", reviewers, width, lines, spans)
 		return
 	end
 
 	local decisions = {}
 	local others = {}
-	for _, reviewer in ipairs(state.reviewers) do
+	for _, reviewer in ipairs(reviewers) do
 		table.insert(reviewer.role == "participant" and others or decisions, reviewer)
 	end
 	local approved_count = 0
@@ -225,16 +227,17 @@ local MAX_OVERVIEW_JOBS = 5
 ---@param spans table[]
 ---@param line_map table<integer, table>
 local function render_pipelines(_pr, width, lines, spans, line_map)
-	if detail.pipelines == nil or detail.pipelines == "loading" then
+	local pipelines = detail.pipelines
+	if pipelines == nil or pipelines == "loading" then
 		return
 	end
 
-	if type(detail.pipelines) == "string" then
-		render_error("Pipelines", detail.pipelines, width, lines, spans)
+	if type(pipelines) == "string" then
+		render_error("Pipelines", pipelines, width, lines, spans)
 		return
 	end
 
-	local entries = pipeline_utils.sort_by_state(detail.pipelines)
+	local entries = pipeline_utils.sort_by_state(pipelines)
 
 	if #entries == 0 then
 		return
@@ -263,6 +266,7 @@ local function render_pipelines(_pr, width, lines, spans, line_map)
 			url = tostring(pipeline.url or ""),
 			children = {},
 		}
+		---@type { state: PullsPipelineState, stage: PullsPipelineStage, job: PullsPipelineJob }[]
 		local unnamed_jobs = {}
 		local has_named_stage = false
 		for _, pipeline_stage in ipairs(pipeline.stages) do
@@ -396,21 +400,26 @@ end
 ---@param spans table[]
 local function render_description(details, width, lines, spans)
 	local desc_text = details.description or ""
+	local truncated = false
 	if vim.trim(desc_text) == "" then
 		utils.push(lines, spans, "No description provided.", "AtlasTextMuted", PADDING_X)
-		table.insert(lines, "")
-		return
+	else
+		local block = description_block(desc_text, width)
+		truncated = not state.description_expanded and #block.lines > MAX_DESCRIPTION_LINES
+		if truncated then
+			block.lines = vim.list_slice(block.lines, 1, MAX_DESCRIPTION_LINES)
+			block.highlights = vim.tbl_filter(function(span)
+				return span.line < MAX_DESCRIPTION_LINES
+			end, block.highlights)
+		end
+		utils.append_block(lines, spans, block)
 	end
 
-	local block = description_block(desc_text, width)
-	local truncated = not state.description_expanded and #block.lines > MAX_DESCRIPTION_LINES
-	if truncated then
-		block.lines = vim.list_slice(block.lines, 1, MAX_DESCRIPTION_LINES)
-		block.highlights = vim.tbl_filter(function(span)
-			return span.line < MAX_DESCRIPTION_LINES
-		end, block.highlights)
+	local reaction_text, reaction_spans = reactions.format(details.reactions)
+	if reaction_text ~= "" then
+		table.insert(lines, "")
+		utils.append_block(lines, spans, { lines = { reaction_text }, highlights = reaction_spans }, PADDING_X)
 	end
-	utils.append_block(lines, spans, block)
 
 	if truncated then
 		local keys = require("atlas.core.keymaps").resolve("ui.toggle_fold") or {}

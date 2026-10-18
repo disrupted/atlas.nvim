@@ -213,7 +213,7 @@ end
 ---@param pr PullRequest
 ---@param repo_path string
 ---@param on_done fun(err: string|nil)
----@param opts { console?: boolean, on_progress?: fun(label: string, percent: integer) }|nil
+---@param opts AtlasGitFetchOptions|nil
 ---@return { cancel: fun() }|nil
 local function fetch_pr_refs(pr, repo_path, on_done, opts)
 	local base_revision, head_revision, revision_err = M.pr_diff_revisions(pr)
@@ -531,6 +531,155 @@ function M.checkout_pr(pr, on_done)
 			end)
 		end)
 	end)
+	return scope
+end
+
+---@param remote_url string|nil
+---@param repo_url string|nil
+---@return boolean
+local function matches_remote(remote_url, repo_url)
+	local remote = remote_url and git.parse_remote_url(remote_url) or nil
+	local target = repo_url and providers.resolve(repo_url) or nil
+	return remote ~= nil
+		and target ~= nil
+		and remote.provider == target.provider
+		and remote.host:lower() == target.host:lower()
+		and tostring(remote.repo_full_name):lower() == tostring(target.repo_full_name):lower()
+end
+
+---@param repo_full_name string
+---@param repo_url string|nil Web URL of the repository; the mapped checkout's origin must match it
+---@param on_done fun(root: string|nil, err: string|nil)
+---@return { cancel: fun() }|nil
+function M.resolve_repo_root(repo_full_name, repo_url, on_done)
+	local paths = (config.options.pulls.repo_config or {}).paths or {}
+	local path, err = M.resolve_repo_path(paths, repo_full_name, { require_existing = true })
+	if not path then
+		on_done(nil, err)
+		return nil
+	end
+
+	local scope = requests.new()
+	scope.run(function(done)
+		return git.repo_root(path, done)
+	end, function(root, root_err)
+		if not root then
+			on_done(nil, root_err)
+			return
+		end
+
+		scope.run(function(done)
+			return git.remote_url(root, "origin", done)
+		end, function(remote)
+			if not matches_remote(remote, repo_url) then
+				on_done(nil, string.format("origin of %s does not match %s", root, repo_full_name))
+				return
+			end
+
+			on_done(root, nil)
+		end)
+	end)
+
+	return scope
+end
+
+---@param root string
+---@param branches { name: string, hash: string }[]
+---@param on_done fun(ok: boolean, err: string|nil)
+---@return { cancel: fun() }|nil
+function M.fetch_commits(root, branches, on_done)
+	local hashes = {}
+	for _, branch in ipairs(branches) do
+		if branch.hash == "" then
+			on_done(false, "The branch has no commit to load: " .. branch.name)
+			return
+		end
+
+		table.insert(hashes, branch.hash)
+	end
+
+	local scope = requests.new()
+	scope.run(function(done)
+		return git.check_commits(root, hashes, done)
+	end, function(exists, err)
+		if not exists then
+			on_done(false, err)
+			return
+		end
+
+		local refs = {}
+		for index, branch in ipairs(branches) do
+			if not exists[index] then
+				table.insert(refs, "refs/heads/" .. branch.name)
+			end
+		end
+
+		if #refs == 0 then
+			on_done(true, nil)
+			return
+		end
+
+		scope.run(function(done)
+			return git.fetch_refs(root, "origin", refs, done)
+		end, on_done)
+	end)
+
+	return scope
+end
+
+---@param root string
+---@param branch { name: string, hash: string }
+---@param on_done fun(commits: AtlasGitCommit[]|nil, err: string|nil)
+---@return AtlasRequestScope
+function M.branch_history(root, branch, on_done)
+	local scope = requests.new()
+	scope.run(function(done)
+		return M.fetch_commits(root, { branch }, done)
+	end, function(ok, err)
+		if not ok then
+			on_done(nil, err)
+			return
+		end
+
+		scope.run(function(done)
+			return git.branch_commits(root, branch.hash, done)
+		end, on_done)
+	end)
+
+	return scope
+end
+
+---@param root string
+---@param name string Branch name
+---@param on_done fun(ok: boolean, err: string|nil)
+---@return { cancel: fun() }|nil
+function M.checkout_branch(root, name, on_done)
+	local scope = requests.new()
+	scope.run(function(done)
+		return git.rev_exists(root, "refs/heads/" .. name, done)
+	end, function(exists)
+		if exists then
+			scope.run(function(done)
+				return git.checkout_branch(root, name, done)
+			end, on_done)
+			return
+		end
+
+		local remote_ref = "refs/remotes/origin/" .. name
+		scope.run(function(done)
+			return git.fetch_refs(root, "origin", { "refs/heads/" .. name .. ":" .. remote_ref }, done)
+		end, function(ok, err)
+			if not ok then
+				on_done(false, err)
+				return
+			end
+
+			scope.run(function(done)
+				return git.checkout_new_branch(root, name, remote_ref, done)
+			end, on_done)
+		end)
+	end)
+
 	return scope
 end
 

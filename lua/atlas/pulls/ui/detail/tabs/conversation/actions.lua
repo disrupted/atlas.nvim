@@ -1,11 +1,16 @@
 local M = {}
 
 local action_runner = require("atlas.core.actions")
-local picker = require("atlas.ui.picker")
 local notify = require("atlas.core.notify")
+local pull_actions = require("atlas.pulls.actions")
+local reactions = require("atlas.ui.shared.reactions")
 local review = require("atlas.pulls.actions.review")
 local state = require("atlas.pulls.ui.detail.tabs.conversation.state")
 local detail = require("atlas.pulls.ui.detail.state")
+
+---@class PullsConversationLine
+---@field comment PullsComment|nil
+---@field review_entry PullsReviewHistoryEntry|nil
 
 ---@param pr PullRequest
 ---@param comment PullsComment|nil
@@ -78,16 +83,15 @@ function M.add(pr, refresh)
 end
 
 ---@param pr PullRequest
----@param entry table
+---@param entry PullsConversationLine
 ---@param refresh fun()
 function M.reply(pr, entry, refresh)
-	local item = entry and entry.conversation_item or nil
-	if not item or item.kind ~= "comment" then
+	local comment = entry.comment
+	if not comment or comment.is_task then
 		return
 	end
-	---@type PullsComment
-	local comment = item.entity
-	if comment.is_task then
+	if state.is_description(comment) then
+		M.add(pr, refresh)
 		return
 	end
 	local context = action_context(pr, comment)
@@ -97,16 +101,11 @@ function M.reply(pr, entry, refresh)
 end
 
 ---@param pr PullRequest
----@param entry table
+---@param entry PullsConversationLine
 ---@param refresh fun()
 function M.edit(pr, entry, refresh)
-	local item = entry and entry.conversation_item or nil
-	if not item then
-		return
-	end
-	if item.kind == "review" then
-		---@type PullsReviewHistoryEntry
-		local review_entry = item.entity
+	local review_entry = entry.review_entry
+	if review_entry then
 		local context = action_context(pr, nil)
 		if context then
 			context.review_entry = review_entry
@@ -114,11 +113,15 @@ function M.edit(pr, entry, refresh)
 		end
 		return
 	end
-	if item.kind ~= "comment" then
+	local comment = entry.comment
+	if not comment then
 		return
 	end
-	---@type PullsComment
-	local comment = item.entity
+	if state.is_description(comment) then
+		local context = { provider = detail.provider, pr = pr, details = detail.current_details }
+		pull_actions.run("edit_pr", context, on_done(pr, refresh))
+		return
+	end
 	local context = action_context(pr, comment)
 	if context then
 		action_runner.run(review.edit_comment, context, on_done(pr, refresh))
@@ -126,15 +129,13 @@ function M.edit(pr, entry, refresh)
 end
 
 ---@param pr PullRequest
----@param entry table
+---@param entry PullsConversationLine
 ---@param refresh fun()
 function M.delete(pr, entry, refresh)
-	local item = entry and entry.conversation_item or nil
-	if not item or item.kind ~= "comment" then
+	local comment = entry.comment
+	if not comment or state.is_description(comment) then
 		return
 	end
-	---@type PullsComment
-	local comment = item.entity
 	local context = action_context(pr, comment)
 	if context then
 		action_runner.run(review.delete_comment, context, on_done(pr, refresh))
@@ -142,66 +143,25 @@ function M.delete(pr, entry, refresh)
 end
 
 ---@param pr PullRequest
----@param entry table
+---@param entry PullsConversationLine
 ---@param refresh fun()
 function M.react(pr, entry, refresh)
-	local item = entry and entry.conversation_item or nil
-	if not item or item.kind ~= "comment" or item.entity.state == "DELETED" then
+	local comment = entry.comment
+	if not comment or comment.deleted then
 		return
 	end
-	local provider = detail.provider
-	local comments = provider and provider.capabilities.comments
-	if not comments or not comments.add_reaction then
-		return
-	end
-	local options = comments.reaction_options or {}
-	if #options == 0 then
-		notify.warn("No reactions available for this provider")
-		return
-	end
-	---@type PullsComment
-	local target = item.entity
-	picker.select({
-		title = "Add reaction",
-		items = options,
-		format_item = function(option)
-			return string.format("%s  %s", option.emoji or option.key, option.label or option.key)
-		end,
-		on_select = function(selected)
-			if selected == nil then
-				return
-			end
-			notify.loading("Adding reaction...")
-			comments.add_reaction(pr, item, selected.key, function(ok, err)
-				if not state.is_current(pr) then
-					return
-				end
-				if err then
-					notify.error("Reaction failed: " .. tostring(err))
-					return
-				end
-				if ok then
-					target.reactions = target.reactions or {}
-					target.reactions[selected.key] = (tonumber(target.reactions[selected.key]) or 0) + 1
-				end
-				notify.success("Reaction added", { timeout = 1200 })
-				refresh()
-			end)
-		end,
-	})
+	-- TODO: Reacting to the description doesn't update the overview's reactions until the details are reloaded.
+	reactions.pick(detail.provider.capabilities.comments.reactions, pr, comment, function()
+		return state.is_current(pr)
+	end, refresh)
 end
 
 ---@param pr PullRequest
----@param entry table
+---@param entry PullsConversationLine
 ---@param refresh fun()
 function M.toggle_task(pr, entry, refresh)
-	local item = entry and entry.conversation_item or nil
-	if not item or item.kind ~= "comment" then
-		return
-	end
-	---@type PullsComment
-	local task = item.entity
-	if not task.is_task then
+	local task = entry.comment
+	if not task or not task.is_task then
 		return
 	end
 	local context = action_context(pr, task)

@@ -6,6 +6,7 @@
 ---| "open_project"
 
 local M = {}
+---@cast M AtlasActionsCapability
 
 local actions = require("atlas.issues.actions")
 local utils = require("atlas.issues.actions.utils")
@@ -18,6 +19,7 @@ local users_api = require("atlas.providers.gitlab.users")
 local metadata_api = require("atlas.issues.providers.gitlab.api.metadata")
 local service = require("atlas.providers.gitlab.client")
 local gitlab_query = require("atlas.providers.gitlab.query")
+local gitlab_search = require("atlas.providers.gitlab.completion.search")
 
 ---@param ctx AtlasIssueActionContext
 ---@return boolean
@@ -581,26 +583,20 @@ register({
 	icon = icons.get("search", "actions"),
 	run = function(_, done)
 		local state = require("atlas.issues.state")
-		vim.ui.input({ prompt = "Search: ", default = state.query }, function(input)
-			if input == nil or vim.trim(input) == "" then
-				done(nil, nil)
-				return
-			end
+		gitlab_search.edit("issues", state.query, function(query)
 			local view = state.search_view()
 			if view == nil then
-				done(nil, nil)
 				return
 			end
 			---@cast view AtlasGitLabIssuesViewConfig
-			local ok, err = gitlab_query.apply_issue(view, input)
+			local ok, err = gitlab_query.apply_issue(view, query)
 			if not ok then
 				notify.warn(err)
-				done(nil, err)
 				return
 			end
 			require("atlas.issues.ui.dashboard.controller").refresh_view()
-			done(nil, nil)
 		end)
+		done(nil, nil)
 	end,
 })
 register({ id = "open_project", label = "Open Project", icon = icons.get("search", "actions"), run = open_project })

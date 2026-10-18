@@ -33,8 +33,8 @@ function M.group_comments(comments, tasks)
 	end
 
 	table.sort(items, function(a, b)
-		if a.created_on ~= b.created_on then
-			return a.created_on < b.created_on
+		if a.created_at ~= b.created_at then
+			return a.created_at < b.created_at
 		end
 		return tostring(a.id) < tostring(b.id)
 	end)
@@ -64,7 +64,7 @@ function M.group_comments(comments, tasks)
 		for index = #list, 1, -1 do
 			local node = list[index]
 			prune_deleted(node.children)
-			if node.comment.state == "DELETED" and #node.children == 0 then
+			if node.comment.deleted and #node.children == 0 then
 				table.remove(list, index)
 			end
 		end
@@ -324,9 +324,9 @@ local function remove_comment(context, comment)
 	local id = tostring(comment.id)
 	for _, existing in ipairs(children) do
 		if not comment.is_task and tostring(existing.parent_id or "") == id then
-			comment.content_raw = ""
-			comment.content_display = nil
-			comment.state = "DELETED"
+			comment.body = ""
+			comment.body_display = nil
+			comment.deleted = true
 			comment.pending = false
 			upsert_comment(context, comment)
 			return
@@ -353,7 +353,7 @@ M.edit_comment = {
 	---@return boolean handled
 	run = function(context, on_done)
 		local comment = context.comment
-		if not comment or comment.state == "DELETED" then
+		if not comment or comment.deleted then
 			return false
 		end
 
@@ -374,14 +374,12 @@ M.edit_comment = {
 		open_editor(context, {
 			key = "pr-comment-edit",
 			title = comment.is_task and " Edit Task " or " Edit Comment ",
-			initial_text = comment.content_raw or "",
+			initial_text = comment.body or "",
 			on_save = function(text)
 				if vim.trim(text) == "" then
 					return
 				end
 				notify(context, "loading", comment.is_task and "Editing task..." or "Editing comment...")
-				local desired = vim.tbl_extend("force", {}, comment, { content_raw = text })
-				desired.content_display = nil
 				local callback = function(updated, err)
 					if err then
 						notify(context, "error", "Edit failed: " .. err)
@@ -396,9 +394,11 @@ M.edit_comment = {
 					on_done({ changed_pr = false, message = message }, nil)
 				end
 				if comment.is_task then
+					local desired = vim.tbl_extend("force", {}, comment, { body = text })
+					desired.body_display = nil
 					update(desired, callback)
 				else
-					update(context.pr, desired, callback)
+					update(context.pr, comment, text, callback)
 				end
 			end,
 		})
@@ -476,7 +476,7 @@ M.delete_comment = {
 	---@return boolean handled
 	run = function(context, on_done)
 		local comment = context.comment
-		if not comment or comment.state == "DELETED" then
+		if not comment or comment.deleted then
 			return false
 		end
 
@@ -608,7 +608,7 @@ M.toggle_resolved = {
 	---@return boolean handled
 	run = function(context, on_done)
 		local comment = context.comment
-		if not comment or comment.state == "DELETED" then
+		if not comment or comment.deleted then
 			return false
 		end
 

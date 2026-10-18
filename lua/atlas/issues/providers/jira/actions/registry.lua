@@ -6,6 +6,7 @@
 ---| "search_jql"
 
 local M = {}
+---@cast M AtlasActionsCapability
 
 local actions = require("atlas.issues.actions")
 local icons = require("atlas.ui.shared.icons")
@@ -50,15 +51,18 @@ local function transition(ctx, done)
 
 	local issue_key = issue.key
 	local current_status = tostring(issue.status or "")
+	---@type { id: string, label: string, value: IssueTransition }[]|nil
 	local all_items = nil
 
-	local function filter_items(query)
+	---@param items { id: string, label: string, value: IssueTransition }[]
+	---@param query string
+	local function filter_items(items, query)
 		local normalized = vim.trim(query):lower()
 		if normalized == "" then
-			return all_items
+			return items
 		end
 		local filtered = {}
-		for _, item in ipairs(all_items) do
+		for _, item in ipairs(items) do
 			if item.label:lower():find(normalized, 1, true) then
 				table.insert(filtered, item)
 			end
@@ -75,7 +79,7 @@ local function transition(ctx, done)
 		end,
 		fetch = function(query, fetch_done)
 			if all_items then
-				fetch_done(filter_items(query), nil)
+				fetch_done(filter_items(all_items, query), nil)
 				return
 			end
 
@@ -85,18 +89,19 @@ local function transition(ctx, done)
 					return
 				end
 
-				all_items = {}
+				local items = {}
 				for _, candidate in ipairs(transitions) do
 					local to_status = tostring((candidate and candidate.to_status_name) or "")
 					if current_status == "" or to_status == "" or to_status ~= current_status then
-						table.insert(all_items, {
+						table.insert(items, {
 							id = tostring(candidate.id or ""),
 							label = to_status ~= "" and to_status or candidate.name,
 							value = candidate,
 						})
 					end
 				end
-				fetch_done(filter_items(query), nil)
+				all_items = items
+				fetch_done(filter_items(items, query), nil)
 			end)
 		end,
 		on_select = function(item)

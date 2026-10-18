@@ -12,6 +12,7 @@ local BACKGROUND_HL = "AtlasFooterBackground"
 local instances = {}
 ---@type table<integer, AtlasStatusline>
 local windows = {}
+local lualine_paused = false
 local next_id = 0
 local cached_version = nil
 
@@ -307,6 +308,38 @@ function M.new(options)
 	return instance
 end
 
+---@return boolean
+local function current_tab_attached()
+	for _, win in ipairs(vim.api.nvim_tabpage_list_wins(0)) do
+		if windows[win] then
+			return true
+		end
+	end
+	return false
+end
+
+-- Honestly, I've been fighting my ass off with lualine, which keeps overriding the statusline.
+-- Sure, I could ignore every atlas filetype in the lualine config, but forget to set that and you lose
+-- the included statusline, which holds most of the information.
+-- So instead of making everyone configure that, lualine just takes a nap while an atlas tab is focused.
+local function sync_lualine()
+	local lualine = package.loaded["lualine"]
+	local pause = current_tab_attached()
+	if not lualine or pause == lualine_paused then
+		return
+	end
+
+	lualine_paused = pause
+	local laststatus = vim.o.laststatus
+	lualine.hide({ place = { "statusline" }, unhide = not pause })
+	if pause then
+		vim.o.laststatus = laststatus
+		for win, instance in pairs(windows) do
+			instance:attach(win)
+		end
+	end
+end
+
 ---@param win integer|nil
 function Statusline:attach(win)
 	if not M.enabled(self.options.context) or self.disposed or not win or not vim.api.nvim_win_is_valid(win) then
@@ -315,6 +348,7 @@ function Statusline:attach(win)
 	instances[self.id] = self
 	windows[win] = self
 	vim.api.nvim_set_option_value("statusline", self.expression, { win = win, scope = "local" })
+	sync_lualine()
 end
 
 ---@param win integer|nil
@@ -443,6 +477,7 @@ end
 function M.detach(win)
 	if win then
 		windows[win] = nil
+		vim.schedule(sync_lualine)
 	end
 end
 
@@ -519,6 +554,11 @@ vim.api.nvim_create_autocmd("OptionSet", {
 			end
 		end)
 	end,
+})
+
+vim.api.nvim_create_autocmd("TabEnter", {
+	group = group,
+	callback = sync_lualine,
 })
 
 vim.api.nvim_create_autocmd("WinClosed", {

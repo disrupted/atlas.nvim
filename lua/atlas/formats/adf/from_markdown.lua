@@ -30,17 +30,6 @@ local status_emoji_to_color = {
 	[""] = "neutral",
 }
 
---- Should differ from the status emojis otherwise it break :))
-local nerd_icon_to_emoji_shortname = {
-	[""] = ":check_mark:",
-	[""] = ":x:",
-	[""] = ":warning:",
-	[""] = ":information_source:",
-	[""] = ":hourglass_flowing_sand:",
-	[""] = ":rocket:",
-	[""] = ":smile:",
-}
-
 ---@param text string
 ---@param i integer
 ---@return string, integer
@@ -103,7 +92,6 @@ local function parse_inline(text)
 
 	while i <= #text do
 		local icon, size = utf8_char_at(text, i)
-		local emoji_short_name = nerd_icon_to_emoji_shortname[icon]
 		local emoji_start, emoji_end, emoji_code
 		local mention_start, mention_end, mention_label, mention_id
 		local link_start, link_end, label, url
@@ -122,16 +110,7 @@ local function parse_inline(text)
 		end
 		local close = mark and text:find(delimiter, i + #delimiter, true)
 
-		if emoji_short_name ~= nil then
-			table.insert(nodes, {
-				type = "emoji",
-				attrs = {
-					shortName = emoji_short_name,
-					text = emoji_short_name,
-				},
-			})
-			i = i + size
-		elseif emoji_start == i then
+		if emoji_start == i then
 			local short_name = ":" .. emoji_code .. ":"
 			table.insert(nodes, {
 				type = "emoji",

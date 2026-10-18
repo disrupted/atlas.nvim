@@ -38,7 +38,7 @@ local resolved_icon, resolved_icon_hl = icons.get("success")
 ---@class AtlasNotesUIManagerRenderOptions
 ---@field documents AtlasNotesUIManagerDocument[]
 ---@field width integer
----@field target_filter AtlasNoteTarget|nil
+---@field filter_label string|nil
 ---@field expanded table<string, boolean>
 ---@field action_keys AtlasNotesUIActionKeys|nil
 
@@ -216,7 +216,6 @@ function M.render_cards(items, width, opts)
 	end
 	return threads.render(rendered_items, width, {
 		padding_x = opts.padding_x or 0,
-		separator = "─",
 	})
 end
 
@@ -345,8 +344,8 @@ function M.render_manager(opts)
 
 	if #lines == 0 then
 		local message = "No notes found"
-		if opts.target_filter then
-			message = string.format("%s for %s", message, notes.target_label(opts.target_filter))
+		if opts.filter_label then
+			message = string.format("%s for %s", message, opts.filter_label)
 		end
 		return { message .. "." }, {}, {}
 	end

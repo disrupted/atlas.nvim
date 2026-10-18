@@ -2,6 +2,8 @@ local modules = {
 	"atlas.providers.jira.client",
 	"atlas.providers.jira.users",
 	"atlas.providers.jira.completion",
+	"atlas.providers.jira.completion.users",
+	"atlas.providers.jira.completion.issues",
 	"atlas.ui.shared.icons",
 	"atlas.config",
 }

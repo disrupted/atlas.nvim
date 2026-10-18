@@ -16,7 +16,7 @@
 
 local comments_api = require("atlas.issues.providers.github.api.comments")
 local config = require("atlas.config")
-local emojis = require("atlas.ui.shared.emojis")
+local github_mapper = require("atlas.providers.github.mapper")
 local git = require("atlas.core.git")
 local issues_api = require("atlas.issues.providers.github.api.issues")
 local links_api = require("atlas.providers.github.links")
@@ -96,51 +96,6 @@ local function fetch_issues(view, opts, on_done)
 	return requests
 end
 
----@param ref IssueRef
----@param opts IssuesFetchOpts|nil
----@param on_done fun(details: IssueDetails|nil, err: string|nil)
----@return { cancel: fun() }|nil
-local function fetch_issue(ref, opts, on_done)
-	opts = opts or {}
-	return issues_api.get_issue(ref.key, on_done, {
-		force_refresh = opts.force_refresh,
-	})
-end
-
----@param issue Issue
----@param opts { force_refresh: boolean|nil }|nil
----@param on_done fun(items: IssueConversationItem[]|nil, err: string|nil)
----@return { cancel: fun() }|nil
-local function fetch_conversation(issue, opts, on_done)
-	opts = opts or {}
-	return timeline_api.list_conversation(issue.key, function(result, err)
-		if err or result == nil then
-			on_done(nil, err)
-			return
-		end
-
-		local items = {}
-		for _, comment in ipairs(result.comments) do
-			table.insert(items, {
-				id = "comment:" .. comment.id,
-				kind = "comment",
-				created_at = comment.created,
-				entity = comment,
-			})
-		end
-		for index, entry in ipairs(result.events) do
-			table.insert(items, {
-				id = table.concat({ "activity", entry.date, index }, ":"),
-				kind = "activity",
-				created_at = entry.date,
-				entity = entry,
-			})
-		end
-
-		on_done(items, nil)
-	end, { force_refresh = opts.force_refresh == true })
-end
-
 ---@return AtlasGitHubIssuesViewConfig[]
 local function views()
 	local cfg = config.domain_options("github", "issues") or {}
@@ -160,21 +115,6 @@ local function views()
 end
 
 ---@param target AtlasTarget
----@return AtlasIssuesViewConfig
-local function view_for_target(target)
-	return {
-		name = "Search",
-		layout = "compact",
-		search = string.format(
-			"repo:%s/%s %s is:issue",
-			target.owner,
-			target.repo,
-			target.number and tostring(target.number) or ""
-		),
-	}
-end
-
----@param target AtlasTarget
 ---@return IssueRef|nil
 local function issue_ref(target)
 	if target.owner and target.repo and target.number then
@@ -184,24 +124,26 @@ end
 
 return {
 	views = views,
-	view_for_target = view_for_target,
 	issue_ref = issue_ref,
 	capabilities = {
 		actions = require("atlas.issues.providers.github.actions.registry"),
 		core = {
 			fetch_issues = fetch_issues,
 			fetch_by_refs = issues_api.fetch_by_refs,
-			fetch_issue = fetch_issue,
+			fetch_issue = issues_api.fetch_issue,
 			fetch_links = links_api.fetch_issue,
 		},
 		comments = {
-			reaction_options = emojis.github(),
 			-- fetch_activity = nil,
-			fetch_conversation = fetch_conversation,
+			fetch_conversation = timeline_api.fetch_conversation,
 			add_comment = comments_api.add,
 			edit_comment = comments_api.edit,
 			delete_comment = comments_api.delete,
-			add_reaction = comments_api.add_reaction,
+			reactions = {
+				options = github_mapper.reactions,
+				add = comments_api.add_reaction,
+				remove = comments_api.remove_reaction,
+			},
 		},
 		ui = {
 			detail = ui_detail,

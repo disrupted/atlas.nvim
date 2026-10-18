@@ -3,7 +3,7 @@ local annotations = require("atlas.pulls.diff.ui.annotations")
 local review_actions = require("atlas.pulls.actions.review")
 local code_preview = require("atlas.ui.components.code_preview")
 local commits = require("atlas.pulls.diff.ui.commits")
-local detail_ui = require("atlas.ui.detail")
+local detail_window = require("atlas.pulls.ui.detail.window")
 local icons = require("atlas.ui.shared.icons")
 local note_editor = require("atlas.pulls.notes.ui.editor")
 local notes = require("atlas.pulls.notes")
@@ -407,8 +407,8 @@ M.toggle_detail_panel = {
 			return false
 		end
 
-		if detail_ui.is_showing("pulls", session.view.tabpage) then
-			detail_ui.close(session.view.tabpage)
+		if detail_window.is_open(session.view.tabpage) then
+			detail_window.close(session.view.tabpage)
 			return true
 		end
 
@@ -446,7 +446,7 @@ M.open_in_browser = {
 		local items = annotations.at_cursor(session.view)
 		for _, item in ipairs(items or {}) do
 			local comment = item.thread and item.thread.comment
-			local url = comment and (comment.html_url or comment.url)
+			local url = comment and comment.url
 			if url and url ~= "" then
 				vim.ui.open(url)
 				return true

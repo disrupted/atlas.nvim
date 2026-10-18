@@ -75,10 +75,10 @@ describe("Bitbucket comment display", function()
 		}
 		local comment = assert(mapper.to_comment({ id = 1, content = content }))
 
-		assert.equal(content.raw, comment.content_raw)
+		assert.equal(content.raw, comment.body)
 		assert.equal(
 			"**Please** @Build Agent and @Alice & Bob \\[CI\\] review [this](https://example.com), @{unknown}.",
-			comment.content_display
+			comment.body_display
 		)
 	end)
 
@@ -90,8 +90,8 @@ describe("Bitbucket comment display", function()
 		}) do
 			local comment = assert(mapper.to_comment({ id = 1, content = content }))
 
-			assert.equal(content.raw, comment.content_raw)
-			assert.is_nil(comment.content_display)
+			assert.equal(content.raw, comment.body)
+			assert.is_nil(comment.body_display)
 		end
 	end)
 
@@ -103,9 +103,22 @@ describe("Bitbucket comment display", function()
 		local task = mapper.to_tasks_list({ values = { { id = 1, content = content } } })[1]
 		local activity = mapper.to_activities_list({ values = { { comment = { content = content } } } })[1]
 
-		assert.equal("Review @{alice}", task.content_raw)
-		assert.equal("Review @Alice", task.content_display)
+		assert.equal("Review @{alice}", task.body)
+		assert.equal("Review @Alice", task.body_display)
 		assert.equal("Review @Alice", activity.body)
 		assert.equal("Review @{alice}", content.raw)
+	end)
+end)
+
+describe("Bitbucket comment author roles", function()
+	it("marks comments by the pull request author", function()
+		local comments = mapper.to_comments_list({
+			values = {
+				{ id = 1, user = { account_id = "a1", display_name = "Alice" } },
+				{ id = 2, user = { account_id = "b2", display_name = "Bob" } },
+			},
+		}, "a1")
+		assert.same({ "Author" }, comments[1].author_roles)
+		assert.is_nil(comments[2].author_roles)
 	end)
 end)

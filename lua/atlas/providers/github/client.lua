@@ -58,9 +58,11 @@ function M.cache_ttl()
 	return tonumber(options.cache_ttl) or DEFAULT_CACHE_TTL
 end
 
+---@param key string
+---@return any|nil, boolean
 function M.get_cache(key)
 	if M.cache_ttl() <= 0 then
-		return nil
+		return nil, false
 	end
 	return get_cached(cache, cache_key(key))
 end
@@ -72,9 +74,11 @@ function M.set_cache(key, value, ttl)
 	cache.set(cache_key(key), value, ttl or M.cache_ttl())
 end
 
+---@param key string
+---@return any|nil, boolean
 function M.get_mem(key)
 	if M.cache_ttl() <= 0 then
-		return nil
+		return nil, false
 	end
 	return get_cached(memory, cache_key(key))
 end
@@ -125,7 +129,7 @@ local function run(args, parse_json, callback, ctx)
 			end
 			local stdout = result.stdout or ""
 			local status
-			if parse_json and args[1] == "api" and vim.tbl_contains(args, "--include") then
+			if args[1] == "api" and vim.tbl_contains(args, "--include") then
 				local headers, body = stdout:match("^(.-)\n\n(.*)$")
 				if headers then
 					status = tonumber(headers:match("^HTTP/%S+ (%d+)"))

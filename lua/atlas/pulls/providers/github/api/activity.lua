@@ -1,7 +1,47 @@
 local M = {}
 
 local cli = require("atlas.providers.github.client")
+local json = require("atlas.core.json")
 local mapper = require("atlas.pulls.providers.github.api.mapper")
+
+local TIMELINE_QUERY = [[
+query($owner:String!,$name:String!,$number:Int!,$endCursor:String){
+  repository(owner:$owner,name:$name){
+    pullRequest(number:$number){
+      id url body createdAt authorAssociation author{...actor}
+      reactionGroups{content viewerHasReacted reactors(first:10){totalCount nodes{...on User{login name} ...on Bot{login}}}}
+      timelineItems(first:100,after:$endCursor){
+        pageInfo{hasNextPage endCursor}
+        nodes{
+          __typename
+          ...on IssueComment{
+            id url body createdAt authorAssociation author{...actor}
+            reactionGroups{content viewerHasReacted reactors(first:10){totalCount nodes{...on User{login name} ...on Bot{login}}}}
+          }
+          ...on PullRequestReview{id state body submittedAt url commit{oid} author{...actor}}
+          ...on PullRequestCommit{commit{oid message authoredDate author{name}}}
+          ...on ReviewDismissedEvent{createdAt actor{...actor} previousReviewState review{id}}
+          ...on ReviewRequestedEvent{createdAt actor{...actor} requestedReviewer{...actor}}
+          ...on HeadRefForcePushedEvent{createdAt actor{...actor}}
+          ...on BaseRefForcePushedEvent{createdAt actor{...actor}}
+          ...on MergedEvent{createdAt actor{...actor}}
+          ...on ClosedEvent{createdAt actor{...actor}}
+          ...on ReopenedEvent{createdAt actor{...actor}}
+          ...on LabeledEvent{createdAt actor{...actor} label{name}}
+          ...on UnlabeledEvent{createdAt actor{...actor} label{name}}
+          ...on AssignedEvent{createdAt actor{...actor} assignee{...actor}}
+          ...on UnassignedEvent{createdAt actor{...actor} assignee{...actor}}
+          ...on RenamedTitleEvent{createdAt actor{...actor} previousTitle currentTitle}
+          ...on CommentDeletedEvent{createdAt actor{...actor}}
+          ...on ReadyForReviewEvent{createdAt actor{...actor}}
+          ...on ConvertToDraftEvent{createdAt actor{...actor}}
+        }
+      }
+    }
+  }
+}
+fragment actor on Actor{__typename login ...on User{databaseId} ...on Bot{databaseId}}
+]]
 
 ---@param entries PullsActivityEntry[]
 ---@return PullsActivityEntry[]
@@ -35,98 +75,95 @@ local function squash_commits(entries)
 end
 
 ---@param pr PullRequest
----@param on_done fun(pages: table[]|nil, err: string|nil)
+---@param on_done fun(pulls: table[]|nil, err: string|nil) One GraphQL `PullRequest` per page
 ---@return { cancel: fun() }|nil
 local function fetch_timeline(pr, on_done)
-	local repo_slug = pr.repo_full_name or ""
-	if repo_slug == "" then
+	local owner, name = (pr.repo_full_name or ""):match("^([^/]+)/(.+)$")
+	if not owner then
 		vim.schedule(function()
 			on_done(nil, "Missing repo")
 		end)
 		return nil
 	end
 
-	return cli.gh(
-		{ "api", "--paginate", "--slurp", string.format("repos/%s/issues/%s/timeline", repo_slug, tostring(pr.id)) },
-		function(result, err)
-			if err or type(result) ~= "table" then
-				on_done(nil, err or "Failed to fetch pull request timeline")
-				return
-			end
-			on_done(result, nil)
-		end,
-		{
-			action = "Fetch pull request timeline",
-			repo = pr.repo_full_name,
-			number = pr.id,
-		}
-	)
+	return cli.gh({
+		"api",
+		"graphql",
+		"--paginate",
+		"--slurp",
+		"-f",
+		"owner=" .. owner,
+		"-f",
+		"name=" .. name,
+		"-F",
+		"number=" .. tostring(pr.id),
+		"-f",
+		"query=" .. TIMELINE_QUERY,
+	}, function(result, err)
+		if err or type(result) ~= "table" then
+			on_done(nil, err or "Failed to fetch pull request timeline")
+			return
+		end
+		local pulls = {}
+		for _, page in ipairs(result) do
+			table.insert(pulls, json.safe_table(json.safe_table(json.safe_table(page.data).repository).pullRequest))
+		end
+		on_done(pulls, nil)
+	end, {
+		action = "Fetch pull request timeline",
+		repo = pr.repo_full_name,
+		number = pr.id,
+	})
 end
 
 ---@param pr PullRequest
----@param opts { force_refresh: boolean|nil }|nil
----@param on_done fun(items: PullsConversationItem[]|nil, err: string|nil)
+---@param _opts { force_refresh: boolean|nil }|nil
+---@param on_done fun(conversation: PullsConversation|nil, err: string|nil)
 ---@return { cancel: fun() }|nil
 function M.fetch_conversation(pr, _opts, on_done)
-	return fetch_timeline(pr, function(result, err)
-		if not result then
+	return fetch_timeline(pr, function(pulls, err)
+		if not pulls then
 			on_done(nil, err)
 			return
 		end
 
+		local nodes = {}
+		for _, pull in ipairs(pulls) do
+			vim.list_extend(nodes, json.safe_table(json.safe_table(pull.timelineItems).nodes))
+		end
+
 		local dismissed_states = {}
-		for _, page in ipairs(result) do
-			for _, item in ipairs(page) do
-				local dismissed = item.event == "review_dismissed" and item.dismissed_review or nil
-				if dismissed and dismissed.review_id then
-					dismissed_states[tostring(dismissed.review_id)] = tostring(dismissed.state or ""):lower()
-				end
+		for _, node in ipairs(nodes) do
+			local review_id = node.__typename == "ReviewDismissedEvent" and json.safe_table(node.review).id
+			if review_id then
+				dismissed_states[review_id] = (json.safe_str(node.previousReviewState) or ""):lower()
 			end
 		end
 
-		local items, events = {}, {}
-		for _, page in ipairs(result) do
-			for _, item in ipairs(page) do
-				local event_name = tostring(item.event or "")
-				if event_name == "commented" then
-					local comment = mapper.to_activity_comment(item)
-					table.insert(items, {
-						id = "comment:" .. tostring(comment.id),
-						kind = "comment",
-						created_on = comment.created_on,
-						entity = comment,
-					})
+		local comments, reviews, events = {}, {}, {}
+		for _, node in ipairs(nodes) do
+			if node.__typename == "IssueComment" then
+				table.insert(comments, mapper.to_comment(node, pr.author.username))
+			else
+				local review = node.__typename == "PullRequestReview" and mapper.to_conversation_review(node) or nil
+				if review then
+					review.previous_state = dismissed_states[review.id]
+					table.insert(reviews, review)
 				else
-					local review = event_name == "reviewed" and mapper.to_conversation_review(item) or nil
-					if review then
-						review.previous_state = dismissed_states[tostring(item.id or "")]
-						table.insert(items, {
-							id = "review:" .. tostring(review.id or review.submitted_on),
-							kind = "review",
-							created_on = review.submitted_on,
-							entity = review,
-						})
-					else
-						local entry = mapper.to_activity(item)
-						if entry then
-							table.insert(events, entry)
-						end
+					local entry = mapper.to_activity(node)
+					if entry then
+						table.insert(events, entry)
 					end
 				end
 			end
 		end
 
-		for _, entry in ipairs(squash_commits(events)) do
-			local actor_id = entry.actor and entry.actor.id or ""
-			local id = table.concat({ entry.date or "", entry.kind or "", actor_id }, ":")
-			table.insert(items, {
-				id = "activity:" .. id,
-				kind = "activity",
-				created_on = entry.date or "",
-				entity = entry,
-			})
-		end
-		on_done(items, nil)
+		on_done({
+			description = pulls[1] and mapper.to_description(pulls[1], pr.author.username),
+			comments = comments,
+			reviews = reviews,
+			activities = squash_commits(events),
+		}, nil)
 	end)
 end
 

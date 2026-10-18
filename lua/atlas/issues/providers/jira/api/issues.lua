@@ -4,11 +4,11 @@ local service = require("atlas.providers.jira.client")
 local normalizer = require("atlas.issues.providers.jira.api.mapper")
 local json = require("atlas.core.json")
 local config = require("atlas.config")
-local users_api = require("atlas.providers.jira.users")
+local jira_mapper = require("atlas.providers.jira.mapper")
 local url_encode = require("atlas.core.utils").url_encode
 local request_scope = require("atlas.core.requests")
 
----@param story_points_field string
+---@param story_points_field string|nil
 local function search_fields(story_points_field)
 	return {
 		"summary",
@@ -206,11 +206,39 @@ function M.fetch_issue(ref, opts, callback)
 	})
 end
 
----@param issue_key string
----@param on_done fun(entries: IssueActivityEntry[]|nil, err: string|nil)
+---@param refs IssueRef[]
+---@param opts IssuesFetchOpts
+---@param on_done fun(issues: Issue[], err: string|nil)
+---@return { cancel: fun() }|nil
+function M.fetch_by_refs(refs, opts, on_done)
+	if #refs == 0 then
+		on_done({}, nil)
+		return nil
+	end
+
+	local quoted = {}
+	for _, ref in ipairs(refs) do
+		table.insert(quoted, string.format('"%s"', ref.key:gsub('"', '\\"')))
+	end
+
+	return M.search_issues("key in (" .. table.concat(quoted, ",") .. ")", function(page, err)
+		if err or page == nil then
+			on_done({}, err or "Failed to fetch issues")
+			return
+		end
+		on_done(page.items, nil)
+	end, {
+		force_refresh = opts.force_refresh == true,
+		pagelen = #refs,
+	})
+end
+
+---@param issue Issue
 ---@param opts { force_refresh?: boolean }|nil
+---@param on_done fun(entries: IssueActivityEntry[]|nil, err: string|nil)
 ---@return { job_id: integer, cancel: fun() }|nil
-function M.get_issue_history(issue_key, on_done, opts)
+function M.fetch_activity(issue, opts, on_done)
+	local issue_key = tostring(issue.key or "")
 	if issue_key == "" then
 		on_done(nil, "Missing issue key")
 		return nil
@@ -429,7 +457,7 @@ function M.get_assignable_users(opts, query, callback)
 
 		local users = {}
 		for _, raw in ipairs(result) do
-			local user = users_api.to_user(raw)
+			local user = jira_mapper.to_user(raw)
 			if user then
 				table.insert(users, user)
 			end

@@ -9,7 +9,6 @@ local review_actions = require("atlas.pulls.actions.review")
 local comment_threads = require("atlas.pulls.ui.components.comment_threads")
 local activity_component = require("atlas.pulls.ui.detail.components.activity")
 local state = require("atlas.pulls.ui.detail.tabs.conversation.state")
-local detail = require("atlas.pulls.ui.detail.state")
 
 local PADDING_X = 1
 
@@ -31,8 +30,6 @@ end
 ---@param collapsed boolean
 ---@param width integer
 local function render_thread(thread, collapsed, width)
-	local provider = detail.provider
-	local comments = provider and provider.capabilities.comments
 	local fold_keys = keymaps.resolve("ui.toggle_fold")
 	local fold_key = fold_keys and fold_keys[1]
 	local opts = {
@@ -41,102 +38,63 @@ local function render_thread(thread, collapsed, width)
 			return not collapsed
 		end,
 		padding_x = PADDING_X,
-		reaction_options = comments and comments.reaction_options,
 		content_max_lines = fold_key and state.comment_max_lines or nil,
 		content_truncated_key = fold_key,
 	}
 	return comment_threads.render({ thread }, width, opts)
 end
 
----@param line_map table<integer, table>
----@param item PullsConversationItem
-local function attach_item(line_map, item)
-	for _, entry in pairs(line_map) do
-		entry.conversation_item = item
-		entry.entity_kind = item.kind
-	end
-end
-
----@param line_map table<integer, table>
----@param by_entity table<table, PullsConversationItem>
-local function attach_entities(line_map, by_entity)
-	for _, entry in pairs(line_map) do
-		local item = by_entity[entry.comment or entry.activity_entry]
-		if item then
-			entry.conversation_item = item
-		end
-	end
-end
-
 -- Timeline
 
 ---@class PullsConversationTimelineEntry
----@field type "comment"|"review"|"activity_run"
 ---@field timestamp string
 ---@field thread AtlasCommentThreadNode|nil
----@field item PullsConversationItem|nil
----@field items PullsConversationItem[]|nil
+---@field review PullsReviewHistoryEntry|nil
+---@field activities PullsActivityEntry[]|nil
 
----@param items PullsConversationItem[]
----@return PullsConversationTimelineEntry[], table<table, PullsConversationItem>
-local function build_timeline(items)
+---@param conversation PullsConversation
+---@return PullsConversationTimelineEntry[]
+local function build_timeline(conversation)
 	local mixed = {}
-	local comments, by_entity = {}, {}
-	for _, item in ipairs(items) do
-		by_entity[item.entity] = item
-		if item.kind == "comment" then
-			---@type PullsComment
-			local comment = item.entity
-			table.insert(comments, comment)
-		else
-			table.insert(mixed, {
-				kind = item.kind,
-				timestamp = item.created_on,
-				item = item,
-			})
-		end
+	for _, thread in ipairs(review_actions.group_comments(conversation.comments)) do
+		table.insert(mixed, { timestamp = thread.comment.created_at or "", thread = thread })
 	end
-	for _, thread in ipairs(review_actions.group_comments(comments)) do
-		table.insert(mixed, {
-			kind = "comment",
-			timestamp = thread.comment.created_on or "",
-			thread = thread,
-		})
+	for _, review in ipairs(conversation.reviews) do
+		table.insert(mixed, { timestamp = review.submitted_on, review = review })
+	end
+	for _, activity in ipairs(conversation.activities) do
+		table.insert(mixed, { timestamp = activity.date or "", activity = activity })
 	end
 	table.sort(mixed, function(a, b)
-		local ta, tb = tostring(a.timestamp), tostring(b.timestamp)
-		if ta == tb then
+		if a.timestamp == b.timestamp then
 			-- Keep an activity before other items created at the same time.
-			return a.kind == "activity" and b.kind ~= "activity"
+			return a.activity ~= nil and b.activity == nil
 		end
-		return ta < tb
+		return a.timestamp < b.timestamp
 	end)
-	-- Collapse consecutive activities into a single activity_run entry.
+	-- Collapse consecutive activities into a single entry.
 	local entries, run = {}, {}
+	if conversation.description then
+		-- Not sorted by time: commits can be authored before the PR was opened.
+		local description = review_actions.group_comments({ conversation.description })[1]
+		table.insert(entries, { timestamp = description.comment.created_at, thread = description })
+	end
 	local function flush_run()
 		if #run > 0 then
-			table.insert(entries, { type = "activity_run", timestamp = run[1].created_on, items = run })
+			table.insert(entries, { timestamp = run[1].date or "", activities = run })
 			run = {}
 		end
 	end
 	for _, item in ipairs(mixed) do
-		if item.kind == "activity" then
-			table.insert(run, item.item)
+		if item.activity then
+			table.insert(run, item.activity)
 		else
 			flush_run()
-			if item.kind == "review" then
-				table.insert(entries, { type = item.kind, timestamp = item.timestamp, item = item.item })
-			else
-				table.insert(entries, {
-					type = "comment",
-					timestamp = item.timestamp,
-					thread = item.thread,
-				})
-			end
+			table.insert(entries, { timestamp = item.timestamp, thread = item.thread, review = item.review })
 		end
 	end
 	flush_run()
-	return entries, by_entity
+	return entries
 end
 
 -- Render
@@ -169,12 +127,10 @@ local function review_status(review)
 	return icon, hl, label
 end
 
----@param item PullsConversationItem
+---@param review PullsReviewHistoryEntry
 ---@param width integer
 ---@param has_next boolean
-local function render_review(item, width, has_next)
-	---@type PullsReviewHistoryEntry
-	local review = item.entity
+local function render_review(review, width, has_next)
 	local icon, icon_hl, label = review_status(review)
 	local timestamp = utils.relative_time(review.submitted_on)
 	local additional = { { label, icon_hl } }
@@ -188,7 +144,7 @@ local function render_review(item, width, has_next)
 			{
 				icon = icon,
 				icon_hl = icon_hl,
-				author = review.author and (review.author.nickname or review.author.name) or "Unknown",
+				author = review.author and (review.author.username or review.author.name) or "Unknown",
 				additional = additional,
 				content = body ~= "" and body or nil,
 				markdown = true,
@@ -200,47 +156,36 @@ local function render_review(item, width, has_next)
 			content_prefix = has_next and "│ " or "  ",
 		}
 	)
-	attach_item(line_map, item)
+	for _, entry in pairs(line_map) do
+		entry.review_entry = review
+	end
 	return lines, spans, line_map
 end
 
 ---@param entry PullsConversationTimelineEntry
 ---@param width integer
 ---@param has_next boolean
----@param by_entity table<table, PullsConversationItem>
-local function render_entry(entry, width, has_next, by_entity)
-	if entry.type == "comment" then
-		local thread = entry.thread
+local function render_entry(entry, width, has_next)
+	local thread, review, activities = entry.thread, entry.review, entry.activities
+	if thread then
 		local root = thread.comment
 		if root.is_task then
-			local lines, spans, line_map = comment_threads.render_task_compact(thread, width, {
+			return comment_threads.render({ thread }, width, {
 				padding_x = PADDING_X,
 				content_prefix = has_next and "│ " or "  ",
 			})
-			attach_entities(line_map, by_entity)
-			return lines, spans, line_map
 		end
-		local lines, spans, line_map = render_thread(thread, state.is_collapsed(root.id, #thread.children > 0), width)
-		attach_entities(line_map, by_entity)
-		return lines, spans, line_map
-	elseif entry.type == "review" and entry.item then
-		return render_review(entry.item, width, has_next)
-	elseif entry.type == "activity_run" then
-		local run_id = tostring(entry.timestamp or "")
-		local activities = {}
-		for _, item in ipairs(entry.items or {}) do
-			---@type PullsActivityEntry
-			local activity = item.entity
-			table.insert(activities, activity)
-		end
-		local lines, spans, line_map = activity_component.render(activities, width, {
+		return render_thread(thread, state.is_collapsed(root.id, #thread.children > 0), width)
+	elseif review then
+		return render_review(review, width, has_next)
+	elseif activities then
+		local run_id = entry.timestamp
+		return activity_component.render(activities, width, {
 			padding_x = PADDING_X,
 			squash = not state.is_run_expanded(run_id),
 			run_id = run_id,
 			has_next = has_next,
 		})
-		attach_entities(line_map or {}, by_entity)
-		return lines, spans, line_map
 	end
 	return {}, {}, {}
 end
@@ -248,7 +193,11 @@ end
 ---@param entry PullsConversationTimelineEntry|nil
 ---@return boolean
 local function is_activity(entry)
-	return entry ~= nil and (entry.type ~= "comment" or entry.thread.comment.is_task == true)
+	if entry == nil then
+		return false
+	end
+	local thread = entry.thread
+	return thread == nil or thread.comment.is_task == true
 end
 
 ---@param _pr PullRequest
@@ -262,17 +211,16 @@ function M.render(_pr, _details, width)
 		return lines, spans, line_map
 	end
 
-	if state.items == nil then
-		return lines, spans, line_map
-	end
-	if state.items == "loading" then
+	local conversation = state.conversation
+	if conversation == "loading" then
 		utils.push(lines, spans, spinner.with_text("Loading conversation..."), "AtlasTextMuted", PADDING_X)
 		return lines, spans, line_map
 	end
+	if type(conversation) ~= "table" then
+		return lines, spans, line_map
+	end
 
-	---@cast state.items PullsConversationItem[]
-	local items = state.items
-	local entries, by_entity = build_timeline(items)
+	local entries = build_timeline(conversation)
 
 	if #entries == 0 then
 		utils.push(lines, spans, "No conversation yet.", "AtlasTextMuted", PADDING_X)
@@ -288,7 +236,7 @@ function M.render(_pr, _details, width)
 			end
 		end
 		local has_next = is_activity(entry) and is_activity(entries[index + 1])
-		local e_lines, e_spans, e_map = render_entry(entry, width, has_next, by_entity)
+		local e_lines, e_spans, e_map = render_entry(entry, width, has_next)
 		splice(lines, spans, line_map, e_lines, e_spans, e_map)
 	end
 

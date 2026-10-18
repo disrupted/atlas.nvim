@@ -1,12 +1,17 @@
 local M = {}
 
 local completion = require("atlas.completion")
+local issue_actions = require("atlas.issues.actions")
 local md_editor = require("atlas.ui.popups.editor")
-local picker = require("atlas.ui.picker")
 local comment_threads = require("atlas.issues.ui.components.comment_threads")
 local notify = require("atlas.core.notify")
+local reactions = require("atlas.ui.shared.reactions")
 local state = require("atlas.issues.ui.detail.tabs.conversation.state")
 local detail = require("atlas.issues.ui.detail.state")
+
+---@class IssuesConversationLine
+---@field comment IssueComment|nil
+---@field thread_root IssueComment|nil
 
 ---@param issue Issue
 ---@param amount integer
@@ -58,15 +63,17 @@ function M.add(issue, refresh)
 end
 
 ---@param issue Issue
----@param entry table
+---@param entry IssuesConversationLine
 ---@param refresh fun()
 function M.reply(issue, entry, refresh)
-	local item = entry and entry.conversation_item or nil
-	if not item or item.kind ~= "comment" then
+	local comment = entry.comment
+	if not comment then
 		return
 	end
-	---@type IssueComment
-	local comment = item.entity
+	if state.is_description(comment) then
+		M.add(issue, refresh)
+		return
+	end
 	local comments = detail.provider.capabilities.comments
 	local mention = completion.format_mention(detail.provider, comment.author)
 
@@ -106,15 +113,26 @@ function M.reply(issue, entry, refresh)
 end
 
 ---@param issue Issue
----@param entry table
+---@param entry IssuesConversationLine
 ---@param refresh fun()
 function M.edit(issue, entry, refresh)
-	local item = entry and entry.conversation_item or nil
-	if not item or item.kind ~= "comment" then
+	local comment = entry.comment
+	if not comment then
 		return
 	end
-	---@type IssueComment
-	local comment = item.entity
+	if state.is_description(comment) then
+		issue_actions.run("edit_issue", { provider = detail.provider, issue = issue }, function(result)
+			if not result or not result.issue_key then
+				return
+			end
+			if detail.on_update then
+				detail.on_update(issue, result)
+			else
+				require("atlas.issues.ui.detail").refresh(issue)
+			end
+		end)
+		return
+	end
 	local comments = detail.provider.capabilities.comments
 	md_editor.open({
 		key = "issue-comment-edit-" .. tostring(comment.id),
@@ -139,8 +157,6 @@ function M.edit(issue, entry, refresh)
 					return
 				end
 				if updated then
-					updated.parent_id = updated.parent_id or comment.parent_id
-					updated._raw = vim.tbl_extend("keep", updated._raw or {}, comment._raw or {})
 					state.upsert_comment(updated)
 				else
 					comment.body = text
@@ -153,15 +169,13 @@ function M.edit(issue, entry, refresh)
 end
 
 ---@param issue Issue
----@param entry table
+---@param entry IssuesConversationLine
 ---@param refresh fun()
 function M.delete(issue, entry, refresh)
-	local item = entry and entry.conversation_item or nil
-	if not item or item.kind ~= "comment" then
+	local comment = entry.comment
+	if not comment or state.is_description(comment) then
 		return
 	end
-	---@type IssueComment
-	local comment = item.entity
 	local comments = detail.provider.capabilities.comments
 
 	vim.ui.input({ prompt = "Delete comment? [y/N]: " }, function(input)
@@ -187,45 +201,17 @@ function M.delete(issue, entry, refresh)
 end
 
 ---@param issue Issue
----@param entry table
+---@param entry IssuesConversationLine
 ---@param refresh fun()
 function M.react(issue, entry, refresh)
-	local item = entry and entry.conversation_item or nil
-	if not item or item.kind ~= "comment" then
+	local comment = entry.comment
+	if not comment or comment.deleted then
 		return
 	end
-	local comments = detail.provider.capabilities.comments
-	local options = comments.reaction_options
-	---@type IssueComment
-	local target = item.entity
-	picker.select({
-		title = "Add reaction",
-		items = options,
-		format_item = function(option)
-			return string.format("%s  %s", option.emoji or option.key, option.label or option.key)
-		end,
-		on_select = function(selected)
-			if selected == nil then
-				return
-			end
-			notify.loading("Adding reaction...")
-			comments.add_reaction(issue, item, selected.key, function(ok, err)
-				if not state.is_current(issue) then
-					return
-				end
-				if err then
-					notify.error("Reaction failed: " .. tostring(err))
-					return
-				end
-				if ok then
-					target.reactions = target.reactions or {}
-					target.reactions[selected.key] = (tonumber(target.reactions[selected.key]) or 0) + 1
-				end
-				notify.success("Reaction added", { timeout = 1200 })
-				refresh()
-			end)
-		end,
-	})
+	-- TODO: Reacting to the description doesn't update the overview's reactions until the details are reloaded.
+	reactions.pick(detail.provider.capabilities.comments.reactions, issue, comment, function()
+		return state.is_current(issue)
+	end, refresh)
 end
 
 return M

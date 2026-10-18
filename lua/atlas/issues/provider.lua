@@ -13,9 +13,14 @@
 
 ---@class IssuesPage
 ---@field items Issue[]
+---@field statuses IssueStatus[]|nil
 ---@field query string|nil
 ---@field next_cursor string|nil
 ---@field total_pages integer|nil
+
+---@class IssueStatus
+---@field id string
+---@field name string
 
 ---@class IssuesProvider
 ---@field id string
@@ -23,7 +28,6 @@
 ---@field icon string
 ---@field hl_group string
 ---@field views fun(): IssuesViewConfig[]
----@field view_for_target fun(target: AtlasTarget): IssuesViewConfig
 ---@field issue_ref fun(target: AtlasTarget): IssueRef|nil
 ---@field capabilities IssuesProviderCapabilities
 
@@ -40,12 +44,11 @@
 
 ---@class IssuesCommentsCapability
 ---@field fetch_activity (fun(issue: Issue, opts: IssuesFetchOpts|nil, on_done: fun(entries: IssueActivityEntry[]|nil, err: string|nil)): { cancel: fun() }|nil)|nil
----@field fetch_conversation (fun(issue: Issue, opts: { force_refresh: boolean|nil }|nil, on_done: fun(items: IssueConversationItem[]|nil, err: string|nil)): { cancel: fun() }|nil)|nil
+---@field fetch_conversation (fun(issue: Issue, opts: { force_refresh: boolean|nil }|nil, on_done: fun(conversation: IssueConversation|nil, err: string|nil)): { cancel: fun() }|nil)|nil
 ---@field add_comment (fun(issue: Issue, content: string, opts: { parent?: IssueComment }|nil, on_done: fun(comment: IssueComment|nil, err: string|nil)): { cancel: fun() }|nil)|nil
 ---@field edit_comment (fun(issue: Issue, comment: IssueComment, content: string, on_done: fun(comment: IssueComment|nil, err: string|nil)): { cancel: fun() }|nil)|nil
 ---@field delete_comment (fun(issue: Issue, comment: IssueComment, on_done: fun(ok: boolean, err: string|nil)): { cancel: fun() }|nil)|nil
----@field add_reaction (fun(issue: Issue, item: IssueConversationItem, key: string, on_done: fun(ok: boolean, err: string|nil)): { cancel: fun() }|nil)|nil
----@field reaction_options IssueReactionOption[]|nil
+---@field reactions AtlasReactionsCapability|nil
 
 ---@class IssuesActionResult
 ---@field issue_key string|nil
@@ -54,7 +57,7 @@
 
 ---@class IssuesUICapability
 ---@field detail IssuesProviderDetail|nil
----@field repository { pages: fun(pages: table<string, RepositoryPage>): RepositoryPage[] }|nil
+---@field repository { pages: RepositoryPage[] }|nil
 
 --------------------------------------------------------------------------------
 -- Detail interface

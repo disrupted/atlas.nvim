@@ -3,13 +3,14 @@ local adf = require("atlas.formats.adf.to_markdown")
 local config = require("atlas.config")
 local highlights = require("atlas.ui.highlights")
 local icons = require("atlas.ui.shared.icons")
+local helper = require("atlas.issues.ui.presentation")
 local json = require("atlas.core.json")
-local users = require("atlas.providers.jira.users")
+local jira_mapper = require("atlas.providers.jira.mapper")
 
 ---@param raw any
 ---@return AtlasUser|nil
 local function normalize_issue_user(raw)
-	local user = users.to_user(raw)
+	local user = jira_mapper.to_user(raw)
 	if user and user.id ~= "" and user.name ~= "" then
 		return user
 	end
@@ -148,28 +149,6 @@ local function extract_description(value)
 	return json.safe_str(value) or ""
 end
 
----@param value any
----@return number|nil
-local function extract_story_points(value)
-	value = json.nilify(value)
-	if value == nil then
-		return nil
-	end
-
-	if type(value) == "number" then
-		return value
-	end
-
-	if type(value) == "string" then
-		local n = tonumber(value)
-		if n then
-			return n
-		end
-	end
-
-	return nil
-end
-
 ---@param raw table
 ---@param sp_field string|nil
 ---@return JiraIssue
@@ -190,7 +169,7 @@ function M.to_issue(raw, sp_field)
 		priority = safe_get(fields, "priority", "name"),
 		assignee = normalize_issue_user(safe_get(fields, "assignee")),
 		reporter = normalize_issue_user(safe_get(fields, "reporter")),
-		story_points = sp_field and extract_story_points(fields[sp_field]) or nil,
+		story_points = sp_field and tonumber(fields[sp_field]) or nil,
 		duedate = json.safe_str(fields.duedate),
 		parent = extract_parent(safe_get(fields, "parent")),
 		created_at = json.safe_str(fields.created),
@@ -256,14 +235,12 @@ function M.to_issues_list(raw_issues, sp_field)
 	return out
 end
 
----@class JiraCommentMappingContext
----@field issue_key? string
----@field base_url? string
-
 ---@param raw_comment any Decoded API value.
----@param context JiraCommentMappingContext
+---@param issue_key string
+---@param base_url string
+---@param reporter_id string|nil
 ---@return IssueComment|nil
-local function normalize_comment(raw_comment, context)
+local function normalize_comment(raw_comment, issue_key, base_url, reporter_id)
 	if type(raw_comment) ~= "table" then
 		return nil
 	end
@@ -273,9 +250,9 @@ local function normalize_comment(raw_comment, context)
 		parent_id = raw_comment.parentId
 	end
 
+	local author = normalize_issue_user(raw_comment.author)
 	local comment_id = tostring(raw_comment.id or "")
-	local issue_key = tostring(context.issue_key or "")
-	local base_url = tostring(context.base_url or ""):gsub("/+$", "")
+	base_url = base_url:gsub("/+$", "")
 	local url = nil
 	if base_url ~= "" and issue_key ~= "" and comment_id ~= "" then
 		url = string.format("%s/browse/%s?focusedCommentId=%s", base_url, issue_key, comment_id)
@@ -283,36 +260,34 @@ local function normalize_comment(raw_comment, context)
 
 	return {
 		id = comment_id,
-		self = raw_comment.self and tostring(raw_comment.self) or nil,
 		url = url,
-		author = normalize_issue_user(raw_comment.author),
+		author = author,
+		author_roles = author and author.id == reporter_id and { "Author" } or nil,
 		-- Jira cloud returns body as ADF, while Jira server returns it as string
 		body = type(raw_comment.body) == "table" and adf.to_markdown(raw_comment.body)
 			or type(raw_comment.body) == "string" and raw_comment.body
-			or nil,
-		created = raw_comment.created and tostring(raw_comment.created) or nil,
-		updated = raw_comment.updated and tostring(raw_comment.updated) or nil,
+			or "",
+		created_at = raw_comment.created and tostring(raw_comment.created) or "",
 		parent_id = parent_id,
-		children = nil,
 	}
 end
 
 ---@param raw any Decoded API value.
----@param context JiraCommentMappingContext
+---@param issue_key string
+---@param base_url string
+---@param reporter_id string|nil
 ---@return IssueComment[]
-function M.to_comments_list(raw, context)
+function M.to_comments_list(raw, issue_key, base_url, reporter_id)
 	local payload = json.safe_table(raw)
 	local comments = {}
 	for _, raw_comment in ipairs(json.safe_table(payload.comments)) do
-		local comment = normalize_comment(raw_comment, context or {})
+		local comment = normalize_comment(raw_comment, issue_key, base_url, reporter_id)
 		if comment ~= nil then
 			table.insert(comments, comment)
 		end
 	end
 	return comments
 end
-
-local helper = require("atlas.issues.ui.presentation")
 
 local FIELD_LABELS = {
 	Comment = "a comment",
@@ -427,7 +402,7 @@ local function activity_from_history_item(raw_item, actor, date)
 	end
 
 	return {
-		kind = field ~= "" and field or "update",
+		kind = "other",
 		actor = actor,
 		date = date,
 		label = string.format("%s %s", action, FIELD_LABELS[field] or field),

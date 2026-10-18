@@ -3,6 +3,21 @@
 ---@field name string
 ---@field username string|nil
 
+---@class AtlasReaction
+---@field name string
+---@field count integer
+---@field users AtlasUser[]|nil Who reacted, when the provider returns it (GitHub: first 10 only). So in the future maybe we can fetch that data async when the picker opens ?
+---@field reacted boolean|nil Whether the current user reacted
+
+---@class AtlasReactionOption
+---@field name string
+---@field key string|nil API key, when it differs from the name
+
+---@class AtlasReactionsCapability
+---@field options AtlasReactionOption[]
+---@field add fun(target: Issue|PullRequest|GitHubDiscussionDetails, comment: IssueComment|PullsComment|GitHubDiscussionComment, key: string, on_done: fun(ok: boolean, err: string|nil)): { cancel: fun() }|nil
+---@field remove (fun(target: Issue|PullRequest|GitHubDiscussionDetails, comment: IssueComment|PullsComment|GitHubDiscussionComment, key: string, on_done: fun(ok: boolean, err: string|nil)): { cancel: fun() }|nil)|nil
+
 ---@class AtlasProviderCapabilities
 ---@field repository AtlasRepositoryCapability|nil
 ---@field notifications AtlasNotificationsCapability|nil
@@ -103,16 +118,10 @@
 ---@field author string|nil
 ---@field assets AtlasRepositoryReleaseAsset[]
 
----@class AtlasRepositoryIssueSummary
----@field open integer
----@field closed integer
----@field items { label: string, value: string|number }[]|nil
-
 ---@class AtlasRepositoryCapability
 ---@field fetch_details fun(repo: AtlasRepository, on_done: fun(repo: AtlasRepositoryDetails|nil, err: string|nil)): { cancel: fun() }|nil
 ---@field fetch_branches fun(repo: AtlasRepository, opts: { cursor?: string, search?: string }, on_done: fun(branches: AtlasRepositoryBranch[]|nil, err: string|nil, next_cursor: string|nil)): { cancel: fun() }|nil
 ---@field fetch_tags fun(repo: AtlasRepository, opts: { cursor?: string, search?: string }, on_done: fun(tags: AtlasRepositoryTag[]|nil, err: string|nil, next_cursor: string|nil)): { cancel: fun() }|nil
 ---@field fetch_releases (fun(repo: AtlasRepository, on_done: fun(releases: AtlasRepositoryRelease[]|nil, err: string|nil)): { cancel: fun() }|nil)|nil
 ---@field fetch_release (fun(repo: AtlasRepository, opts: { id?: string }, on_done: fun(release: AtlasRepositoryReleaseDetails|nil, err: string|nil, status?: integer)): { cancel: fun() }|nil)|nil
----@field fetch_issue_summary (fun(repo: AtlasRepository, on_done: fun(summary: AtlasRepositoryIssueSummary|nil, err: string|nil)): { cancel: fun() }|nil)|nil
 ---@field delete_branch (fun(repo: AtlasRepository, branch: AtlasRepositoryBranch, on_done: fun(ok: boolean, err: string|nil)): { cancel: fun() }|nil)|nil

@@ -4,11 +4,16 @@ local notify = require("atlas.core.notify")
 local resolver = require("atlas.core.keymaps")
 local utils = require("atlas.ui.shared.utils")
 local actions = require("atlas.issues.actions")
+local state = require("atlas.issues.state")
+local window = require("atlas.issues.ui.dashboard.window")
+local navigation = require("atlas.issues.ui.dashboard.navigation")
+local controller = require("atlas.issues.ui.dashboard.controller")
+local layouts = require("atlas.issues.ui.layouts")
+local help = require("atlas.ui.popups.help")
 local registrations = {}
 
 ---@return Issue|nil
 local function selected_issue()
-	local navigation = require("atlas.ui.navigation")
 	local node = navigation.current_item()
 	if type(node) ~= "table" then
 		return nil
@@ -33,11 +38,117 @@ local function item(action_id, map_item)
 end
 
 ---@param buf integer
+---@return table[]
+local function dashboard_items(buf)
+	local dashboard = require("atlas.issues.ui.dashboard")
+	local items = {}
+
+	utils.insert_if(
+		items,
+		item("ui.next_item", {
+			desc = "Next item",
+			hidden = true,
+			callback = function()
+				navigation.move_cursor("down")
+			end,
+		})
+	)
+	utils.insert_if(
+		items,
+		item("ui.previous_item", {
+			desc = "Previous item",
+			hidden = true,
+			callback = function()
+				navigation.move_cursor("up")
+			end,
+		})
+	)
+	utils.insert_if(
+		items,
+		item("ui.first_item", {
+			desc = "Go to first item",
+			hidden = true,
+			callback = function()
+				navigation.focus_first_item()
+			end,
+		})
+	)
+	utils.insert_if(
+		items,
+		item("ui.last_item", {
+			desc = "Go to last item",
+			hidden = true,
+			callback = function()
+				navigation.focus_last_item()
+			end,
+		})
+	)
+	utils.insert_if(
+		items,
+		item("ui.help", {
+			desc = "Toggle this help popup",
+			index = 100,
+			opts = { nowait = true, silent = true },
+			callback = function()
+				help.toggle({ buffer = buf })
+			end,
+		})
+	)
+	utils.insert_if(
+		items,
+		item("ui.close", {
+			desc = "Close Atlas window",
+			index = 101,
+			opts = { nowait = true, silent = true },
+			callback = function()
+				if not help.is_open() then
+					window.close()
+				end
+			end,
+		})
+	)
+	utils.insert_if(
+		items,
+		item("ui.toggle_panel", {
+			desc = "Toggle detail panel",
+			index = 12,
+			callback = dashboard.toggle_detail,
+		})
+	)
+	utils.insert_if(
+		items,
+		item("ui.next_panel_tab", {
+			desc = "Next panel tab",
+			index = 11,
+			opts = { nowait = true },
+			callback = dashboard.next_detail_tab,
+		})
+	)
+	utils.insert_if(
+		items,
+		item("ui.previous_panel_tab", {
+			desc = "Previous panel tab",
+			index = 10,
+			opts = { nowait = true },
+			callback = dashboard.prev_detail_tab,
+		})
+	)
+	utils.insert_if(
+		items,
+		item("ui.notifications.open", {
+			desc = "Open notifications",
+			index = 20,
+			callback = function()
+				require("atlas.ui.notifications").open(state.provider, window.render)
+			end,
+		})
+	)
+	return items
+end
+
+---@param buf integer
 ---@param views IssuesViewConfig[]
 function M.register(buf, views)
-	local help = require("atlas.ui.popups.help")
-	local controller = require("atlas.issues.ui.dashboard.controller")
-	local state = require("atlas.issues.state")
 	local provider = assert(state.provider)
 	local capabilities = provider.capabilities
 	local function context(issue)
@@ -64,6 +175,43 @@ function M.register(buf, views)
 
 	local items = {}
 	local filters = {}
+	utils.insert_if(
+		items,
+		item("ui.cycle_layout", {
+			desc = "Cycle layout",
+			index = 19,
+			callback = controller.cycle_layout,
+		})
+	)
+
+	if layouts.resolve("board", provider.id) == "board" then
+		utils.insert_if(
+			items,
+			item("ui.previous_column", {
+				desc = "Previous status column (board)",
+				callback = function()
+					if state.view_layout(state.search_view()) == "board" then
+						navigation.move_column(-vim.v.count1)
+					else
+						vim.cmd("normal! " .. vim.v.count1 .. "h")
+					end
+				end,
+			})
+		)
+		utils.insert_if(
+			items,
+			item("ui.next_column", {
+				desc = "Next status column (board)",
+				callback = function()
+					if state.view_layout(state.search_view()) == "board" then
+						navigation.move_column(vim.v.count1)
+					else
+						vim.cmd("normal! " .. vim.v.count1 .. "l")
+					end
+				end,
+			})
+		)
+	end
 
 	for _, view in ipairs(views) do
 		if view ~= state.bookmarks.tab and view.key ~= nil and view.key ~= "" then
@@ -78,7 +226,7 @@ function M.register(buf, views)
 		end
 	end
 
-	local bookmark_view = state.bookmarks.tab
+	local bookmark_view = state.bookmarks.tab --[[@as IssuesViewConfig]]
 	table.insert(items, {
 		key = bookmark_view.key,
 		desc = "Switch to bookmarks",
@@ -96,7 +244,6 @@ function M.register(buf, views)
 			desc = "Run bookmark",
 			index = 2,
 			callback = function()
-				local navigation = require("atlas.ui.navigation")
 				local node = navigation.current_item()
 				if type(node) == "table" and (node.kind == "bookmark" or node.kind == "starred") then
 					controller.select_bookmark(node)
@@ -294,6 +441,23 @@ function M.register(buf, views)
 
 	utils.insert_if(
 		items,
+		item("ui.open_references", {
+			desc = "Open references",
+			index = 11,
+			opts = { nowait = true, silent = true },
+			callback = function()
+				local issue = selected_issue()
+				if issue == nil then
+					notify.warn("No issue selected")
+					return
+				end
+				require("atlas.ui.links").select(provider, issue, "issue")
+			end,
+		})
+	)
+
+	utils.insert_if(
+		items,
 		item("ui.previous_page", {
 			desc = "Previous page",
 			index = 15,
@@ -317,6 +481,7 @@ function M.register(buf, views)
 
 	M.remove(buf)
 	registrations[buf] = {
+		{ group = "General", items = dashboard_items(buf), index = 210 },
 		{ group = "General", items = items, index = 1 },
 		{ group = "Filters", items = filters, index = 2 },
 		{ group = "Custom", items = custom, index = 3 },
@@ -324,13 +489,14 @@ function M.register(buf, views)
 	for _, registration in ipairs(registrations[buf]) do
 		help.register(registration.group, registration.items, { index = registration.index, buffer = buf })
 	end
+	navigation.attach(buf)
 end
 
 ---@param buf integer
 function M.remove(buf)
+	navigation.detach(buf)
 	local registered = registrations[buf]
 	if registered then
-		local help = require("atlas.ui.popups.help")
 		for _, registration in ipairs(registered) do
 			help.remove(registration.group, registration.items, { buffer = buf })
 		end

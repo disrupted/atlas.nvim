@@ -17,6 +17,7 @@ query($owner: String!, $repo: String!, $number: Int!) {
   repository(owner: $owner, name: $repo) {
     pullRequest(number: $number) {
       viewerSubscription body
+      reactionGroups { content viewerHasReacted reactors(first: 10) { totalCount nodes { ... on User { login name } ... on Bot { login } } } }
       labels(first: 100) { nodes { name color } }
       assignees(first: 10) { nodes { id login name } }
     }
@@ -225,15 +226,21 @@ function M.fetch_by_refs(refs, _, on_done)
 	})
 end
 
----@param owner string
----@param repo string
----@param number number|string
+---@param ref PullRequestRef
+---@param opts PullsFetchOpts|nil
 ---@param on_done fun(details: PullRequestDetails|nil, err: string|nil)
----@param opts { force_refresh?: boolean }|nil
 ---@return { job_id: integer, cancel: fun() }|nil
-function M.get_pr(owner, repo, number, on_done, opts)
+function M.fetch_pullrequest(ref, opts, on_done)
 	opts = opts or {}
-	local repo_slug = string.format("%s/%s", owner, repo)
+	local repo_slug = ref.repo_full_name
+	local owner, repo = repo_slug:match("^([^/]+)/(.+)$")
+	if owner == nil or repo == nil then
+		vim.schedule(function()
+			on_done(nil, "Missing repository info")
+		end)
+		return nil
+	end
+	local number = ref.id
 	local cache_key = string.format("github:pr:%s:%s", repo_slug, tostring(number))
 
 	if not opts.force_refresh then
@@ -419,41 +426,6 @@ function M.update_assignees(pr, adds, removes, on_done)
 end
 
 ---@param pr PullRequest
----@param title string
----@param on_done fun(ok: boolean, err: string|nil)
----@return { cancel: fun() }|nil
-function M.update_title(pr, title, on_done)
-	local repo_slug = pr.repo_full_name or ""
-	if repo_slug == "" then
-		vim.schedule(function()
-			on_done(false, "Missing repo")
-		end)
-		return nil
-	end
-
-	return cli.gh({
-		"pr",
-		"edit",
-		tostring(pr.id),
-		"--repo",
-		repo_slug,
-		"--title",
-		title,
-	}, function(_, err)
-		if err then
-			on_done(false, err)
-			return
-		end
-		invalidate_details(repo_slug, pr.id)
-		on_done(true, nil)
-	end, {
-		action = "Update PR title",
-		repo = repo_slug,
-		number = pr.id,
-	})
-end
-
----@param pr PullRequest
 ---@param draft boolean
 ---@param on_done fun(ok: boolean, err: string|nil)
 ---@return { cancel: fun() }|nil
@@ -486,42 +458,6 @@ function M.set_draft(pr, draft, on_done)
 		on_done(true, nil)
 	end, {
 		action = draft and "Convert PR to draft" or "Mark PR ready for review",
-		repo = repo_slug,
-		number = pr.id,
-	})
-end
-
----@param pr PullRequest
----@param description string
----@param on_done fun(ok: boolean, err: string|nil)
----@return { cancel: fun() }|nil
-function M.update_description(pr, description, on_done)
-	local repo_slug = pr.repo_full_name or ""
-	if repo_slug == "" then
-		vim.schedule(function()
-			on_done(false, "Missing repo")
-		end)
-		return nil
-	end
-
-	return cli.gh({
-		"pr",
-		"edit",
-		tostring(pr.id),
-		"--repo",
-		repo_slug,
-		"--body",
-		description,
-	}, function(_, err)
-		if err then
-			on_done(false, err)
-			return
-		end
-		invalidate_details(repo_slug, pr.id)
-		cli.delete_mem(string.format("github:desc:%s:%s", repo_slug, tostring(pr.id)))
-		on_done(true, nil)
-	end, {
-		action = "Update PR description",
 		repo = repo_slug,
 		number = pr.id,
 	})

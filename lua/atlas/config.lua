@@ -6,7 +6,7 @@
 
 ---@alias AtlasGitTransport "https"|"ssh"
 ---@alias AtlasPullsViewLayout "compact"|"grouped"|"plain"
----@alias AtlasIssuesViewLayout "compact"|"plain"
+---@alias AtlasIssuesViewLayout "compact"|"plain"|"board"
 
 ---@class AtlasPullsViewConfig
 ---@field name string
@@ -237,6 +237,8 @@ local defaults = {
 		ui = {
 			next_item = "j",
 			previous_item = "k",
+			previous_column = "h",
+			next_column = "l",
 			first_item = "gg",
 			last_item = "G",
 			select = "<CR>",
@@ -251,6 +253,7 @@ local defaults = {
 				react = "gr",
 			},
 			toggle_panel = "p",
+			cycle_layout = "t",
 			toggle_fold = "za",
 			toggle_all_folds = "zA",
 			toggle_description_mode = "<leader>m",

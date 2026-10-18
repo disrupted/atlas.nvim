@@ -50,9 +50,9 @@ function M.fetch_tasks(pr, opts, on_done)
 			on_done(nil, err)
 			return
 		end
-		local tasks = mapper.to_tasks_list(result)
+		local tasks = mapper.to_tasks_list(result, pr.author.id)
 		table.sort(tasks, function(a, b)
-			return a.created_on < b.created_on
+			return a.created_at < b.created_at
 		end)
 		service.set_cache(key, tasks)
 		on_done(tasks, nil)
@@ -81,7 +81,7 @@ function M.add_task(pr, content, parent, on_done)
 			return
 		end
 		service.clear_cache()
-		local task = mapper.to_tasks_list({ values = { result } })[1]
+		local task = mapper.to_tasks_list({ values = { result } }, pr.author.id)[1]
 		if not task then
 			on_done(nil, "Bitbucket did not return the created task")
 			return
@@ -101,8 +101,8 @@ function M.edit_task(task, on_done)
 	end
 
 	local payload = { state = task.state == "RESOLVED" and "RESOLVED" or "UNRESOLVED" }
-	if task.content_raw ~= "" then
-		payload.content = { raw = task.content_raw }
+	if task.body ~= "" then
+		payload.content = { raw = task.body }
 	end
 	return service.request("PUT", url, nil, vim.json.encode(payload), function(result, err)
 		if err then
@@ -115,6 +115,7 @@ function M.edit_task(task, on_done)
 			on_done(nil, "Bitbucket did not return the updated task")
 			return
 		end
+		updated.author_roles = task.author_roles
 		on_done(updated, nil)
 	end, { action = "Edit PR task", task_id = task.id })
 end

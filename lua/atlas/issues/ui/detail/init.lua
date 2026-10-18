@@ -1,11 +1,11 @@
 local M = {}
 
-local detail_ui = require("atlas.ui.detail")
+local detail_window = require("atlas.issues.ui.detail.window")
 local renderer = require("atlas.issues.ui.detail.renderer")
 local notify = require("atlas.core.notify")
 local request_scope = require("atlas.core.requests")
-local state = require("atlas.issues.ui.detail.state")
 local links = require("atlas.ui.links")
+local state = require("atlas.issues.ui.detail.state")
 
 local SPINNER_INTERVAL_MS = 100
 
@@ -52,7 +52,7 @@ local function start_spinner()
 	if state.spinner_timer ~= nil then
 		return
 	end
-	state.spinner_timer = vim.loop.new_timer()
+	state.spinner_timer = vim.uv.new_timer()
 	if state.spinner_timer == nil then
 		return
 	end
@@ -60,7 +60,7 @@ local function start_spinner()
 		SPINNER_INTERVAL_MS,
 		SPINNER_INTERVAL_MS,
 		vim.schedule_wrap(function()
-			if not detail_ui.is_showing("issues") or not is_loading() then
+			if not detail_window.is_open() or not is_loading() then
 				stop_spinner()
 				return
 			end
@@ -78,7 +78,7 @@ local function update_spinner()
 end
 
 local function render_if_open()
-	if detail_ui.is_showing("issues") then
+	if detail_window.is_open() then
 		render()
 	end
 end
@@ -132,6 +132,29 @@ local function refresh_callback(issue)
 end
 
 ---@param issue Issue
+---@param force_refresh boolean
+local function load_links(issue, force_refresh)
+	local provider = state.provider
+	local current = { items = {}, loading = provider ~= nil }
+	state.links = current
+	if provider == nil then
+		return
+	end
+	local refresh = refresh_callback(issue)
+	state.requests.run(function(done)
+		return links.fetch(provider, issue, { force_refresh = force_refresh }, done)
+	end, function(items, err)
+		if state.links ~= current then
+			return
+		end
+		current.items = items or {}
+		current.error = err
+		current.loading = false
+		refresh()
+	end)
+end
+
+---@param issue Issue
 ---@param opts { force_refresh: boolean|nil }|nil
 local function load_active_tab(issue, opts)
 	local tab = state.tab_module(state.current_tab)
@@ -176,7 +199,7 @@ local function clear_issue()
 	state.details_loading = false
 	state.issue_loading = false
 	state.line_map = {}
-	links.reset(state)
+	state.links = { items = {}, loading = false }
 end
 
 ---@param issue Issue
@@ -185,7 +208,7 @@ local function show_issue(issue, force_refresh)
 	state.current_issue = issue
 	pending_ref = nil
 	state.issue_loading = false
-	links.load(state, issue, force_refresh, refresh_callback(issue))
+	load_links(issue, force_refresh)
 	load_active_tab(issue, { force_refresh = force_refresh })
 	update_spinner()
 	render()
@@ -224,7 +247,7 @@ end
 
 ---@return boolean
 function M.is_open()
-	return detail_ui.is_showing("issues")
+	return detail_window.is_open()
 end
 
 ---@param issue Issue
@@ -251,7 +274,7 @@ function M.select(issue, opts)
 	load_details(issue, opts.force_refresh == true)
 end
 
----@param opts { provider: IssuesProvider|nil, force_refresh: boolean|nil, on_update: fun(issue: Issue|nil, result: IssuesActionResult|nil)|nil }|nil
+---@param opts { provider: IssuesProvider|nil, force_refresh: boolean|nil, on_update: fun(issue: Issue|nil, result: IssuesActionResult|nil)|nil, back: fun()|nil }|nil
 ---@return IssuesProvider|nil, boolean force_refresh
 local function prepare_open(opts)
 	opts = opts or {}
@@ -262,15 +285,16 @@ local function prepare_open(opts)
 		return nil, false
 	end
 
-	state.win, state.buf = detail_ui.open("issues", cleanup, render)
+	state.win, state.buf = detail_window.open(cleanup, render)
 	set_provider(provider)
 	state.on_update = opts.on_update
+	state.back = opts.back
 
 	return provider, opts.force_refresh == true
 end
 
 ---@param issue Issue
----@param opts { provider: IssuesProvider|nil, force_refresh: boolean|nil, on_update: fun(issue: Issue|nil, result: IssuesActionResult|nil)|nil }|nil
+---@param opts { provider: IssuesProvider|nil, force_refresh: boolean|nil, on_update: fun(issue: Issue|nil, result: IssuesActionResult|nil)|nil, back: fun()|nil }|nil
 function M.open(issue, opts)
 	local provider, force_refresh = prepare_open(opts)
 	if provider == nil then
@@ -280,7 +304,7 @@ function M.open(issue, opts)
 end
 
 ---@param ref IssueRef
----@param opts { provider: IssuesProvider|nil, force_refresh: boolean|nil, on_update: fun(issue: Issue|nil, result: IssuesActionResult|nil)|nil }|nil
+---@param opts { provider: IssuesProvider|nil, force_refresh: boolean|nil, on_update: fun(issue: Issue|nil, result: IssuesActionResult|nil)|nil, back: fun()|nil }|nil
 function M.open_ref(ref, opts)
 	local provider, force_refresh = prepare_open(opts)
 	if provider == nil then
@@ -384,9 +408,24 @@ function M.prev_tab()
 	change_tab(-1)
 end
 
+-- This just reopens the same issue again. For example when opening something back and wanting to come back to this issue, like when opening a reference
+---@return fun()|nil
+function M.way_back()
+	if state.back then
+		return state.back
+	end
+	local issue, provider, on_update = state.current_issue, state.provider, state.on_update
+	if issue == nil or provider == nil then
+		return nil
+	end
+	return function()
+		M.open(issue, { provider = provider, on_update = on_update })
+	end
+end
+
 function M.close()
 	if M.is_open() then
-		detail_ui.close()
+		detail_window.close()
 	end
 end
 

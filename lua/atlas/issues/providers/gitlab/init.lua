@@ -2,8 +2,9 @@
 ---@field project_path string
 ---@field iid integer
 ---@field confidential boolean|nil
+---@field node_id string|nil
 
-local GITLAB_REACTION_OPTIONS = require("atlas.ui.shared.emojis").gitlab()
+local gitlab_mapper = require("atlas.providers.gitlab.mapper")
 local config = require("atlas.config")
 local detail_ui = require("atlas.issues.providers.gitlab.ui.detail")
 local git = require("atlas.core.git")
@@ -68,18 +69,6 @@ local function fetch_issues(view, opts, on_done)
 end
 
 ---@param target AtlasTarget
----@return AtlasIssuesViewConfig
-local function view_for_target(target)
-	return {
-		name = "Search",
-		layout = "compact",
-		project = target.project_path,
-		scope = "all",
-		state = "all",
-	}
-end
-
----@param target AtlasTarget
 ---@return IssueRef|nil
 local function issue_ref(target)
 	if target.project_path and target.number then
@@ -89,7 +78,6 @@ end
 
 return {
 	views = views,
-	view_for_target = view_for_target,
 	issue_ref = issue_ref,
 	capabilities = {
 		actions = require("atlas.issues.providers.gitlab.actions.registry"),
@@ -100,13 +88,16 @@ return {
 			fetch_links = links_api.fetch_issue,
 		},
 		comments = {
-			reaction_options = GITLAB_REACTION_OPTIONS,
 			-- fetch_activity = nil,
-			fetch_conversation = notes_api.list_conversation,
+			fetch_conversation = notes_api.fetch_conversation,
 			add_comment = notes_api.add_comment,
 			edit_comment = notes_api.edit_comment,
 			delete_comment = notes_api.delete_comment,
-			add_reaction = notes_api.add_reaction,
+			reactions = {
+				options = gitlab_mapper.reactions,
+				add = notes_api.add_reaction,
+				remove = notes_api.remove_reaction,
+			},
 		},
 		ui = {
 			detail = detail_ui,

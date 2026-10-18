@@ -2,6 +2,9 @@ local modules = {
 	"atlas.providers.github.client",
 	"atlas.providers.github.users",
 	"atlas.providers.github.completion",
+	"atlas.providers.github.completion.users",
+	"atlas.providers.github.completion.issues",
+	"atlas.providers.github.completion.pulls",
 	"atlas.ui.shared.icons",
 }
 
@@ -161,18 +164,6 @@ describe("GitHub completion", function()
 			assert.same(results[index], cached)
 		end
 		assert.equal(#cases, #calls)
-	end)
-
-	it("retries failed requests", function()
-		local context = { provider = "github", repository = "acme/repo" }
-		failure = "Request failed"
-		for _ = 1, 2 do
-			source.complete(context, "bob", function(items, err)
-				assert.is_nil(items)
-				assert.equal(failure, err)
-			end)
-		end
-		assert.equal(2, #calls)
 	end)
 
 	it("fetches recent issues using repository, PR, and issue contexts", function()

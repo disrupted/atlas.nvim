@@ -1,9 +1,10 @@
 local M = {}
 
+local gitlab_mapper = require("atlas.providers.gitlab.mapper")
 local json = require("atlas.core.json")
 
 ---@param raw any
----@return PullsAuthor
+---@return AtlasUser
 local function normalize_author(raw)
 	raw = json.nilify(raw)
 	if type(raw) == "table" then
@@ -14,14 +15,13 @@ local function normalize_author(raw)
 			name = name ~= "" and name or username,
 			id = id:match("([^/]+)$") or id,
 			username = username,
-			nickname = username,
 		}
 	end
-	return { name = "Unknown", id = "", username = "unknown", nickname = "unknown" }
+	return { name = "Unknown", id = "", username = "unknown" }
 end
 
 ---@param values table
----@return PullsAuthor[]
+---@return AtlasUser[]
 local function normalize_authors(values)
 	local authors = {}
 	for _, raw in ipairs(values) do
@@ -44,7 +44,6 @@ local function normalize_reviewers(values)
 				provider_id = author.id,
 				name = author.name,
 				username = author.username,
-				nickname = author.nickname,
 				decision = "pending",
 				role = "reviewer",
 			})
@@ -134,6 +133,7 @@ function M.to_pull_request(raw)
 	---@type GitLabPullRequest
 	return {
 		id = iid,
+		node_id = json.safe_str(raw.node_id),
 		title = json.safe_str(raw.title) or "",
 		state = normalize_state(raw),
 		author = normalize_author(raw.author),
@@ -165,8 +165,9 @@ function M.to_pull_request(raw)
 end
 
 ---@param raw any Decoded API value.
+---@param viewer string|nil Username of the current user
 ---@return GitLabPullRequestDetails|nil
-function M.to_pull_request_details(raw)
+function M.to_pull_request_details(raw, viewer)
 	local value = json.nilify(raw)
 	if type(value) ~= "table" then
 		return nil
@@ -174,6 +175,7 @@ function M.to_pull_request_details(raw)
 	---@type GitLabPullRequestDetails
 	return {
 		description = json.safe_str(value.description) or "",
+		reactions = gitlab_mapper.award_reactions(json.safe_table(value.awardEmoji).nodes, viewer),
 		is_subscribed = json.nilify(value.subscribed),
 		assignees = normalize_authors(json.safe_table(json.safe_table(value.assignees).nodes or value.assignees)),
 		labels = normalize_labels(json.safe_table(json.safe_table(value.labels).nodes or value.labels)),
@@ -194,7 +196,7 @@ function M.to_pull_requests(raw_list)
 end
 
 ---@param user any
----@return PullsAuthor|nil
+---@return AtlasUser|nil
 local function actor_from(user)
 	if type(user) ~= "table" then
 		return nil
@@ -204,11 +206,11 @@ local function actor_from(user)
 		return nil
 	end
 	local name = json.safe_str(user.name) or ""
+	local id = tostring(user.id or "")
 	return {
 		name = name ~= "" and name or username,
-		id = tostring(user.id or ""),
+		id = id:match("([^/]+)$") or id,
 		username = username,
-		nickname = username,
 	}
 end
 
@@ -250,90 +252,153 @@ local function to_inline_position(position)
 	}
 end
 
----@param values table|nil
----@return table<string, integer>|nil
-local function reaction_counts(values)
-	local counts
-	for _, reaction in ipairs(type(values) == "table" and values or {}) do
-		local name = type(reaction) == "table" and json.safe_str(reaction.name) or nil
-		if name and name ~= "" then
-			counts = counts or {}
-			counts[name] = (counts[name] or 0) + 1
-		end
+---@param position table|nil REST position
+---@return PullsFileCommentPosition|nil file, PullsInlineCommentPosition|nil inline
+local function to_rest_position(position)
+	if not position then
+		return nil, nil
 	end
-	return counts
+	local position_type = tostring(position.position_type or "text")
+	if position_type == "text" then
+		return nil, to_inline_position(position)
+	end
+	local path = json.safe_str(position.new_path) or json.safe_str(position.old_path)
+	if position_type ~= "file" or not path then
+		return nil, nil
+	end
+	return {
+		path = path,
+		old_path = json.safe_str(position.old_path),
+		commit_hash = json.safe_str(position.head_sha),
+	},
+		nil
 end
 
----@param note table
----@param discussion_first_id any
----@param discussion_id string|nil
----@param resolved boolean|nil
----@return PullsComment
-function M.to_comment(note, discussion_first_id, discussion_id, resolved)
-	local position = type(note.position) == "table" and note.position or nil
-	local original_position = type(note.original_position) == "table" and note.original_position or nil
-	local outdated = position == nil and original_position ~= nil
-	position = position or original_position
-	local diff_refs = position
-			and {
-				base_sha = json.safe_str(position.base_sha),
-				start_sha = json.safe_str(position.start_sha),
-				head_sha = json.safe_str(position.head_sha),
-			}
-		or nil
-	local file, inline
-	local position_type = position and tostring(position.position_type or "text") or ""
-	if position_type == "text" then
-		inline = to_inline_position(position)
-	elseif position_type == "file" then
-		local path = json.safe_str(position.new_path) or json.safe_str(position.old_path)
-		if path then
-			file = {
-				path = path,
-				old_path = json.safe_str(position.old_path),
-				commit_hash = json.safe_str(position.head_sha),
-			}
-		end
+---@param position table|nil GraphQL `DiffPosition`
+---@return PullsFileCommentPosition|nil file, PullsInlineCommentPosition|nil inline
+local function to_graphql_position(position)
+	if not position then
+		return nil, nil
 	end
-	local state = resolved and "RESOLVED" or (outdated and "OUTDATED" or nil)
-	local is_thread_root = note.id == discussion_first_id
+	local path = json.safe_str(position.newPath) or json.safe_str(position.oldPath)
+	local commit_hash = json.safe_str(json.safe_table(position.diffRefs).headSha)
+	if not path then
+		return nil, nil
+	end
+	if position.positionType == "file" then
+		return { path = path, old_path = json.safe_str(position.oldPath), commit_hash = commit_hash }, nil
+	end
+	local old_line, new_line = tonumber(position.oldLine), tonumber(position.newLine)
+	if position.positionType ~= "text" or (old_line == nil and new_line == nil) then
+		return nil, nil
+	end
+	return nil,
+		{
+			path = path,
+			old_path = json.safe_str(position.oldPath),
+			from = old_line,
+			to = new_line,
+			commit_hash = commit_hash,
+		}
+end
 
+---@param note table GraphQL `Note`
+---@param viewer string|nil Username of the current user
+---@param author_username string|nil
+---@return PullsComment
+function M.to_comment(note, viewer, author_username)
+	local discussion = json.safe_table(note.discussion)
+	local root = json.safe_table(json.safe_table(json.safe_table(discussion.notes).nodes)[1])
+	local id = gitlab_mapper.note_id(note.id)
+	local root_id = gitlab_mapper.note_id(root.id)
+	local is_root = root_id == nil or root_id == id
+	local resolved = discussion.resolved == true
+	local file, inline = to_graphql_position(json.nilify(note.position))
 	return {
-		id = note.id,
-		parent_id = not is_thread_root and discussion_first_id or nil,
-		thread_id = discussion_id ~= nil and discussion_id ~= "" and discussion_id or nil,
+		id = id,
+		parent_id = not is_root and root_id or nil,
+		thread_id = json.safe_str(discussion.id),
 		author = actor_from(note.author),
-		content_raw = tostring(note.body or ""),
-		created_on = tostring(note.created_at or ""),
-		resolved_on = resolved and is_thread_root and json.safe_str(note.resolved_at) or nil,
-		resolved_by = resolved and is_thread_root and actor_from(note.resolved_by) or nil,
+		author_roles = gitlab_mapper.author_roles(note, author_username),
+		body = tostring(note.body or ""),
+		created_at = json.safe_str(note.createdAt) or "",
+		resolved_at = resolved and is_root and json.safe_str(discussion.resolvedAt) or nil,
+		resolved_by = resolved and is_root and actor_from(discussion.resolvedBy) or nil,
 		file = file,
 		inline = inline,
-		is_task = nil,
-		state = state,
-		outdated = outdated,
-		reactions = reaction_counts(note.award_emoji),
-		html_url = json.safe_str(note.web_url),
-		_raw = diff_refs and { diff_refs = diff_refs } or nil,
+		state = resolved and "RESOLVED" or nil,
+		reactions = gitlab_mapper.award_reactions(json.safe_table(note.awardEmoji).nodes, viewer),
+		url = json.safe_str(note.url),
 	}
 end
 
----@param draft table
----@param discussion_first_id number|string|nil
----@return PullsComment
-function M.to_draft_comment(draft, discussion_first_id)
-	local discussion_id = type(draft.discussion_id) == "string" and draft.discussion_id or ""
-	local note = vim.tbl_extend("force", {}, draft, {
-		id = "draft:" .. tostring(draft.id or ""),
-		body = tostring(draft.note or ""),
-	})
-	local comment = M.to_comment(note, discussion_first_id, discussion_id, false)
-	if draft.author_id ~= nil and draft.author_id ~= vim.NIL then
-		comment.author = { name = "You", nickname = nil, username = "", id = tostring(draft.author_id) }
+---@param raw table GraphQL `MergeRequest`
+---@param viewer string|nil Username of the current user
+---@param author_username string|nil
+---@return PullsComment|nil
+function M.to_description(raw, viewer, author_username)
+	local id = json.safe_str(raw.id)
+	if not id then
+		return nil
 	end
-	comment.pending = true
-	comment._raw = vim.tbl_extend("force", comment._raw or {}, { draft_note_id = draft.id })
-	return comment
+	return {
+		id = id,
+		author = actor_from(raw.author),
+		author_roles = gitlab_mapper.author_roles(raw, author_username),
+		body = tostring(raw.description or ""),
+		created_at = json.safe_str(raw.createdAt) or "",
+		reactions = gitlab_mapper.award_reactions(json.safe_table(raw.awardEmoji).nodes, viewer),
+		url = json.safe_str(raw.webUrl),
+	}
+end
+
+---@param note table REST note of a discussion
+---@param discussion table REST discussion
+---@param mr_url string
+---@param author_username string|nil
+---@return PullsComment
+function M.to_discussion_note(note, discussion, mr_url, author_username)
+	local root = json.safe_table(json.safe_table(discussion.notes)[1])
+	local is_root = root.id == note.id
+	local resolved = root.resolved == true
+	local position = json.nilify(note.position)
+	local original_position = json.nilify(note.original_position)
+	local outdated = position == nil and original_position ~= nil
+	local file, inline = to_rest_position(position or original_position)
+	return {
+		id = gitlab_mapper.note_id(note.id),
+		parent_id = not is_root and gitlab_mapper.note_id(root.id) or nil,
+		thread_id = "gid://gitlab/Discussion/" .. tostring(discussion.id),
+		author = actor_from(note.author),
+		author_roles = gitlab_mapper.author_roles(note, author_username),
+		body = tostring(note.body or ""),
+		created_at = tostring(note.created_at or ""),
+		resolved_at = resolved and is_root and json.safe_str(note.resolved_at) or nil,
+		resolved_by = resolved and is_root and actor_from(note.resolved_by) or nil,
+		file = file,
+		inline = inline,
+		state = resolved and "RESOLVED" or (outdated and "OUTDATED" or nil),
+		outdated = outdated,
+		url = string.format("%s#note_%s", mr_url, tostring(note.id)),
+	}
+end
+
+---@param draft table REST draft note
+---@return PullsComment
+function M.to_draft_comment(draft)
+	local file, inline = to_rest_position(json.nilify(draft.position))
+	local discussion_id = json.safe_str(draft.discussion_id)
+	local author_id = json.nilify(draft.author_id)
+	return {
+		id = tostring(draft.id),
+		thread_id = discussion_id and ("gid://gitlab/Discussion/" .. discussion_id) or nil,
+		author = author_id and { name = "You", username = "", id = tostring(author_id) } or nil,
+		body = tostring(draft.note or ""),
+		created_at = tostring(draft.created_at or ""),
+		file = file,
+		inline = inline,
+		pending = true,
+	}
 end
 
 ---@param values table|nil
@@ -417,17 +482,17 @@ function M.to_activity(note)
 	end
 	local first_line = body:match("([^\r\n]+)") or body
 	local kind = classify_system_note(body)
-	local content_raw = first_line
+	local label = first_line
 	if kind == "unapproval" then
-		content_raw = "unapproved"
+		label = "unapproved"
 	elseif kind == "approval" or kind == "changes_requested" then
-		content_raw = nil
+		label = nil
 	end
 	return {
 		kind = kind,
 		actor = actor_from(note.author),
 		date = tostring(note.created_at or ""),
-		label = content_raw,
+		label = label,
 	}
 end
 

@@ -6,6 +6,7 @@
 ---| "open_project"
 
 local M = {}
+---@cast M AtlasActionsCapability
 
 local actions = require("atlas.pulls.actions")
 local action_utils = require("atlas.pulls.actions.utils")
@@ -16,6 +17,7 @@ local pullrequests_api = require("atlas.pulls.providers.gitlab.api.pullrequests"
 local users_api = require("atlas.providers.gitlab.users")
 local service = require("atlas.providers.gitlab.client")
 local gitlab_query = require("atlas.providers.gitlab.query")
+local gitlab_search = require("atlas.providers.gitlab.completion.search")
 
 local notify = action_utils.notify
 
@@ -112,7 +114,7 @@ local function edit_assignees(ctx, done)
 		return
 	end
 
-	---@param assignees PullsAuthor[]
+	---@param assignees AtlasUser[]
 	local function open_picker(assignees)
 		users_api.list_members(path, "", function(members, err)
 			if err or members == nil then
@@ -517,7 +519,7 @@ register({
 		select_project({
 			title = "Browse Repository",
 			on_select = function(project)
-				require("atlas.ui.repository").open(project, ctx.provider)
+				require("atlas.ui.repository").open(project, ctx.provider, { page = ctx.page })
 				done(nil, nil)
 			end,
 			on_cancel = function()
@@ -533,26 +535,20 @@ register({
 	icon = icons.get("search", "actions"),
 	run = function(_, done)
 		local state = require("atlas.pulls.state")
-		vim.ui.input({ prompt = "Search: ", default = state.query }, function(input)
-			if input == nil or vim.trim(input) == "" then
-				done(nil, nil)
-				return
-			end
+		gitlab_search.edit("pulls", state.query, function(query)
 			local view = state.search_view()
 			if view == nil then
-				done(nil, nil)
 				return
 			end
 			---@cast view AtlasGitLabPullsViewConfig
-			local ok, err = gitlab_query.apply(view, input)
+			local ok, err = gitlab_query.apply(view, query)
 			if not ok then
 				core_notify.warn(err)
-				done(nil, err)
 				return
 			end
 			require("atlas.pulls.ui.dashboard.controller").refresh_view()
-			done(nil, nil)
 		end)
+		done(nil, nil)
 	end,
 })
 

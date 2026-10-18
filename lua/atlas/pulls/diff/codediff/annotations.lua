@@ -107,7 +107,7 @@ function M.render(view, file, session)
 		LEFT = file.status == "added" and 0 or vim.api.nvim_buf_line_count(session.original_bufnr),
 		RIGHT = file.status == "deleted" and 0 or vim.api.nvim_buf_line_count(session.modified_bufnr),
 	}
-	local options = ui.comment_options(view.result, view.expanded_threads)
+	local options = ui.comment_options(view.expanded_threads)
 
 	for _, item in ipairs(ui.for_file(view.result, file)) do
 		if item.thread and (file.binary or (item.line and (item.line < 1 or item.line > counts[item.side]))) then

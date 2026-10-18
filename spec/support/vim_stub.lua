@@ -141,6 +141,16 @@ _G.vim = {
 		return out
 	end,
 
+	tbl_filter = function(fn, values)
+		local out = {}
+		for _, value in ipairs(values) do
+			if fn(value) then
+				table.insert(out, value)
+			end
+		end
+		return out
+	end,
+
 	tbl_extend = function(behavior, ...)
 		assert(
 			behavior == "keep" or behavior == "force" or behavior == "error",

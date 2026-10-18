@@ -3,11 +3,11 @@ local state = require("atlas.issues.state")
 local header = require("atlas.ui.components.header")
 local navbar = require("atlas.ui.components.navbar")
 local utils = require("atlas.ui.shared.utils")
-local statusline = require("atlas.ui.statusline")
 local icons = require("atlas.ui.shared.icons")
 local bookmarks = require("atlas.ui.shared.bookmarks")
-local issue_list = require("atlas.issues.ui.components.issue_list")
-local notif_state = require("atlas.ui.notifications.state")
+local layouts = require("atlas.issues.ui.layouts")
+local notifications = require("atlas.ui.notifications")
+local window = require("atlas.issues.ui.dashboard.window")
 
 local M = {}
 
@@ -76,7 +76,7 @@ function M.render(opts)
 			min_width = 8,
 		}
 	end
-	statusline.set_items(statusline_items)
+	window.statusline:set_items(statusline_items)
 
 	local views = bookmarks.views(state.views, state.bookmarks, state.starred_items)
 	local view = state.view
@@ -106,7 +106,7 @@ function M.render(opts)
 	local actions = {}
 
 	if provider and provider.capabilities.notifications then
-		local count = notif_state.unread_count
+		local count = notifications.unread_count(provider)
 		local bell_icon, bell_hl
 		if count > 0 then
 			bell_icon, bell_hl = icons.get("bell_unread")
@@ -177,33 +177,30 @@ function M.render(opts)
 		})
 	else
 		local issue_groups = state.issue_tree
-		local compact = search_view == nil or search_view.layout == "compact"
+		local layout = state.view_layout(search_view)
 		local issues = state.issues
 		if search_view ~= nil then
 			append_search_text(lines, spans, state.query)
 		end
 
 		local has_rows = #issue_groups > 0
-		if compact then
+		if layout == "compact" or layout == "board" then
 			has_rows = #issues > 0
 		end
-		if state.is_loading ~= true and not has_rows then
+		if state.is_loading ~= true and not has_rows and layout ~= "board" then
 			table.insert(lines, "No issues found.")
 		else
-			local list_opts = {
-				width = opts.width,
+			local tbl_lines, tbl_map, tbl_spans = layouts.render({
+				layout = layout,
 				provider_id = provider and provider.id,
+				groups = issue_groups,
+				width = opts.width,
 				loading = state.is_loading,
 				reloading = state.reloading_issue_keys,
 				spinner = state.reload_spinner_frame,
 				collapsed = state.collapsed_issue_keys,
-			}
-			local tbl_lines, tbl_spans, tbl_map
-			if compact then
-				tbl_lines, tbl_map, tbl_spans = issue_list.render_compact(list_opts, issues)
-			else
-				tbl_lines, tbl_map, tbl_spans = issue_list.render_plain(list_opts, issue_groups)
-			end
+				statuses = page and page.statuses,
+			}, issues)
 
 			local table_base = #lines
 			utils.append_block(lines, spans, { lines = tbl_lines, highlights = tbl_spans })

@@ -21,7 +21,7 @@ local function base_raw()
 			url = "https://github.com/owner/repo",
 			sshUrl = "git@github.com:owner/repo.git",
 		},
-		author = { login = "octocat", name = "Octo Cat", id = "1" },
+		author = { login = "alice", name = "Alice Example", id = "1" },
 	}
 end
 
@@ -37,15 +37,15 @@ describe("GitHub issue mapping", function()
 	end
 
 	it("maps editable issue details without issue identity fields", function()
-		local details = issue_mapper.to_issue_details(vim.tbl_extend("force", issue_raw(), {
+		local details = assert(issue_mapper.to_issue_details(vim.tbl_extend("force", issue_raw(), {
 			body = "Description",
-		}))
+		})))
 
 		assert.equal("My issue", details.title)
 		assert.equal("Description", details.description)
-		assert.is_nil(details.repo_full_name)
-		assert.is_nil(details.number)
-		assert.is_nil(details.node_id)
+		assert.is_nil(rawget(details, "repo_full_name"))
+		assert.is_nil(rawget(details, "number"))
+		assert.is_nil(rawget(details, "node_id"))
 	end)
 
 	it("maps GitHub milestone progress and sub-issues", function()
@@ -59,7 +59,7 @@ describe("GitHub issue mapping", function()
 		}
 		raw.subIssues = { nodes = { vim.tbl_extend("force", issue_raw(), { id = "I_2", number = 43 }) } }
 
-		local details = issue_mapper.to_issue_details(raw)
+		local details = assert(issue_mapper.to_issue_details(raw))
 
 		assert.equal(7, details.milestone.number)
 		assert.equal(50, details.milestone.progress_percentage)
@@ -71,44 +71,44 @@ describe("GitHub issue mapping", function()
 end)
 
 describe("normalize_pr author.name", function()
-	it("uses author.name when it is a normal string", function()
-		local raw = base_raw()
-		raw.author.name = "Octo Cat"
-		local pr = normalizer.to_pull_request(raw)
-		assert.are.equal("Octo Cat", pr.author.name)
-	end)
-
-	it("falls back to login when author.name is missing", function()
+	it("uses author.name and falls back to login when it is missing", function()
 		for _, case in ipairs({
-			{ label = "nil" },
-			{ label = "vim.NIL", value = vim.NIL },
-			{ label = "empty string", value = "" },
+			{ label = "set", value = "Alice Example", expected = "Alice Example" },
+			{ label = "nil", expected = "alice" },
+			{ label = "vim.NIL", value = vim.NIL, expected = "alice" },
+			{ label = "empty string", value = "", expected = "alice" },
 		}) do
 			local raw = base_raw()
 			raw.author.name = case.value
 			local pr = normalizer.to_pull_request(raw)
-			assert.are.equal("octocat", pr.author.name, case.label)
+			assert.are.equal(case.expected, pr.author.name, case.label)
 		end
 	end)
 end)
 
-describe("GitHub Git remote mapping", function()
-	it("retains both URLs returned by the existing PR query", function()
-		local pr = normalizer.to_pull_request(base_raw())
+describe("GitHub descriptions", function()
+	local groups = {
+		{ content = "HOORAY", viewerHasReacted = true, reactors = { totalCount = 1, nodes = { { login = "bob" } } } },
+	}
 
-		assert.equal("https://github.com/owner/repo.git", pr.destination.https_url)
-		assert.equal("git@github.com:owner/repo.git", pr.destination.ssh_url)
+	it("maps a pull request description as a comment with its reactions", function()
+		local raw = vim.tbl_extend("force", base_raw(), { id = "PR_1", reactionGroups = groups })
+
+		local comment = assert(normalizer.to_description(raw))
+
+		assert.equal("PR_1", comment.id)
+		assert.equal("Description", comment.body)
+		assert.equal("tada", comment.reactions[1].name)
+		assert.is_true(comment.reactions[1].reacted)
+		assert.same(comment.reactions, normalizer.to_pull_request_details(raw).reactions)
 	end)
-end)
 
-describe("GitHub pull request details", function()
-	it("maps only supplemental pull request fields", function()
-		local raw = base_raw()
+	it("maps an issue description as a comment", function()
+		local comment = assert(issue_mapper.to_comment({ id = "I_1", body = "Body", reactionGroups = groups }))
 
-		local details = normalizer.to_pull_request_details(raw)
-
-		assert.equal("Description", details.description)
-		assert.is_nil(rawget(details, "id"))
+		assert.equal("I_1", comment.id)
+		assert.equal("Body", comment.body)
+		assert.equal("tada", comment.reactions[1].name)
 	end)
 end)
 
@@ -166,7 +166,6 @@ describe("review thread resolution", function()
 	local function review_comment(reply_to)
 		return {
 			id = "PRRC_1",
-			databaseId = 1,
 			body = "Review comment",
 			createdAt = "2024-01-01T00:00:00Z",
 			author = { login = "author", databaseId = 2 },
@@ -187,13 +186,36 @@ describe("review thread resolution", function()
 	it("maps the resolver onto a resolved root comment", function()
 		local comment = normalizer.to_review_comment(review_comment(nil), resolved_thread(), nil)
 
-		assert.same({ name = "resolver", id = "3", username = "resolver", nickname = "resolver" }, comment.resolved_by)
-		assert.is_nil(comment.resolved_on)
+		assert.same({ name = "resolver", id = "3", username = "resolver" }, comment.resolved_by)
+		assert.is_nil(comment.resolved_at)
 	end)
 
 	it("does not map the resolver onto replies", function()
-		local comment = normalizer.to_review_comment(review_comment({ databaseId = 1 }), resolved_thread(), 1)
+		local comment = normalizer.to_review_comment(review_comment({ id = "PRRC_1" }), resolved_thread(), "PRRC_1")
 
 		assert.is_nil(comment.resolved_by)
+	end)
+end)
+
+describe("GitHub comment author roles", function()
+	local function roles(association, author)
+		return issue_mapper.to_comment({ id = "IC_1", authorAssociation = association, author = author }, "alice").author_roles
+	end
+
+	it("maps the association and marks the issue author", function()
+		assert.same({ "Author", "Owner" }, roles("OWNER", { login = "alice" }))
+		assert.same({ "Member" }, roles("MEMBER", { login = "bob" }))
+		assert.same({ "First-time contributor" }, roles("FIRST_TIMER", { login = "bob" }))
+	end)
+
+	it("marks bots and skips associations GitHub does not show", function()
+		assert.same({ "Bot" }, roles("NONE", { __typename = "Bot", login = "ci-bot" }))
+		assert.is_nil(roles("MANNEQUIN", { login = "imported-user" }))
+		assert.is_nil(roles(nil, vim.NIL))
+	end)
+
+	it("maps review comments against the pull request author", function()
+		local node = { id = "RC_1", authorAssociation = "COLLABORATOR", author = { login = "alice" } }
+		assert.same({ "Author", "Collaborator" }, normalizer.to_review_comment(node, {}, nil, "alice").author_roles)
 	end)
 end)

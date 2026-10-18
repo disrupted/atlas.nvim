@@ -1,8 +1,9 @@
 local M = {}
 
+local gitlab_mapper = require("atlas.providers.gitlab.mapper")
 local json = require("atlas.core.json")
 
-M.to_user = require("atlas.providers.gitlab.users").to_user
+M.to_user = gitlab_mapper.to_user
 
 ---@param raw_assignees table[]|nil
 ---@return AtlasUser[]
@@ -122,13 +123,23 @@ function M.to_issue(raw)
 		closed_at = closed_at,
 		comment_count = tonumber(raw.user_notes_count) or 0,
 		is_subscribed = json.nilify(raw.subscribed),
+		node_id = json.safe_str(raw.node_id),
 	}
 	return issue
 end
 
+---@param work_item any GraphQL `WorkItem`, which holds an issue's award emoji
+---@return table[]
+local function work_item_awards(work_item)
+	local widget = json.safe_table(json.safe_table(work_item).features).awardEmoji
+	return json.safe_table(json.safe_table(json.safe_table(widget).awardEmoji).nodes)
+end
+
 ---@param raw any Decoded API value.
+---@param work_item any GraphQL `WorkItem` of the issue
+---@param viewer string|nil Username of the current user
 ---@return IssueDetails|nil
-function M.to_issue_details(raw)
+function M.to_issue_details(raw, work_item, viewer)
 	raw = json.nilify(raw)
 	if type(raw) ~= "table" then
 		return nil
@@ -138,6 +149,7 @@ function M.to_issue_details(raw)
 	return {
 		title = json.safe_str(raw.title),
 		description = json.safe_str(raw.description) or "",
+		reactions = gitlab_mapper.award_reactions(work_item_awards(work_item), viewer),
 		assignees = assignees(json.safe_table(raw.assignees).nodes),
 		labels = labels(json.safe_table(raw.labels).nodes),
 		milestone = milestone(raw.milestone),
@@ -168,55 +180,51 @@ function M.parse_key(key)
 	return "", nil
 end
 
----@param raw any   GraphQL note id like "gid://gitlab/Note/123" or a plain int from REST
----@return string
-local function note_id_tail(raw)
-	local s = tostring(raw or "")
-	return s:match("([^/]+)$") or s
-end
-
----@param raw table
----@return table<string, integer>|nil
-local function reaction_counts(raw)
-	local award_emoji = json.safe_table(raw.awardEmoji)
-	local values = type(award_emoji.nodes) == "table" and award_emoji.nodes or raw.award_emoji
-	local reactions
-	for _, reaction in ipairs(json.safe_table(values)) do
-		local name = type(reaction) == "table" and json.safe_str(reaction.name) or nil
-		if name and name ~= "" then
-			reactions = reactions or {}
-			reactions[name] = (reactions[name] or 0) + 1
-		end
-	end
-	return reactions
-end
-
----@param raw any Decoded API value.
----@param first_id any|nil           -- id of the root note in this discussion; nil when raw is the root
----@param discussion_id string|nil
+---@param note any GraphQL `Note`
+---@param discussion any GraphQL `Discussion` the note belongs to
+---@param viewer string|nil Username of the current user
+---@param author_username string|nil
 ---@return IssueComment|nil
-function M.to_comment_from_note(raw, first_id, discussion_id)
-	raw = json.nilify(raw)
-	if type(raw) ~= "table" or json.nilify(raw.id) == nil then
+function M.to_comment(note, discussion, viewer, author_username)
+	note = json.safe_table(note)
+	local id = gitlab_mapper.note_id(note.id)
+	if not id then
 		return nil
 	end
-	local id = note_id_tail(raw.id)
-	local parent_id = nil
-	if first_id ~= nil and tostring(first_id) ~= id then
-		parent_id = tostring(first_id)
+	discussion = json.safe_table(discussion)
+	local root = json.safe_table(json.safe_table(discussion.notes).nodes)[1]
+	local root_id = gitlab_mapper.note_id(json.safe_table(root).id)
+	return {
+		id = id,
+		author = M.to_user(note.author),
+		author_roles = gitlab_mapper.author_roles(note, author_username),
+		body = json.safe_str(note.body) or "",
+		created_at = json.safe_str(note.createdAt) or "",
+		parent_id = root_id ~= id and root_id or nil,
+		thread_id = json.safe_str(discussion.id),
+		reactions = gitlab_mapper.award_reactions(json.safe_table(note.awardEmoji).nodes, viewer),
+	}
+end
+
+---@param raw any GraphQL `Issue`
+---@param work_item any GraphQL `WorkItem` of the issue
+---@param viewer string|nil Username of the current user
+---@param author_username string|nil
+---@return IssueComment|nil
+function M.to_description(raw, work_item, viewer, author_username)
+	raw = json.safe_table(raw)
+	local id = json.safe_str(raw.id)
+	if not id then
+		return nil
 	end
 	return {
 		id = id,
-		self = nil,
-		url = nil,
+		url = json.safe_str(raw.webUrl),
 		author = M.to_user(raw.author),
-		body = json.safe_str(raw.body) or "",
-		created = json.safe_str(raw.createdAt) or json.safe_str(raw.created_at) or "",
-		updated = json.safe_str(raw.updatedAt) or json.safe_str(raw.updated_at),
-		parent_id = parent_id,
-		children = nil,
-		reactions = reaction_counts(raw),
-		_raw = discussion_id and { discussion_id = discussion_id } or nil,
+		author_roles = gitlab_mapper.author_roles(raw, author_username),
+		body = json.safe_str(raw.description) or "",
+		created_at = json.safe_str(raw.createdAt) or "",
+		reactions = gitlab_mapper.award_reactions(work_item_awards(work_item), viewer),
 	}
 end
 
@@ -232,9 +240,9 @@ function M.to_activity_from_note(raw)
 		return nil
 	end
 	return {
-		kind = "system",
+		kind = "other",
 		actor = M.to_user(raw.author),
-		date = json.safe_str(raw.createdAt) or json.safe_str(raw.created_at),
+		date = json.safe_str(raw.createdAt),
 		label = body,
 	}
 end

@@ -6,7 +6,7 @@ local service = require("atlas.providers.bitbucket.client")
 local mapper = require("atlas.pulls.providers.bitbucket.api.mapper")
 local logger = require("atlas.core.logger")
 local request_scope = require("atlas.core.requests")
-local repositories_api = require("atlas.providers.bitbucket.repositories")
+local workspaces_api = require("atlas.providers.bitbucket.workspaces")
 local url_encode = require("atlas.core.utils").url_encode
 
 local SUMMARY_FIELDS = {
@@ -168,7 +168,7 @@ function M.fetch_for_targets(targets, opts, on_done)
 
 	local requests = request_scope.new()
 	requests.run(function(done)
-		return repositories_api.resolve_targets(targets, opts, done)
+		return workspaces_api.resolve_targets(targets, opts, done)
 	end, function(repos, errors)
 		requests.run(function(done)
 			return fetch_for_repositories(repos, opts, done)
@@ -324,22 +324,6 @@ local function update_pullrequest(pr, fields, on_done)
 		service.clear_cache()
 		on_done(true, nil)
 	end, { action = "Update pull request", repo = pr.repo_full_name, id = pr.id })
-end
-
----@param pr PullRequest
----@param title string
----@param on_done fun(ok: boolean, err: string|nil)
----@return { job_id: integer, cancel: fun() }|nil
-function M.update_title(pr, title, on_done)
-	return update_pullrequest(pr, { title = title }, on_done)
-end
-
----@param pr PullRequest
----@param description string
----@param on_done fun(ok: boolean, err: string|nil)
----@return { job_id: integer, cancel: fun() }|nil
-function M.update_description(pr, description, on_done)
-	return update_pullrequest(pr, { description = description }, on_done)
 end
 
 ---@param pr PullRequest
@@ -617,10 +601,10 @@ function M.fetch_reviewer_candidates(opts, on_done)
 		for _, reviewer in ipairs(current) do
 			local uuid = reviewer.role == "reviewer" and tostring(reviewer.provider_id or "") or ""
 			if uuid ~= "" and not found[uuid] then
-				local nickname = tostring(reviewer.nickname or reviewer.username or "")
+				local username = tostring(reviewer.username or "")
 				local name = tostring(reviewer.name or "")
 				table.insert(reviewers, {
-					label = nickname ~= "" and ("@" .. nickname) or (name ~= "" and name or uuid),
+					label = username ~= "" and ("@" .. username) or (name ~= "" and name or uuid),
 					provider_id = uuid,
 					selected = true,
 				})

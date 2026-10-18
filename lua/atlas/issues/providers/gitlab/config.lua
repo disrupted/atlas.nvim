@@ -68,9 +68,11 @@
 ---@field order_by string|nil
 
 ---@class AtlasGitLabIssuesViewConfig : IssuesViewConfig, AtlasGitLabIssuesSearchConfig
+---@field layout "compact"|"plain"|nil
 ---@field current_repo boolean|nil
 
 ---@class AtlasGitLabIssuesBookmarkConfig : AtlasIssuesBookmarkConfig, AtlasGitLabIssuesSearchConfig
+---@field layout "compact"|"plain"|nil
 
 ---@class AtlasGitLabIssuesBookmarksConfig
 ---@field key string|nil    -- default "S"

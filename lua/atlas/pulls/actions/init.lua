@@ -46,6 +46,7 @@ local notify = utils.notify
 ---@field details PullRequestDetails|nil
 ---@field current_user AtlasUser|nil
 ---@field buf integer|nil
+---@field page string|nil Repository page for `browse_repositories`
 ---@field notify fun(level: AtlasNotifyLevel, message: string, duration: integer|nil)|nil
 
 ---@class AtlasPullAction

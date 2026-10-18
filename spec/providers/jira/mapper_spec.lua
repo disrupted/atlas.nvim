@@ -28,7 +28,7 @@ describe("Jira issue mapping", function()
 		assert.equal("High", issue.priority)
 		assert.same({ icon = "", hl_group = "AtlasLogInfo" }, issue.type.icon)
 		assert.same(issue.type.icon, issue.icon)
-		assert.is_nil(issue._raw)
+		assert.is_nil(rawget(issue, "_raw"))
 	end)
 
 	it("hydrates Jira detail fields without retaining the response", function()
@@ -56,14 +56,27 @@ describe("Jira issue mapping", function()
 				display = "chip",
 			},
 		}, details.custom_fields)
-		assert.is_nil(details.key)
-		assert.is_nil(details._raw)
+		assert.is_nil(rawget(details, "key"))
+		assert.is_nil(rawget(details, "_raw"))
 	end)
 
 	it("uses the generic icon and a dynamic color for custom issue types", function()
-		local issue_type = mapper.to_issue_type({ id = "10002", name = "Custom" })
+		local icon = assert(mapper.to_issue_type({ id = "10002", name = "Custom" }).icon)
 
-		assert.equal(icons.get("issue"), issue_type.icon.icon)
-		assert.matches("^AtlasDynColor%d+$", issue_type.icon.hl_group)
+		assert.equal(icons.get("issue"), icon.icon)
+		assert.matches("^AtlasDynColor%d+$", icon.hl_group)
+	end)
+end)
+
+describe("Jira comment author roles", function()
+	it("marks comments by the issue reporter", function()
+		local comments = mapper.to_comments_list({
+			comments = {
+				{ id = "1", author = { accountId = "a1", displayName = "Alice" } },
+				{ id = "2", author = { accountId = "b2", displayName = "Bob" } },
+			},
+		}, "KAN-1", "", "a1")
+		assert.same({ "Author" }, comments[1].author_roles)
+		assert.is_nil(comments[2].author_roles)
 	end)
 end)
