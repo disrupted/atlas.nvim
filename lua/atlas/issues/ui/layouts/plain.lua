@@ -206,7 +206,7 @@ function M.render(opts, issues, provider)
 			row.name = STAR_ICON .. " " .. row.name
 		end
 
-		row._item = { kind = "issue", key = issue.key, _issue = issue }
+		row._item = { kind = "issue", issue = issue }
 		row._issue = issue
 		row._is_child = is_child
 		row.children = {}

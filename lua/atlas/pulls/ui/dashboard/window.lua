@@ -306,7 +306,11 @@ end
 
 vim.api.nvim_create_autocmd({ "VimResized", "WinResized", "TabEnter" }, {
 	group = vim.api.nvim_create_augroup("AtlasPullsDashboardResize", { clear = true }),
-	callback = M.render,
+	callback = function()
+		if M.is_active() then
+			require("atlas.pulls.ui.dashboard").resize()
+		end
+	end,
 })
 
 return M
