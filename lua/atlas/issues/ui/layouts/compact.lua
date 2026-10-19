@@ -200,7 +200,7 @@ function M.render(opts, issues, provider)
 			row.name = STAR_ICON .. " " .. row.name
 		end
 
-		row._item = { kind = "issue", key = issue.key, _issue = issue }
+		row._item = { kind = "issue", issue = issue }
 		row._issue = issue
 		table.insert(rows, row)
 
@@ -209,7 +209,7 @@ function M.render(opts, issues, provider)
 			meta.kind = "meta"
 			meta.name = row._meta
 			meta.separator = true
-			meta._item = { kind = "issue_meta", key = issue.key, _issue = issue }
+			meta._item = { kind = "issue_meta", issue = issue }
 			table.insert(rows, meta)
 		else
 			row.separator = true

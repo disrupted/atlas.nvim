@@ -15,13 +15,7 @@ local registrations = {}
 ---@return Issue|nil
 local function selected_issue()
 	local node = navigation.current_item()
-	if type(node) ~= "table" then
-		return nil
-	end
-	if node.kind == "issue" and type(node._issue) == "table" then
-		return node._issue
-	end
-	return nil
+	return node and node.issue
 end
 
 ---@param action_id AtlasKeymapActionId|string
@@ -190,11 +184,7 @@ function M.register(buf, views)
 			item("ui.previous_column", {
 				desc = "Previous status column (board)",
 				callback = function()
-					if state.view_layout(state.search_view()) == "board" then
-						navigation.move_column(-vim.v.count1)
-					else
-						vim.cmd("normal! " .. vim.v.count1 .. "h")
-					end
+					navigation.move_column(-vim.v.count1)
 				end,
 			})
 		)
@@ -203,11 +193,7 @@ function M.register(buf, views)
 			item("ui.next_column", {
 				desc = "Next status column (board)",
 				callback = function()
-					if state.view_layout(state.search_view()) == "board" then
-						navigation.move_column(vim.v.count1)
-					else
-						vim.cmd("normal! " .. vim.v.count1 .. "l")
-					end
+					navigation.move_column(vim.v.count1)
 				end,
 			})
 		)
@@ -245,7 +231,7 @@ function M.register(buf, views)
 			index = 2,
 			callback = function()
 				local node = navigation.current_item()
-				if type(node) == "table" and (node.kind == "bookmark" or node.kind == "starred") then
+				if node and (node.kind == "bookmark" or node.kind == "starred") then
 					controller.select_bookmark(node)
 				end
 			end,
@@ -494,7 +480,6 @@ end
 
 ---@param buf integer
 function M.remove(buf)
-	navigation.detach(buf)
 	local registered = registrations[buf]
 	if registered then
 		for _, registration in ipairs(registered) do

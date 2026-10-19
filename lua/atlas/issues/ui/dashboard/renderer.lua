@@ -200,6 +200,7 @@ function M.render(opts)
 				spinner = state.reload_spinner_frame,
 				collapsed = state.collapsed_issue_keys,
 				statuses = page and page.statuses,
+				first_column = state.board_column,
 			}, issues)
 
 			local table_base = #lines
