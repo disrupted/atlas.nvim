@@ -20,8 +20,7 @@ end
 ---@param spinner string|nil
 function M.append_loading(rows, columns, spinner)
 	local loading = M.blank_row(columns)
-	loading.icon = spinner
-	loading.name = "Loading..."
+	loading.name = (spinner and (spinner .. " ") or "") .. "Loading..."
 
 	table.insert(rows, M.blank_row(columns))
 	table.insert(rows, loading)

@@ -172,10 +172,6 @@ function M.render(opts, pulls, provider)
 	local rows = {}
 
 	for _, pr in ipairs(utils.starred_first(pulls)) do
-		if #rows > 0 then
-			table.insert(rows, { kind = "spacer" })
-		end
-
 		local row = provider.values(pr, opts)
 		row.kind = "pr"
 		row._item = { kind = "pr", id = pr.id, repo = pr.repo, pr = pr }

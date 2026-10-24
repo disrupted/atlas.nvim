@@ -3,7 +3,7 @@
 [![CI](https://github.com/emrearmagan/atlas.nvim/actions/workflows/ci.yml/badge.svg)](https://github.com/emrearmagan/atlas.nvim/actions/workflows/ci.yml)
 [![License](https://img.shields.io/github/license/emrearmagan/atlas.nvim?style=flat-square&color=blue)](LICENSE)
 
-# Atlas.nvim
+# atlas.nvim
 
 Review pull requests and manage issues across GitHub, GitLab, Bitbucket and Jira without leaving your editor.
 
@@ -23,10 +23,14 @@ Review pull requests and manage issues across GitHub, GitLab, Bitbucket and Jira
 
 - [Configuration](#configuration)
 - [Commands](#commands)
-- GitHub: [Pull requests](#github) · [Issues](#github-issues)
-- GitLab: [Pull requests](#gitlab) · [Issues](#gitlab-issues)
-- [Bitbucket](#bitbucket)
-- [Jira](#jira)
+- [Pull requests](#pulls)
+  - [GitHub](#github)
+  - [GitLab](#gitlab)
+  - [Bitbucket](#bitbucket)
+- [Issues](#issues)
+  - [GitHub](#github-issues)
+  - [GitLab](#gitlab-issues)
+  - [Jira](#jira)
 
 ## Installation
 
@@ -753,6 +757,7 @@ issues = {
   },
 },
 ```
+
 <img alt="github-issue" src="https://github.com/user-attachments/assets/109b9a2a-86f2-4867-86e2-ff6a0645ca29" />
 
 </details>
