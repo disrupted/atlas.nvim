@@ -105,6 +105,8 @@ local function comment_draft(context, provider)
 	local draft = { pending = context.pending }
 	local file = context.file
 	if file then
+		-- TODO: In commit views this is the commit's old_path. A file renamed there but added in the PR sends a
+		-- path the PR doesn't know, so providers may reject it. Line comments already handle this in selection().
 		draft.file =
 			{ path = file.path, old_path = file.old_path, commit_hash = context.session.full_range.head_revision }
 		return draft
@@ -152,12 +154,6 @@ local function review_context(context)
 	end
 	---@cast provider PullsProvider
 
-	local draft, err = comment_draft(context, pr.provider)
-	if err then
-		notify.info(err)
-		return nil
-	end
-
 	return {
 		provider = provider,
 		pr = pr,
@@ -165,10 +161,31 @@ local function review_context(context)
 		data = data,
 		comment = context.comment,
 		review_entry = context.review_entry,
-		draft = draft,
 		on_submit = context.on_submit,
 	}
 end
+
+---@type AtlasDiffAction
+M.add_comment = {
+	id = "add_comment",
+	label = "Add comment",
+	icon = icons.get("comment"),
+	run = function(context, on_done)
+		local shared = review_context(context)
+		if not shared then
+			return false
+		end
+
+		local draft, err = comment_draft(context, shared.pr.provider)
+		if err then
+			notify.info(err)
+			return false
+		end
+
+		shared.draft = draft
+		return action_runner.run(shared_action("add_comment", shared), shared, on_done)
+	end,
+}
 
 ---@type AtlasDiffAction
 M.add_note = {
@@ -236,6 +253,8 @@ M.note_to_comment = {
 			return false
 		end
 
+		-- TODO: In commit views session.files are the shown commits files, not the PRs. So a file added in the PR
+		-- but only modified in the commit would probably fail here. Should reuse the normal comment selection instead.
 		local file = vim.iter(session.files):find(function(item)
 			return item.path == note.file_path or item.old_path == note.file_path
 		end)
@@ -280,7 +299,8 @@ M.note_to_comment = {
 			end
 
 			local first, last = position.start_line, position.end_line
-			context.selection = {
+			---@type AtlasDiffSelection
+			local selection = {
 				file = file,
 				side = "RIGHT",
 				first = first,
@@ -300,7 +320,12 @@ M.note_to_comment = {
 			if not shared then
 				return
 			end
-			shared.draft.initial_text = note.body
+			shared.draft = {
+				inline = selection.inline,
+				preview = selection_preview(selection),
+				pending = context.pending,
+				initial_text = note.body,
+			}
 
 			action_runner.run(shared_action("add_comment", shared), shared, function(comment, comment_err)
 				if not comment or comment_err or session.closed then
