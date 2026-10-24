@@ -40,7 +40,7 @@ function M.resolve(value, parsed)
 	end
 
 	local full_name = workspace .. "/" .. repo
-	local web_url = url.base_url("bitbucket", host, "bitbucket.org") .. "/" .. full_name
+	local web_url = url.base_url("bitbucket", host) .. "/" .. full_name
 	---@type AtlasTarget
 	local target = {
 		provider = "bitbucket",

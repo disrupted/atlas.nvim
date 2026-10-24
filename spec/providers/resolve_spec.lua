@@ -140,6 +140,11 @@ describe("providers.resolve", function()
 			)
 		end)
 
+		it("resolves SSH remotes on a custom port", function()
+			local expected = assert(providers.resolve(base))
+			assert.same(expected, assert(providers.resolve("ssh://gitlab.example.com:1234/team/repo.git")))
+		end)
+
 		it("resolves a merge request", function()
 			local target = assert(providers.resolve(base .. "/-/merge_requests/12"))
 			assert.are.equal("pr", target.entity)
