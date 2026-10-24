@@ -210,7 +210,7 @@ pulls = {
       id = "show_repo_status",
       label = "Show repository status",
       icon = "",
-      confirmation = true,
+      confirm = "Show repository status?",
       ---@param pr PullRequest
       ---@param ctx AtlasPullsCustomActionContext
       ---@param done fun(ok: boolean|nil, message: string|nil)
@@ -244,7 +244,6 @@ issues = {
       id = "copy_branch_name",
       label = "Copy branch name",
       icon = "",
-      confirmation = false,
       ---@param issue Issue
       ---@param ctx AtlasIssuesCustomActionContext
       ---@param done fun(ok: boolean|nil, message: string|nil)

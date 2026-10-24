@@ -7,7 +7,6 @@ local icons = require("atlas.ui.shared.icons")
 local note_editor = require("atlas.pulls.notes.ui.editor")
 local notes = require("atlas.pulls.notes")
 local notify = require("atlas.core.notify")
-local picker = require("atlas.ui.picker")
 local providers = require("atlas.providers")
 local request_scope = require("atlas.core.requests")
 
@@ -50,27 +49,28 @@ local M = {}
 ---@field on_submit (fun())|nil
 ---@field viewer AtlasDiffViewer|nil
 
----@class AtlasDiffAction
+---@class AtlasDiffAction: AtlasAction
 ---@field id AtlasReviewActionId
----@field label string
----@field icon string|nil
 ---@field is_available (fun(context: AtlasDiffActionContext): boolean, string|nil)|nil
 ---@field run fun(context: AtlasDiffActionContext, on_done: fun(result: PullsActionResult|nil, err: string|nil)): boolean|nil
 
-local review_updates = {
-	start_review = true,
-	submit_review = true,
-	discard_review = true,
-	approve = true,
-	request_changes = true,
-}
+---@param context AtlasDiffActionContext
+---@return boolean, string|nil
+local function is_pr(context)
+	return context.session.source.kind == "pr", "Not a pull request"
+end
+
+---@param context AtlasDiffActionContext
+---@return boolean, string|nil
+local function has_note(context)
+	return context.session.notes ~= nil and context.note ~= nil, "No note selected"
+end
 
 ---@param id AtlasReviewActionId
 ---@param context AtlasReviewActionContext
 ---@return AtlasAction|nil
 local function shared_action(id, context)
-	local registered = context.provider.capabilities.actions
-	return registered and registered.find(id) or review_actions[id]
+	return action_runner.find(context.provider.capabilities.actions, id) or review_actions[id]
 end
 
 ---@param selection AtlasDiffSelection
@@ -96,12 +96,8 @@ end
 
 ---@param context AtlasDiffActionContext
 ---@param provider string
----@return { inline?: PullsInlineCommentPosition, file?: PullsFileCommentPosition, pending?: boolean, preview?: AtlasEditorPreview, initial_text?: string, kind?: "suggestion" }|nil, string|nil
+---@return { inline?: PullsInlineCommentPosition, file?: PullsFileCommentPosition, pending?: boolean, preview?: AtlasEditorPreview, initial_text?: string, kind?: "suggestion" }
 local function comment_draft(context, provider)
-	if not context.file and not context.selection and context.pending == nil then
-		return nil
-	end
-
 	local draft = { pending = context.pending }
 	local file = context.file
 	if file then
@@ -115,9 +111,6 @@ local function comment_draft(context, provider)
 	local selection = context.selection
 	if not selection then
 		return draft
-	end
-	if context.suggestion and selection.side ~= "RIGHT" then
-		return nil, "Suggestions are only available on the new side of the diff"
 	end
 
 	draft.inline = selection.inline
@@ -170,19 +163,20 @@ M.add_comment = {
 	id = "add_comment",
 	label = "Add comment",
 	icon = icons.get("comment"),
+	is_available = function(context)
+		local selection = context.selection
+		if context.suggestion and selection and selection.side ~= "RIGHT" then
+			return false, "Suggestions are only available on the new side of the diff"
+		end
+		return true
+	end,
 	run = function(context, on_done)
 		local shared = review_context(context)
 		if not shared then
 			return false
 		end
 
-		local draft, err = comment_draft(context, shared.pr.provider)
-		if err then
-			notify.info(err)
-			return false
-		end
-
-		shared.draft = draft
+		shared.draft = comment_draft(context, shared.pr.provider)
 		return action_runner.run(shared_action("add_comment", shared), shared, on_done)
 	end,
 }
@@ -192,24 +186,19 @@ M.add_note = {
 	id = "add_note",
 	label = "Add note",
 	icon = icons.get("pin"),
+	is_available = function(context)
+		if not context.session.notes then
+			return false, "Notes are unavailable"
+		end
+		local selection = context.selection
+		return selection ~= nil and selection.side == "RIGHT" and selection.inline.to ~= nil,
+			"Notes are only available on the new side of the diff"
+	end,
 	run = function(context, on_done)
 		local session = context.session
-		local data = session.notes
-		if not data then
-			notify.warn("Notes are unavailable")
-			return false
-		end
-
-		local selection = context.selection
-		if not selection then
-			return false
-		end
-		local last = selection.inline.to
-		if selection.side ~= "RIGHT" or not last then
-			notify.info("Notes are only available on the new side of the diff")
-			return false
-		end
-
+		local data = assert(session.notes)
+		local selection = assert(context.selection)
+		local last = assert(selection.inline.to)
 		local start_line = selection.inline.start_to or last
 		local note_context = selection_context(selection)
 		note_context.start_line = note_context.start_line + start_line - selection.first
@@ -228,7 +217,7 @@ M.add_note = {
 
 			session:put_note(note)
 			notify.success("Note added", { timeout = 1200 })
-			on_done({ changed_pr = false, message = "Note added" }, nil)
+			on_done({ changed_pr = false }, nil)
 		end)
 		return true
 	end,
@@ -239,19 +228,23 @@ M.note_to_comment = {
 	id = "note_to_comment",
 	label = "Comment from note",
 	icon = icons.get("comment"),
+	is_available = function(context)
+		local available, reason = has_note(context)
+		if not available then
+			return false, reason
+		end
+		return not context.session.notes.positions[context.note.id].outdated, "Note is outdated, edit or delete it"
+	end,
 	run = function(context, on_done)
-		local session = context.session
-		local data = session.notes
-		local note = context.note
-		if not data or not note then
+		local shared = review_context(context)
+		if not shared then
 			return false
 		end
 
+		local session = context.session
+		local data = assert(session.notes)
+		local note = assert(context.note)
 		local position = data.positions[note.id]
-		if position.outdated then
-			notify.info("Note is outdated, edit or delete it")
-			return false
-		end
 
 		-- TODO: In commit views session.files are the shown commits files, not the PRs. So a file added in the PR
 		-- but only modified in the commit would probably fail here. Should reuse the normal comment selection instead.
@@ -316,10 +309,6 @@ M.note_to_comment = {
 					commit_hash = session.full_range.head_revision,
 				},
 			}
-			local shared = review_context(context)
-			if not shared then
-				return
-			end
 			shared.draft = {
 				inline = selection.inline,
 				preview = selection_preview(selection),
@@ -350,13 +339,10 @@ M.edit_note = {
 	id = "edit_note",
 	label = "Edit note",
 	icon = icons.get("edit", "actions"),
+	is_available = has_note,
 	run = function(context, on_done)
-		local data = context.session.notes
-		local note = context.note
-		if not data or not note then
-			return false
-		end
-
+		local data = assert(context.session.notes)
+		local note = assert(context.note)
 		note_editor.edit(data.target, note, function(updated, err)
 			if context.on_submit then
 				context.on_submit()
@@ -368,7 +354,7 @@ M.edit_note = {
 
 			context.session:put_note(updated)
 			notify.success("Note updated", { timeout = 1200 })
-			on_done({ changed_pr = false, message = "Note updated" }, nil)
+			on_done({ changed_pr = false }, nil)
 		end)
 		return true
 	end,
@@ -379,32 +365,23 @@ M.delete_note = {
 	id = "delete_note",
 	label = "Delete note",
 	icon = icons.get("delete", "actions"),
+	confirm = "Delete note?",
+	is_available = has_note,
 	run = function(context, on_done)
-		local data = context.session.notes
-		local note = context.note
-		if not data or not note then
-			return false
+		local data = assert(context.session.notes)
+		local note = assert(context.note)
+		if context.on_submit then
+			context.on_submit()
+		end
+		local deleted, err = notes.delete(data.target, note.id)
+		if not deleted then
+			notify.error(err)
+			return
 		end
 
-		vim.ui.input({ prompt = "Delete note? [y/N]: " }, function(answer)
-			answer = answer and vim.trim(answer):lower()
-			if answer ~= "y" and answer ~= "yes" then
-				return
-			end
-
-			if context.on_submit then
-				context.on_submit()
-			end
-			local deleted, err = notes.delete(data.target, note.id)
-			if not deleted then
-				notify.error(err)
-				return
-			end
-
-			context.session:remove_note(note)
-			notify.success("Note deleted", { timeout = 1200 })
-			on_done({ changed_pr = false, message = "Note deleted" }, nil)
-		end)
+		context.session:remove_note(note)
+		notify.success("Note deleted", { timeout = 1200 })
+		on_done({ changed_pr = false }, nil)
 		return true
 	end,
 }
@@ -414,13 +391,10 @@ M.toggle_note_resolved = {
 	id = "toggle_note_resolved",
 	label = "Toggle note resolved",
 	icon = icons.get("success", "actions"),
+	is_available = has_note,
 	run = function(context, on_done)
-		local data = context.session.notes
-		local note = context.note
-		if not data or not note then
-			return false
-		end
-
+		local data = assert(context.session.notes)
+		local note = assert(context.note)
 		local resolved = not note.resolved
 		local updated, err = notes.update(data.target, note.id, { resolved = resolved })
 		if context.on_submit then
@@ -428,13 +402,13 @@ M.toggle_note_resolved = {
 		end
 		if not updated then
 			notify.error(err)
-			return false
+			return
 		end
 
 		context.session:put_note(updated)
 		local message = resolved and "Note resolved" or "Note reopened"
 		notify.success(message, { timeout = 1200 })
-		on_done({ changed_pr = false, message = message }, nil)
+		on_done({ changed_pr = false }, nil)
 		return true
 	end,
 }
@@ -461,13 +435,11 @@ M.toggle_detail_panel = {
 	id = "toggle_detail_panel",
 	label = "Show details",
 	icon = icons.get("details", "actions"),
+	is_available = is_pr,
 	run = function(context, on_done)
 		local session = context.session
 		local source = session.source
-		if source.kind ~= "pr" then
-			return false
-		end
-		local pr = source.pr
+		local pr = assert(source.pr)
 
 		local tabpage = vim.api.nvim_get_current_tabpage()
 		if detail_window.is_open(tabpage) then
@@ -485,9 +457,7 @@ M.toggle_detail_panel = {
 
 				detail.refresh(updated_pr)
 				source.pr = updated_pr
-				session:reload(function()
-					on_done(result, nil)
-				end)
+				on_done(result, nil)
 			end,
 		})
 		return true
@@ -528,13 +498,10 @@ M.open_in_browser = {
 	id = "open_in_browser",
 	label = "Open in browser",
 	icon = icons.get("open_in_browser", "actions"),
+	is_available = is_pr,
 	run = function(context)
-		local source = context.session.source
-		if source.kind ~= "pr" then
-			return false
-		end
-
-		vim.ui.open(context.comment and context.comment.url or source.pr.link.html)
+		local pr = assert(context.session.source.pr)
+		vim.ui.open(context.comment and context.comment.url or pr.link.html)
 		return true
 	end,
 }
@@ -550,30 +517,23 @@ M.open_actions = {
 			return false
 		end
 
-		local reviews = review.provider.capabilities.reviews
 		---@type AtlasAction[]
 		local items = {}
 
 		---@param id AtlasReviewActionId
 		local function add(id)
 			local action = shared_action(id, review)
-			if reviews[id] and action_runner.is_available(action, review) then
+			if action_runner.is_available(action, review) then
 				items[#items + 1] = action
 			end
 		end
 
-		local pending = review.data.review.pending
-		local reviewable = review.pr.state == "open" or review.pr.state == "draft"
-		if reviewable then
-			add(pending and "submit_review" or "start_review")
+		if review.pr.state == "open" or review.pr.state == "draft" then
+			add(review.data.review.pending and "submit_review" or "start_review")
 		end
-		if pending then
-			add("discard_review")
-		end
-		if reviewable then
-			add("approve")
-			add("request_changes")
-		end
+		add("discard_review")
+		add("approve")
+		add("request_changes")
 
 		items[#items + 1] = M.toggle_detail_panel
 		items[#items + 1] = M.toggle_review_panel
@@ -583,21 +543,29 @@ M.open_actions = {
 		items[#items + 1] = M.refresh_review
 		items[#items + 1] = M.open_in_browser
 
-		picker.select({
-			title = "Review action",
-			items = items,
-			format_item = function(action)
-				return (action.icon or icons.get("custom", "actions")) .. "  " .. action.label
-			end,
-			on_select = function(action)
-				if action then
-					M.dispatch(action.id, context, on_done)
-				end
-			end,
-		})
+		action_runner.select("Review action", items, function(action)
+			M.dispatch(action.id, context, on_done)
+		end)
 		return true
 	end,
 }
+
+---@param session AtlasDiffSession
+---@param on_done fun(result: PullsActionResult, err: string|nil)
+---@param result PullsActionResult|nil
+---@param err string|nil
+local function finish(session, on_done, result, err)
+	if not result or err or session.closed then
+		return
+	end
+	if not result.changed_pr then
+		on_done(result, nil)
+		return
+	end
+	session:reload(function()
+		on_done(result, nil)
+	end)
+end
 
 ---@param callback fun(context: AtlasPullActionContext, done: fun(result: PullsActionResult|nil, err: string|nil)): any
 ---@param context AtlasDiffActionContext
@@ -609,36 +577,19 @@ function M.run_custom(callback, context, on_done)
 		return
 	end
 
-	local session = context.session
 	shared.buf = vim.api.nvim_get_current_buf()
 	return callback(shared, function(result, err)
-		if not result or err or session.closed then
-			return
-		end
-
-		if result.changed_pr then
-			session:reload(function()
-				on_done(result, nil)
-			end)
-			return
-		end
-		on_done(result, nil)
+		finish(context.session, on_done, result, err)
 	end)
 end
 
 ---@param id AtlasReviewActionId
 ---@param context AtlasDiffActionContext
----@param on_done (fun(result: PullsActionResult|nil, err: string|nil))|nil
+---@param on_done fun(result: PullsActionResult, err: string|nil)
 ---@return boolean handled
 function M.dispatch(id, context, on_done)
-	local session = context.session
 	local function complete(result, err)
-		if not result or err or session.closed then
-			return
-		end
-		if on_done then
-			on_done(result, nil)
-		end
+		finish(context.session, on_done, result, err)
 	end
 
 	local action = M[id]
@@ -650,16 +601,7 @@ function M.dispatch(id, context, on_done)
 	if not shared then
 		return false
 	end
-
-	return action_runner.run(shared_action(id, shared), shared, function(result, err)
-		if result and not err and not session.closed and review_updates[id] then
-			session:reload(function()
-				complete(result, nil)
-			end)
-			return
-		end
-		complete(result, err)
-	end)
+	return action_runner.run(shared_action(id, shared), shared, complete)
 end
 
 return M
