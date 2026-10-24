@@ -1,5 +1,4 @@
 local diff = require("atlas.pulls.diff.diff")
-local notes = require("atlas.pulls.notes")
 local ui = require("atlas.pulls.diff.ui.annotations")
 
 local M = {}
@@ -51,19 +50,16 @@ function M.render(view)
 		local pane = panes[item.side]
 		if pane then
 			local count = vim.api.nvim_buf_line_count(pane.buf)
-			if item.thread and item.line and (item.line < 1 or item.line > count) then
-				item.line = nil
-			elseif item.note then
-				local text = vim.api.nvim_buf_get_lines(pane.buf, item.note.line - 1, item.note.line, false)[1]
-				item.outdated = notes.is_outdated(item.note, text)
+			if item.thread and item.end_line and (item.end_line < 1 or item.end_line > count) then
+				item.end_line = nil
 			end
 
-			local line = math.max(1, math.min(item.line or 1, count))
+			local line = math.max(1, math.min(item.end_line or 1, count))
 			local lookup = view.annotations[pane.buf]
 			lookup[line] = lookup[line] or {}
 			table.insert(lookup[line], item)
 
-			local row = expanded and not item.line and 0 or line
+			local row = expanded and not item.end_line and 0 or line
 			placed[pane.buf][row] = placed[pane.buf][row] or {}
 			table.insert(placed[pane.buf][row], item)
 		end
@@ -140,7 +136,7 @@ end
 
 ---@param view AtlasDiffDiffviewView
 ---@param direction 1|-1
----@param kind "comment"|"note"
+---@param kind AtlasDiffAnnotationKind
 ---@param from_edge boolean|nil
 ---@return boolean moved
 function M.navigate(view, direction, kind, from_edge)

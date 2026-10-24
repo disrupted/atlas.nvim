@@ -303,6 +303,8 @@ local defaults = {
 				toggle_file_reviewed = "-",
 				next_comment = "]c",
 				prev_comment = "[c",
+				next_unresolved = "]x",
+				prev_unresolved = "[x",
 				next_note = "]n",
 				prev_note = "[n",
 				add_comment = "c",
@@ -327,6 +329,9 @@ local defaults = {
 					next_unreviewed_file = "]u",
 					prev_unreviewed_file = "[u",
 					find_file = "<leader>f",
+				},
+				panel = {
+					cycle_filter = "f",
 				},
 				-- Built-in navigation; external viewers use their own keys.
 				atlas = {

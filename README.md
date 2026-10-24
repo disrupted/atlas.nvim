@@ -113,8 +113,8 @@ For scripts, use `bin/atlas-notes`. Notes added there appear in AtlasDiff, CodeD
 ```sh
 ./bin/atlas-notes add \
   --target https://github.com/owner/repository/pull/123 \
-  --file lua/review_queue.lua --line 19 \
-  --context "local item = queue[index]" \
+  --commit 3f2a9c1e \
+  --file lua/review_queue.lua --start-line 19 \
   --type suggestion --body "Should this be a bool?"
 ```
 
@@ -900,6 +900,8 @@ keymaps = {
       toggle_resolved = "x",
       next_comment = "]c",
       prev_comment = "[c",
+      next_unresolved = "]x",
+      prev_unresolved = "[x",
       next_note = "]n",
       prev_note = "[n",
       add_comment = "c",
@@ -918,6 +920,9 @@ keymaps = {
         next_unreviewed_file = "]u",
         prev_unreviewed_file = "[u",
         find_file = "<leader>f",
+      },
+      panel = {
+        cycle_filter = "f",
       },
       -- Built-in navigation; external viewers use their own keys.
       atlas = {
