@@ -262,6 +262,19 @@ function M.register(buf)
 		})
 	)
 
+	local provider_detail = state.provider and state.provider.capabilities.ui and state.provider.capabilities.ui.detail
+	if provider_detail and provider_detail.keymaps then
+		for _, keymap in ipairs(provider_detail.keymaps()) do
+			table.insert(items, {
+				key = keymap.key,
+				desc = keymap.desc,
+				index = 7,
+				opts = { nowait = true, silent = true },
+				callback = keymap.callback,
+			})
+		end
+	end
+
 	if supports_action("edit_pr") then
 		utils.insert_if(
 			items,

@@ -274,7 +274,7 @@ local function search_preview(pr, details)
 	end, details.labels)
 	local lines = {
 		"**Status:** " .. pr.state,
-		"**Author:** " .. pr.author.name,
+		"**Author:** @" .. pr.author.username,
 		string.format("**Branches:** %s -> %s", pr.source.branch, pr.destination.branch),
 	}
 	if #reviewers > 0 then

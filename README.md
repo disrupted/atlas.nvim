@@ -3,7 +3,7 @@
 [![CI](https://github.com/emrearmagan/atlas.nvim/actions/workflows/ci.yml/badge.svg)](https://github.com/emrearmagan/atlas.nvim/actions/workflows/ci.yml)
 [![License](https://img.shields.io/github/license/emrearmagan/atlas.nvim?style=flat-square&color=blue)](LICENSE)
 
-# Atlas.nvim
+# atlas.nvim
 
 Review pull requests and manage issues across GitHub, GitLab, Bitbucket and Jira without leaving your editor.
 
@@ -23,10 +23,14 @@ Review pull requests and manage issues across GitHub, GitLab, Bitbucket and Jira
 
 - [Configuration](#configuration)
 - [Commands](#commands)
-- GitHub: [Pull requests](#github) · [Issues](#github-issues)
-- GitLab: [Pull requests](#gitlab) · [Issues](#gitlab-issues)
-- [Bitbucket](#bitbucket)
-- [Jira](#jira)
+- [Pull requests](#pulls)
+  - [GitHub](#github)
+  - [GitLab](#gitlab)
+  - [Bitbucket](#bitbucket)
+- [Issues](#issues)
+  - [GitHub](#github-issues)
+  - [GitLab](#gitlab-issues)
+  - [Jira](#jira)
 
 ## Installation
 
@@ -109,8 +113,8 @@ For scripts, use `bin/atlas-notes`. Notes added there appear in AtlasDiff, CodeD
 ```sh
 ./bin/atlas-notes add \
   --target https://github.com/owner/repository/pull/123 \
-  --file lua/review_queue.lua --line 19 \
-  --context "local item = queue[index]" \
+  --commit 3f2a9c1e \
+  --file lua/review_queue.lua --start-line 19 \
   --type suggestion --body "Should this be a bool?"
 ```
 
@@ -285,6 +289,7 @@ Save searches as bookmarks, or press `*` to star a pull request or issue. Both a
 - Save issue descriptions as templates and reuse them when creating issues.
 - Close or reopen GitHub/GitLab issues and change Jira workflow states.
 - Jump between linked issues and pull requests and back, or browse related issues and sub-issues.
+- See a GitHub PR's position in its stack (e.g. `2/5`) and step through the stack with `]s` / `[s`.
 - Read GitHub and GitLab notifications, open them in Atlas, and mark them as read or done.
 - Remap shortcuts or assign multiple keys to the same action.
 - Set local repository paths and PR templates per project.
@@ -753,6 +758,7 @@ issues = {
   },
 },
 ```
+
 <img alt="github-issue" src="https://github.com/user-attachments/assets/109b9a2a-86f2-4867-86e2-ff6a0645ca29" />
 
 </details>
@@ -884,6 +890,10 @@ keymaps = {
     checkout = "gc",
     open_repository = "o",
     edit_pr = "ge",
+    stack = {
+      next = "]s",
+      prev = "[s",
+    },
     review = {
       show_details = "K", -- File/commit details.
       toggle_file_reviewed = "-",
@@ -895,6 +905,8 @@ keymaps = {
       toggle_resolved = "x",
       next_comment = "]c",
       prev_comment = "[c",
+      next_unresolved = "]x",
+      prev_unresolved = "[x",
       next_note = "]n",
       prev_note = "[n",
       add_comment = "c",
@@ -913,6 +925,9 @@ keymaps = {
         next_unreviewed_file = "]u",
         prev_unreviewed_file = "[u",
         find_file = "<leader>f",
+      },
+      panel = {
+        cycle_filter = "f",
       },
       -- Built-in navigation; external viewers use their own keys.
       atlas = {

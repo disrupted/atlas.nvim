@@ -1,7 +1,8 @@
 local M = {}
 local providers = require("atlas.providers")
+local storage = require("atlas.core.storage")
 
-local path = vim.fs.joinpath(vim.fn.stdpath("data"), "atlas", "starred-v4.json")
+local path = vim.fs.joinpath(storage.root(), "starred-v4.json")
 
 ---@class AtlasStarredItem
 ---@field ref string
@@ -150,6 +151,10 @@ end
 
 ---@return boolean, string|nil
 function M.clear_all()
+	-- TODO: Drop this at some point. It only cleans up the old starred versions.
+	for _, name in ipairs({ "starred.json", "starred-v2.json", "starred-v3.json" }) do
+		vim.fn.delete(vim.fs.joinpath(storage.root(), name))
+	end
 	if vim.fn.filereadable(path) == 0 or vim.fn.delete(path) == 0 then
 		return true, nil
 	end

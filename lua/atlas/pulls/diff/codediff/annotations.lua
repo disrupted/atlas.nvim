@@ -1,6 +1,5 @@
 local highlights = require("codediff.ui.highlights")
 local ui = require("atlas.pulls.diff.ui.annotations")
-local notes = require("atlas.pulls.notes")
 local has_scroll, scroll = pcall(require, "codediff.ui.scroll")
 
 local M = {}
@@ -110,17 +109,17 @@ function M.render(view, file, session)
 	local options = ui.comment_options(view.expanded_threads)
 
 	for _, item in ipairs(ui.for_file(view.result, file)) do
-		if item.thread and (file.binary or (item.line and (item.line < 1 or item.line > counts[item.side]))) then
-			item.line = nil
-		elseif item.note then
-			local text = vim.api.nvim_buf_get_lines(view.right.buf, item.note.line - 1, item.note.line, false)[1]
-			item.outdated = notes.is_outdated(item.note, text)
+		if
+			item.thread
+			and (file.binary or (item.end_line and (item.end_line < 1 or item.end_line > counts[item.side])))
+		then
+			item.end_line = nil
 		end
 
 		local pane = item.side == "LEFT" and view.left.win and view.left or view.right
-		local line, deleted = item.line or 1, false
-		if item.side == "LEFT" and not view.left.win and file.status ~= "deleted" and item.line then
-			line, deleted = modified_line(item.line, changes)
+		local line, deleted = item.end_line or 1, false
+		if item.side == "LEFT" and not view.left.win and file.status ~= "deleted" and item.end_line then
+			line, deleted = modified_line(item.end_line, changes)
 		end
 		line = math.max(1, math.min(line, vim.api.nvim_buf_line_count(pane.buf)))
 
@@ -129,7 +128,7 @@ function M.render(view, file, session)
 		table.insert(lookup[line], item)
 
 		local boundary = line
-		if expanded and not item.line then
+		if expanded and not item.end_line then
 			boundary = 0
 		elseif expanded and deleted then
 			-- CodeDiff owns the deleted block; put its cards beside the adjacent real line.
@@ -212,7 +211,7 @@ end
 
 ---@param view AtlasDiffCodeDiffView
 ---@param direction 1|-1
----@param kind "comment"|"note"
+---@param kind AtlasDiffAnnotationKind
 ---@param from_edge boolean|nil
 ---@return boolean moved
 function M.navigate(view, direction, kind, from_edge)

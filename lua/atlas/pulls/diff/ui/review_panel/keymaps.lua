@@ -3,6 +3,8 @@ local help = require("atlas.ui.popups.help")
 
 local M = {}
 
+local next_filter = { all = "unresolved", unresolved = "mine", mine = "all" }
+
 ---@param items AtlasHelpKeyItem[]
 ---@param action AtlasKeymapActionId
 ---@param description string
@@ -24,8 +26,7 @@ end
 ---@param state AtlasDiffReviewPanel
 ---@return AtlasDiffReviewPanelRow|nil
 local function current(state)
-	local row = state.win and vim.api.nvim_win_get_cursor(state.win)[1] or state.cursor_row
-	return state.line_map[row]
+	return state.line_map[vim.api.nvim_win_get_cursor(0)[1]]
 end
 
 ---@param state AtlasDiffReviewPanel
@@ -102,6 +103,10 @@ function M.setup(state, callbacks)
 	end)
 	add(items, "ui.toggle_fold", "Expand / collapse", 10, toggle_fold)
 	add(items, "ui.toggle_all_folds", "Expand / collapse all", 11, toggle_all_folds)
+	add(items, "pulls.review.panel.cycle_filter", "Cycle filter", 12, function()
+		state.filter = next_filter[state.filter]
+		callbacks.render()
+	end)
 	add(items, "ui.open_in_browser", "Open item in browser", 20, function()
 		local entry = current(state)
 		local target = entry and (entry.review_entry or entry.comment or entry.thread_root)
@@ -127,7 +132,9 @@ function M.setup(state, callbacks)
 
 		local function reply(pending)
 			local entry = current(state)
-			if entry and entry.comment and not entry.comment.is_task then
+			if entry and entry.note then
+				dispatch("note_to_comment", entry, pending)
+			elseif entry and entry.comment and not entry.comment.is_task then
 				dispatch("add_comment", entry, pending)
 			end
 		end

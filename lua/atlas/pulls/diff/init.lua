@@ -35,7 +35,7 @@ local M = {}
 ---@field commits PullsCommit[]
 ---@field review { data?: PullsReviewData, context?: PullsReviewContext }|nil
 ---@field current_user AtlasUser|nil
----@field notes { target: AtlasNoteTarget, items: AtlasNote[] }|nil
+---@field notes { target: AtlasStorageTarget, items: AtlasNote[], positions: table<string, AtlasNotePosition> }|nil
 ---@field worktree_root string|nil
 ---@field release fun() Call when closing the review to clean up its worktree.
 
@@ -321,23 +321,24 @@ function M.open_pr(ref, on_done)
 				end
 			end
 
-			local target, notes_err = notes.target_for_pull_request(pr)
-			local note_items
-			if target then
-				note_items, notes_err = notes.list(target)
-			end
+			local note_data, notes_err = notes.for_pull_request(pr)
 			if notes_err then
 				notify.warn("Unable to load notes: " .. notes_err)
 			end
 
-			on_prepared("pr", values.repository, {
-				pr = pr,
-				commits = values.commits,
-				review = (values.review or values.review_context)
-					and { data = values.review, context = values.review_context },
-				current_user = values.current_user,
-				notes = target and { target = target, items = note_items or {} },
-			})
+			local source = values.repository
+			requests.run(function(done)
+				return notes.locate(source.root, source.head_revision, note_data and note_data.items or {}, done)
+			end, function(positions)
+				on_prepared("pr", source, {
+					pr = pr,
+					commits = values.commits,
+					review = (values.review or values.review_context)
+						and { data = values.review, context = values.review_context },
+					current_user = values.current_user,
+					notes = note_data and { target = note_data.target, items = note_data.items, positions = positions },
+				})
+			end)
 		end)
 	end)
 end
