@@ -89,6 +89,7 @@ require("atlas").setup({})
 Run `:Atlas review` in a Git repository to pick a pull request, or pass a PR URL directly. It opens in your configured diff viewer.
 
 - Browse files, commits, hunks, and review history.
+- Review commit by commit or a range of commits.
 - Comment, suggest changes, manage threads, or leave notes.
 - Track tasks, checklists, and reviewed files.
 - Submit, approve, request changes, or merge.
@@ -209,7 +210,7 @@ pulls = {
       id = "show_repo_status",
       label = "Show repository status",
       icon = "",
-      confirmation = true,
+      confirm = "Show repository status?",
       ---@param pr PullRequest
       ---@param ctx AtlasPullsCustomActionContext
       ---@param done fun(ok: boolean|nil, message: string|nil)
@@ -243,7 +244,6 @@ issues = {
       id = "copy_branch_name",
       label = "Copy branch name",
       icon = "",
-      confirmation = false,
       ---@param issue Issue
       ---@param ctx AtlasIssuesCustomActionContext
       ---@param done fun(ok: boolean|nil, message: string|nil)
@@ -909,6 +909,8 @@ keymaps = {
       prev_unresolved = "[x",
       next_note = "]n",
       prev_note = "[n",
+      next_commit = "]r",
+      prev_commit = "[r",
       add_comment = "c",
       submit_comment = "C",
       add_suggestion = "s",
