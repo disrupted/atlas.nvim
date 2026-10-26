@@ -289,6 +289,7 @@ Save searches as bookmarks, or press `*` to star a pull request or issue. Both a
 - Save issue descriptions as templates and reuse them when creating issues.
 - Close or reopen GitHub/GitLab issues and change Jira workflow states.
 - Jump between linked issues and pull requests and back, or browse related issues and sub-issues.
+- See a GitHub PR's position in its stack (e.g. `2/5`) and step through the stack with `]s` / `[s`.
 - Read GitHub and GitLab notifications, open them in Atlas, and mark them as read or done.
 - Remap shortcuts or assign multiple keys to the same action.
 - Set local repository paths and PR templates per project.
@@ -889,6 +890,10 @@ keymaps = {
     checkout = "gc",
     open_repository = "o",
     edit_pr = "ge",
+    stack = {
+      next = "]s",
+      prev = "[s",
+    },
     review = {
       show_details = "K", -- File/commit details.
       toggle_file_reviewed = "-",

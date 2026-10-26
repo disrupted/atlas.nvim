@@ -72,11 +72,17 @@
 -- Merge check
 --------------------------------------------------------------------------------
 
+---@class PullsMergeCheckDetail
+---@field text string
+---@field text_hl string|nil
+---@field icon string
+---@field icon_hl string|nil
+
 ---@class PullsMergeCheck
 ---@field key string
 ---@field state "successful"|"failed"|"inprogress"|"warning"|"muted"
 ---@field label string
----@field details string[]|nil
+---@field details (string|PullsMergeCheckDetail)[]|nil
 
 --------------------------------------------------------------------------------
 -- Diffstat
@@ -237,10 +243,16 @@
 ---@field label string
 ---@field hl string|nil
 
+---@class PullsDetailKeymap
+---@field key string|string[]
+---@field desc string
+---@field callback fun()
+
 ---@class PullsProviderDetail
 ---@field header_fields (fun(pr: PullRequest, details: PullRequestDetails|nil, loading: boolean): PullsDetailHeaderField[])|nil
 ---@field chips (fun(pr: PullRequest, details: PullRequestDetails|nil, loading: boolean): PullsDetailChip[])|nil
 ---@field tabs (fun(): PullsDetailTab[])|nil
+---@field keymaps (fun(): PullsDetailKeymap[])|nil
 
 ---@class PullsDetailTabModule
 ---@field render fun(pr: PullRequest, details: PullRequestDetails|nil, width: integer): string[], table[], table<integer, table>|nil
