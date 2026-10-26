@@ -619,7 +619,7 @@ local function open_review_editor(context, capability, title, loading, success, 
 				end
 				notify.success(success, { timeout = 1200 })
 				if capability == "approve" then
-					notes.clear_for_pull_request(context.pr)
+					notes.clear(context.pr)
 				end
 				on_done({ changed_pr = true }, nil)
 			end)

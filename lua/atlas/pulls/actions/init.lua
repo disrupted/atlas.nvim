@@ -9,6 +9,7 @@ local picker = require("atlas.ui.picker")
 local pipeline_api = require("atlas.pulls.pipelines")
 local repository = require("atlas.ui.repository")
 local review = require("atlas.pulls.actions.review")
+local reviewed_store = require("atlas.pulls.reviewed")
 local utils = require("atlas.pulls.actions.utils")
 
 local M = {}
@@ -195,7 +196,8 @@ M.merge = {
 						completed(false)
 						return
 					end
-					notes.clear_for_pull_request(pr)
+					notes.clear(pr)
+					reviewed_store.clear(pr)
 					completed(true)
 					notify.success("Merge succeeded", { timeout = 1200 })
 					done({ changed_pr = true }, nil)
@@ -226,6 +228,8 @@ M.decline = {
 				return
 			end
 			pr.state = "declined"
+			notes.clear(pr)
+			reviewed_store.clear(pr)
 			notify.success("PR declined", { timeout = 1200 })
 			done({ changed_pr = true }, nil)
 		end)
