@@ -18,6 +18,7 @@ local notify = require("atlas.core.notify")
 local transitions_api = require("atlas.issues.providers.jira.api.transitions")
 local users_api = require("atlas.providers.jira.users")
 local issues_state = require("atlas.issues.state")
+local presentation = require("atlas.issues.ui.presentation")
 
 ---@param ctx AtlasIssueActionContext
 ---@return boolean
@@ -433,7 +434,7 @@ end
 local function format_preview(issue, details)
 	local assignee = details.assignees[1]
 	local status = "**Status:** " .. (details.status or "Unknown")
-	local assignee_name = "**Assignee:** " .. (assignee and assignee.name or "Unassigned")
+	local assignee_name = "**Assignee:** " .. (assignee and presentation.person_name(assignee) or "Unassigned")
 	local column = math.max(vim.fn.strdisplaywidth(status), vim.fn.strdisplaywidth(assignee_name)) + 4
 	local lines = {
 		status
@@ -443,7 +444,7 @@ local function format_preview(issue, details)
 		assignee_name
 			.. string.rep(" ", column - vim.fn.strdisplaywidth(assignee_name))
 			.. "**Reporter:** "
-			.. (details.reporter and details.reporter.name or "Unknown"),
+			.. presentation.person_name(details.reporter),
 	}
 	local labels = vim.tbl_map(function(label)
 		return label.name

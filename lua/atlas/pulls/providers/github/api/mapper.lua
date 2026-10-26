@@ -364,7 +364,8 @@ function M.to_activity(node)
 		local msg = (json.safe_str(commit.message) or ""):match("([^\n]+)") or ""
 		local sha = (json.safe_str(commit.oid) or ""):sub(1, 8)
 		entry.kind = "committed"
-		entry.actor = actor_from_login(json.safe_str(author.name) or "")
+		local login = json.safe_str(json.safe_table(author.user).login) or json.safe_str(author.name) or ""
+		entry.actor = actor_from_login(login)
 		entry.date = json.safe_str(commit.authoredDate) or ""
 		entry.label = sha ~= "" and string.format("%s %s", sha, msg) or msg
 	elseif event == "LabeledEvent" or event == "UnlabeledEvent" then

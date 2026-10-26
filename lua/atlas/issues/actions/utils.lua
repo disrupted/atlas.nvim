@@ -15,7 +15,7 @@ function M.issue_preview(issue, details)
 	local label_names = vim.tbl_map(function(label)
 		return label.name
 	end, details.labels)
-	local author = issue.reporter and issue.reporter.name or "Unknown"
+	local author = issue.reporter and ("@" .. (issue.reporter.username or issue.reporter.name)) or "Unknown"
 	local lines = {
 		"**Status:** " .. tostring(issue.status or "Open"),
 		"**Author:** " .. author,

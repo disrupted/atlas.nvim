@@ -71,7 +71,7 @@ end
 ---@param fallback string
 ---@return string
 function M.person_value(user, fallback)
-	return icons.get("user") .. " " .. utils.shorten_name(user and user.name or fallback, 20)
+	return icons.get("user") .. " " .. utils.shorten_name(user and presentation.person_name(user) or fallback, 20)
 end
 
 ---@param issue Issue
@@ -79,7 +79,7 @@ end
 ---@return string|nil
 function M.person_hl(issue, key)
 	if key == "assignee" or key == "reporter" then
-		return presentation.person_hl(issue[key] and issue[key].name)
+		return presentation.person_hl(issue[key] and presentation.person_name(issue[key]))
 	end
 end
 

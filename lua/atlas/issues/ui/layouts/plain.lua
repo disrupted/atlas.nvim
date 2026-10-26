@@ -154,8 +154,8 @@ M.default = {
 		return {
 			icon = "",
 			name = (issue.key or "") .. " " .. issue.title,
-			assignee = issue.assignee and issue.assignee.name or "Unassigned",
-			reporter = issue.reporter and issue.reporter.name or "Unknown",
+			assignee = issue.assignee and presentation.person_name(issue.assignee) or "Unassigned",
+			reporter = presentation.person_name(issue.reporter),
 			status = string.format(" %s ", issue.status or ""),
 		}
 	end,
