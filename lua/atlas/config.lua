@@ -136,9 +136,13 @@
 
 -- Config
 
+---@alias AtlasStatuslineContext "atlas"|"diff"
+---@alias AtlasStatuslineEnable fun(buf: integer, win: integer, context: AtlasStatuslineContext): boolean
+
 ---@class AtlasUIStatuslineConfig
----@field atlas? boolean Show the statusline in Atlas's main UI (default: true)
----@field diff? boolean Show the statusline in Atlas-owned diff/review sessions (default: true)
+---@field enable? boolean|AtlasStatuslineEnable Predicate for where Atlas's statusline is shown (default: true)
+---@field atlas? boolean Deprecated: use `enable`.
+---@field diff? boolean Deprecated: use `enable`.
 
 ---@class AtlasUIConfig
 ---@field statusline AtlasUIStatuslineConfig|nil
@@ -154,10 +158,15 @@
 
 local M = {}
 
+---@type AtlasStatuslineEnable
+local function default_statusline_enable(_, _, _)
+	return true
+end
+
 ---@type AtlasConfig
 local defaults = {
 	ui = {
-		statusline = { atlas = true, diff = true },
+		statusline = { enable = default_statusline_enable },
 		picker = "auto",
 		listed_buffer = false,
 	},
@@ -372,10 +381,30 @@ local defaults = {
 ---@type AtlasConfig
 M.options = vim.deepcopy(defaults)
 
----@param context "atlas"|"diff"
+---@param context AtlasStatuslineContext
+---@param buf integer|nil
+---@param win integer|nil
 ---@return boolean
-function M.statusline_enabled(context)
-	return M.options.ui.statusline[context] ~= false
+function M.statusline_enabled(context, buf, win)
+	local statusline = M.options.ui.statusline
+	-- Keep honoring the old context booleans for existing configurations.
+	if statusline.enable == false or statusline[context] == false then
+		return false
+	end
+
+	local enable = statusline.enable
+	if type(enable) ~= "function" then
+		return true
+	end
+
+	if not win or not vim.api.nvim_win_is_valid(win) then
+		win = vim.api.nvim_get_current_win()
+	end
+	if not buf or not vim.api.nvim_buf_is_valid(buf) then
+		buf = vim.api.nvim_win_get_buf(win)
+	end
+
+	return enable(buf, win, context) == true
 end
 
 ---@return string
@@ -424,7 +453,9 @@ function M.setup(opts)
 		project.issue_types = issue_types
 	end
 	M.options = vim.tbl_deep_extend("force", vim.deepcopy(defaults), resolved)
-	if M.statusline_enabled("atlas") or M.statusline_enabled("diff") then
+	local statusline = M.options.ui.statusline
+	local legacy_disabled = statusline.atlas == false and statusline.diff == false
+	if statusline.enable ~= false and not legacy_disabled then
 		vim.opt.laststatus = 3
 	end
 end
