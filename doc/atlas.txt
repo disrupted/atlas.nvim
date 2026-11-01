@@ -841,7 +841,7 @@ These `User` events fire after setup or cleanup completes:
         assignees  = "ga",
         labels     = "gl", -- GitHub and GitLab only.
         milestone  = "gm", -- GitHub and GitLab only.
-        reporter   = "gr", -- Jira only.
+        reporter   = "gR", -- Jira only.
         reviewers  = "gr", -- Pull requests only.
         base       = "gb", -- Pull requests only.
         draft      = "gD", -- Pull requests only.

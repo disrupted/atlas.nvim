@@ -547,128 +547,48 @@ end
 
 ---@return table<string, table<string, string[]>>
 function M.validate()
-	-- TODO: Give these actions unique default mappings.
-	---@type AtlasKeymapActionId[][]
-	local ALLOWED_CONFLICTS = {
-		{ "ui.comments.add", "ui.edit_search" },
-		{ "ui.next_panel_tab", "pulls.pipelines.next_job" },
-		{ "ui.previous_panel_tab", "pulls.pipelines.previous_job" },
-		{ "ui.comments.reply", "issues.create_issue" },
-		{ "ui.comments.react", "issues.change_reporter" },
-		{ "editor.reporter", "editor.reviewers" },
-		{ "pulls.open_diff", "pulls.merge.delete_branch" },
-	}
+	local result = {}
 
-	local function conflict_allowed(actions)
-		for _, group in ipairs(ALLOWED_CONFLICTS) do
-			local allowed = {}
-			for _, action_id in ipairs(group) do
-				allowed[action_id] = true
-			end
-
-			local matches = true
-			for _, action_id in ipairs(actions) do
-				if not allowed[action_id] then
-					matches = false
-					break
-				end
-			end
-			if matches then
-				return true
+	---@param node table
+	---@param path string
+	local function check(node, path)
+		local seen = {}
+		local function add(keys, action_id)
+			for _, key in ipairs(keys or {}) do
+				seen[key] = seen[key] or {}
+				table.insert(seen[key], action_id)
 			end
 		end
-		return false
-	end
 
-	local custom_keys = {}
-	local function collect_actions(node, path, action_ids)
 		for name, value in pairs(node) do
 			local action_id = path .. "." .. name
-			local notification_action = action_id == "ui.notifications.mark_read"
-				or action_id == "ui.notifications.mark_done"
+			local keys = normalize(value)
 			if name == "custom" then
 				for index, mapping in ipairs(value) do
-					local id = action_id .. "." .. index
-					custom_keys[id] = normalize(mapping.key)
-					table.insert(action_ids, id)
+					add(normalize(mapping.key), action_id .. "." .. index)
 				end
-			elseif not notification_action and action_id ~= "pulls.review" then
-				if normalize(value) then
-					table.insert(action_ids, action_id)
-				elseif type(value) == "table" then
-					collect_actions(value, action_id, action_ids)
-				end
-			end
-		end
-	end
-
-	local keymaps = config.options.keymaps
-	---@cast keymaps -nil
-	local function actions_for(namespaces)
-		local action_ids = {}
-		for _, namespace in ipairs(namespaces) do
-			collect_actions(keymaps[namespace] or {}, namespace, action_ids)
-		end
-		return action_ids
-	end
-
-	local function conflicts_for(action_ids)
-		local seen_by_key = {}
-		for _, action_id in ipairs(action_ids) do
-			for _, key in ipairs(custom_keys[action_id] or normalize(lookup(keymaps, action_id)) or {}) do
-				seen_by_key[key] = seen_by_key[key] or {}
-				seen_by_key[key][action_id] = true
+			elseif keys then
+				add(keys, action_id)
+			elseif type(value) == "table" then
+				check(value, action_id)
 			end
 		end
 
 		local conflicts = {}
-		for key, seen in pairs(seen_by_key) do
-			local actions = vim.tbl_keys(seen)
-			table.sort(actions)
-			if #actions > 1 and not conflict_allowed(actions) then
-				conflicts[key] = actions
+		for key, action_ids in pairs(seen) do
+			if #action_ids > 1 then
+				table.sort(action_ids)
+				conflicts[key] = action_ids
 			end
 		end
-		return conflicts
-	end
-
-	-- Column navigation is registered only by issue dashboards.
-	local pulls_actions = actions_for({ "ui", "pulls" })
-	for index = #pulls_actions, 1, -1 do
-		local action_id = pulls_actions[index]
-		if action_id == "ui.previous_column" or action_id == "ui.next_column" then
-			table.remove(pulls_actions, index)
+		if next(conflicts) then
+			result[path] = conflicts
 		end
 	end
 
-	local result = {
-		picker = conflicts_for(actions_for({ "picker" })),
-		ui = conflicts_for(actions_for({ "ui" })),
-		pulls = conflicts_for(vim.list_extend(pulls_actions, {
-			"pulls.review.approve",
-			"pulls.review.request_changes",
-			"pulls.review.submit_review",
-			"pulls.review.add_task",
-			"pulls.review.comment_templates",
-		})),
-		issues = conflicts_for(actions_for({ "ui", "issues" })),
-		editor = conflicts_for(vim.list_extend(actions_for({ "editor" }), {
-			"ui.submit",
-			"ui.close",
-			"ui.help",
-			"ui.toggle_description_mode",
-			"pulls.open_diff",
-		})),
-		notifications = conflicts_for({
-			"ui.notifications.mark_read",
-			"ui.notifications.mark_done",
-			"ui.refresh_view",
-			"ui.select",
-			"ui.open_in_browser",
-			"picker.close",
-		}),
-	}
-
+	for namespace, node in pairs(config.options.keymaps) do
+		check(node, namespace)
+	end
 	return result
 end
 

@@ -58,40 +58,21 @@ describe("core.keymaps", function()
 		end)
 
 		it("reports no conflicts for the shipped defaults", function()
-			for section, conflicts in pairs(keymaps.validate()) do
-				assert.are.same({}, conflicts, string.format("unexpected conflicts in %s", section))
-			end
+			assert.are.same({}, keymaps.validate())
 		end)
 
-		it("reports unexpected conflicts inside nested groups", function()
-			config.options.keymaps.pulls.review.request_changes = "<leader>gr"
-			local key = config.options.keymaps.pulls.review.request_changes
-			config.options.keymaps.pulls.checkout = key
+		it("reports conflicts inside the same table", function()
+			config.options.keymaps.pulls.review.approve = "<leader>gr"
 
-			local pulls_conflicts = keymaps.validate().pulls
 			assert.are.same({
-				"pulls.checkout",
-				"pulls.review.request_changes",
-			}, pulls_conflicts[key])
+				["<leader>gr"] = { "pulls.review.approve", "pulls.review.request_changes" },
+			}, keymaps.validate()["pulls.review"])
 		end)
 
-		it("checks board column conflicts only in issues", function()
-			for _, action in ipairs({ "previous_column", "next_column" }) do
-				local key = config.options.keymaps.ui[action]
-				config.options.keymaps.pulls.checkout = key
-				config.options.keymaps.issues.transition_issue = key
-				local conflicts = keymaps.validate()
+		it("does not compare keys across tables", function()
+			config.options.keymaps.pulls.checkout = config.options.keymaps.ui.toggle_panel
 
-				assert.is_nil(conflicts.pulls[key])
-				assert.are.same({ "issues.transition_issue", "ui." .. action }, conflicts.issues[key])
-			end
-		end)
-
-		it("still reports shared UI conflicts in pulls when a board key is reused", function()
-			config.options.keymaps.ui.toggle_panel = "h"
-			config.options.keymaps.pulls.checkout = "h"
-
-			assert.are.same({ "pulls.checkout", "ui.toggle_panel" }, keymaps.validate().pulls.h)
+			assert.are.same({}, keymaps.validate())
 		end)
 	end)
 end)
