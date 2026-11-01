@@ -114,8 +114,8 @@ function M.update(statusline, session, files, buf)
 		}
 	end
 
-	local help_keys = keymaps.resolve("ui.help")
-	statusline.options.help_key = help_keys and help_keys[1] or nil
+	local help = keymaps.resolve("ui.help")
+	statusline.options.help_key = help and help.key[1] or nil
 	statusline:set_items(items)
 end
 

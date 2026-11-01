@@ -504,19 +504,21 @@ function M.open(owner, pr, path, items, on_action)
 	local comments = provider and provider.capabilities.comments
 	local can_react = comments and comments.reactions ~= nil
 
-	local keys = {
-		close = keymaps.resolve("ui.close"),
-		reply = keymaps.resolve("ui.comments.reply"),
-		add_task = can_add_task and keymaps.resolve("pulls.review.add_task") or nil,
-		edit = keymaps.resolve("ui.comments.edit"),
-		delete = keymaps.resolve("ui.delete"),
-		react = can_react and keymaps.resolve("ui.comments.react") or nil,
-		toggle_resolved = keymaps.resolve("pulls.review.toggle_resolved"),
+	local action_ids = {
+		close = "ui.close",
+		reply = "ui.comments.reply",
+		add_task = can_add_task and "pulls.review.add_task" or nil,
+		edit = "ui.comments.edit",
+		delete = "ui.delete",
+		react = can_react and "ui.comments.react" or nil,
+		toggle_resolved = "pulls.review.toggle_resolved",
 	}
-	local labels = {}
-	for name, bindings in pairs(keys) do
-		if #bindings > 0 then
-			labels[name] = table.concat(bindings, " / ")
+	local keys, labels = {}, {}
+	for name, action_id in pairs(action_ids) do
+		local keymap = keymaps.resolve(action_id)
+		if keymap then
+			keys[name] = keymap.key
+			labels[name] = table.concat(keymap.key, " / ")
 		end
 	end
 

@@ -136,8 +136,12 @@ function M.open(message, on_cancel, context)
 		close(true)
 	end
 	indicator = spinner.create({ on_tick = draw })
-	for _, key in ipairs(keymaps.resolve("ui.close") or {}) do
-		vim.keymap.set("n", key, view.cancel, { buffer = view.buf, silent = true, nowait = true, desc = "Cancel" })
+	local keymap = keymaps.resolve("ui.close")
+	if keymap then
+		local opts = { buffer = view.buf, silent = true, nowait = true, desc = keymap.desc }
+		for _, key in ipairs(keymap.key) do
+			vim.keymap.set("n", key, view.cancel, opts)
+		end
 	end
 	vim.api.nvim_create_autocmd({ "VimResized", "WinResized" }, {
 		group = group,

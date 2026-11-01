@@ -295,6 +295,158 @@ local config = require("atlas.config")
 ---| "editor.fields"
 ---| "editor.templates"
 
+---@class AtlasKeymap
+---@field key? string[]
+---@field desc string
+---@field label string
+
+local descriptions = {
+	ui = {
+		next_item = { desc = "Next item", label = "next" },
+		previous_item = { desc = "Previous item", label = "previous" },
+		previous_column = { desc = "Previous status column", label = "previous column" },
+		next_column = { desc = "Next status column", label = "next column" },
+		first_item = { desc = "Go to first item", label = "first" },
+		last_item = { desc = "Go to last item", label = "last" },
+		select = { desc = "Open", label = "open" },
+		submit = { desc = "Submit", label = "submit" },
+		help = { desc = "Toggle help", label = "help" },
+		close = { desc = "Close", label = "close" },
+		delete = { desc = "Delete", label = "delete" },
+		comments = {
+			add = { desc = "Add comment", label = "comment" },
+			reply = { desc = "Reply to comment", label = "reply" },
+			edit = { desc = "Edit comment", label = "edit" },
+			react = { desc = "Add reaction", label = "react" },
+		},
+		toggle_panel = { desc = "Toggle detail panel", label = "panel" },
+		cycle_layout = { desc = "Cycle layout", label = "layout" },
+		toggle_fold = { desc = "Expand / collapse", label = "fold" },
+		toggle_all_folds = { desc = "Expand / collapse all", label = "fold all" },
+		toggle_description_mode = { desc = "Toggle description mode", label = "raw" },
+		previous_panel_tab = { desc = "Previous tab", label = "previous tab" },
+		next_panel_tab = { desc = "Next tab", label = "next tab" },
+		notifications = {
+			open = { desc = "Open notifications", label = "notifications" },
+			mark_read = { desc = "Mark as read", label = "mark read" },
+			mark_done = { desc = "Mark as done", label = "mark done" },
+		},
+		toggle_subscription = { desc = "Toggle subscription", label = "subscribe" },
+		toggle_star = { desc = "Star / unstar", label = "star" },
+		refresh = { desc = "Refresh", label = "refresh" },
+		refresh_view = { desc = "Refresh view", label = "refresh" },
+		next_page = { desc = "Next page", label = "next page" },
+		previous_page = { desc = "Previous page", label = "previous page" },
+		open_actions = { desc = "Open actions", label = "actions" },
+		open_in_browser = { desc = "Open in browser", label = "browser" },
+		open_references = { desc = "Open references", label = "references" },
+		copy_id = { desc = "Copy ID", label = "copy id" },
+		copy_url = { desc = "Copy URL", label = "copy url" },
+		show_details = { desc = "Show details", label = "details" },
+		search = { desc = "Search", label = "search" },
+		edit_search = { desc = "Edit search", label = "edit search" },
+	},
+	picker = {
+		next_item = { desc = "Next item", label = "next" },
+		previous_item = { desc = "Previous item", label = "previous" },
+		select = { desc = "Select", label = "select" },
+		toggle = { desc = "Toggle selection", label = "toggle" },
+		close = { desc = "Close", label = "close" },
+	},
+	pulls = {
+		open_diff = { desc = "Open diff", label = "diff" },
+		checkout = { desc = "Checkout branch", label = "checkout" },
+		open_repository = { desc = "Open repository browser", label = "repository" },
+		edit_pr = { desc = "Edit PR", label = "edit" },
+		stack = {
+			next = { desc = "Next PR in stack", label = "next PR" },
+			prev = { desc = "Previous PR in stack", label = "previous PR" },
+		},
+		pipelines = {
+			next_job = { desc = "Next job", label = "next job" },
+			previous_job = { desc = "Previous job", label = "previous job" },
+			show_history = { desc = "Show build history", label = "history" },
+			toggle_raw_logs = { desc = "Toggle raw logs", label = "raw" },
+			toggle_auto_refresh = { desc = "Toggle auto refresh", label = "auto refresh" },
+			toggle_config = { desc = "Toggle configuration", label = "config" },
+		},
+		review = {
+			show_details = { desc = "Show details", label = "details" },
+			toggle_file_reviewed = { desc = "Toggle reviewed", label = "reviewed" },
+			next_comment = { desc = "Next comment", label = "next comment" },
+			prev_comment = { desc = "Previous comment", label = "previous comment" },
+			next_unresolved = { desc = "Next unresolved thread", label = "next unresolved" },
+			prev_unresolved = { desc = "Previous unresolved thread", label = "previous unresolved" },
+			next_note = { desc = "Next note", label = "next note" },
+			prev_note = { desc = "Previous note", label = "previous note" },
+			next_commit = { desc = "Next commit", label = "next commit" },
+			prev_commit = { desc = "Previous commit", label = "previous commit" },
+			add_comment = { desc = "Add pending comment", label = "pending comment" },
+			submit_comment = { desc = "Post comment", label = "comment" },
+			add_suggestion = { desc = "Add pending suggestion", label = "pending suggestion" },
+			submit_suggestion = { desc = "Post suggestion", label = "suggestion" },
+			add_note = { desc = "Add note", label = "note" },
+			toggle_resolved = { desc = "Toggle resolved", label = "resolve" },
+			approve = { desc = "Approve", label = "approve" },
+			request_changes = { desc = "Request changes", label = "request changes" },
+			submit_review = { desc = "Submit review", label = "submit review" },
+			add_task = { desc = "Add task", label = "task" },
+			comment_templates = { desc = "Insert template", label = "templates" },
+			view = {
+				external_help = { desc = "Show diff viewer help", label = "viewer help" },
+				toggle_review_panel = { desc = "Toggle review panel", label = "review panel" },
+				toggle_detail_panel = { desc = "Toggle PR details", label = "details" },
+				toggle_comments = { desc = "Toggle comment display", label = "comments" },
+			},
+			explorer = {
+				toggle_commits = { desc = "Toggle commits", label = "commits" },
+				next_unreviewed_file = { desc = "Next unreviewed file", label = "next unreviewed" },
+				prev_unreviewed_file = { desc = "Previous unreviewed file", label = "previous unreviewed" },
+				find_file = { desc = "Find changed file", label = "find file" },
+			},
+			panel = {
+				cycle_filter = { desc = "Cycle filter", label = "filter" },
+			},
+			atlas = {
+				next_file = { desc = "Next file", label = "next file" },
+				prev_file = { desc = "Previous file", label = "previous file" },
+				toggle_explorer = { desc = "Toggle explorer", label = "explorer" },
+				focus_explorer = { desc = "Focus explorer", label = "focus explorer" },
+				open_file = { desc = "Open local file", label = "open file" },
+				toggle_view_mode = { desc = "Toggle explorer mode", label = "tree" },
+				next_hunk = { desc = "Next hunk", label = "next hunk" },
+				prev_hunk = { desc = "Previous hunk", label = "previous hunk" },
+				toggle_layout = { desc = "Toggle diff layout", label = "layout" },
+				toggle_compact = { desc = "Toggle compact mode", label = "compact" },
+			},
+		},
+		filters = {
+			open = { desc = "Toggle open filter", label = "open" },
+			merged = { desc = "Toggle merged filter", label = "merged" },
+			declined = { desc = "Toggle declined filter", label = "declined" },
+		},
+	},
+	issues = {
+		transition_issue = { desc = "Transition issue", label = "transition" },
+		change_assignee = { desc = "Change assignee", label = "assignee" },
+		change_reporter = { desc = "Change reporter", label = "reporter" },
+		edit_issue = { desc = "Edit issue", label = "edit" },
+		create_issue = { desc = "Create issue", label = "create" },
+	},
+	editor = {
+		assignees = { desc = "Change assignees", label = "assignees" },
+		labels = { desc = "Change labels", label = "labels" },
+		milestone = { desc = "Change milestone", label = "milestone" },
+		reporter = { desc = "Change reporter", label = "reporter" },
+		reviewers = { desc = "Change reviewers", label = "reviewers" },
+		base = { desc = "Change base branch", label = "base" },
+		draft = { desc = "Toggle draft", label = "draft" },
+		issue_type = { desc = "Change issue type", label = "issue type" },
+		fields = { desc = "Edit fields", label = "fields" },
+		templates = { desc = "Insert template", label = "templates" },
+	},
+}
+
 ---@param value AtlasKeymapValue
 ---@return string[]|nil
 local function normalize(value)
@@ -327,11 +479,11 @@ local function normalize(value)
 	return keys
 end
 
----@param action_id AtlasKeymapActionId|string
----@return AtlasKeymapValue
-local function from_config(action_id)
-	local value = config.options.keymaps
-	for key in tostring(action_id):gmatch("[^.]+") do
+---@param value table|nil
+---@param action_id string
+---@return any
+local function lookup(value, action_id)
+	for key in action_id:gmatch("[^.]+") do
 		if type(value) ~= "table" then
 			return nil
 		end
@@ -340,10 +492,22 @@ local function from_config(action_id)
 	return value
 end
 
----@param action_id AtlasKeymapActionId|string
----@return string[]|nil
+---@param action_id AtlasKeymapActionId|AtlasKeymapActionId[]
+---@return AtlasKeymap|nil
 function M.resolve(action_id)
-	return normalize(from_config(action_id))
+	---@type AtlasKeymapActionId[]
+	local action_ids = type(action_id) == "table" and action_id or { action_id }
+	local keymap = assert(lookup(descriptions, action_ids[1]), "Unknown keymap: " .. tostring(action_ids[1]))
+
+	local keys = {}
+	for _, id in ipairs(action_ids) do
+		vim.list_extend(keys, normalize(lookup(config.options.keymaps, id)) or {})
+	end
+
+	if #keys == 0 then
+		return nil
+	end
+	return { key = keys, desc = keymap.desc, label = keymap.label }
 end
 
 ---@param domain "pulls"|"issues"
@@ -430,7 +594,7 @@ function M.validate()
 	local function conflicts_for(action_ids)
 		local seen_by_key = {}
 		for _, action_id in ipairs(action_ids) do
-			for _, key in ipairs(custom_keys[action_id] or M.resolve(action_id) or {}) do
+			for _, key in ipairs(custom_keys[action_id] or normalize(lookup(keymaps, action_id)) or {}) do
 				seen_by_key[key] = seen_by_key[key] or {}
 				seen_by_key[key][action_id] = true
 			end

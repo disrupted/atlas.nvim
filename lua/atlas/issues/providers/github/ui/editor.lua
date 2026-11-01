@@ -481,22 +481,19 @@ local function open_editor(repo_slug, issue, details, on_done)
 		end,
 		keymaps = {
 			{
-				key = keymaps.resolve("editor.assignees"),
-				desc = "assignees",
+				keymap = keymaps.resolve("editor.assignees"),
 				action = function(editor)
 					select_assignees(state, editor)
 				end,
 			},
 			{
-				key = keymaps.resolve("editor.labels"),
-				desc = "labels",
+				keymap = keymaps.resolve("editor.labels"),
 				action = function(editor)
 					select_labels(state, editor)
 				end,
 			},
 			{
-				key = keymaps.resolve("editor.milestone"),
-				desc = "milestone",
+				keymap = keymaps.resolve("editor.milestone"),
 				action = function(editor)
 					select_milestone(state, editor)
 				end,

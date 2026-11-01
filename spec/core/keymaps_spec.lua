@@ -21,14 +21,34 @@ describe("core.keymaps", function()
 		end)
 
 		it("normalizes string and list mappings", function()
-			assert.are.same({ "p" }, keymaps.resolve("ui.toggle_panel"))
-			assert.are.same({ "]", "<Tab>" }, keymaps.resolve("ui.next_panel_tab"))
+			assert.are.same({ "p" }, assert(keymaps.resolve("ui.toggle_panel")).key)
+			assert.are.same({ "]", "<Tab>" }, assert(keymaps.resolve("ui.next_panel_tab")).key)
+		end)
+
+		it("returns the description and label", function()
+			assert.are.same(
+				{ key = { "p" }, desc = "Toggle detail panel", label = "panel" },
+				keymaps.resolve("ui.toggle_panel")
+			)
+		end)
+
+		it("merges the keys of several ids under the first description", function()
+			local keymap = assert(keymaps.resolve({ "ui.toggle_panel", "ui.next_panel_tab" }))
+			assert.are.same({ "p", "]", "<Tab>" }, keymap.key)
+			assert.are.equal("Toggle detail panel", keymap.desc)
 		end)
 
 		it("returns nil for disabled and missing mappings", function()
 			config.options.keymaps.ui.toggle_panel = false
 			assert.is_nil(keymaps.resolve("ui.toggle_panel"))
-			assert.is_nil(keymaps.resolve("ui.does_not_exist"))
+			assert.is_nil(keymaps.resolve("ui.next_item"))
+		end)
+
+		it("errors for unknown action ids", function()
+			assert.has_error(function()
+				---@diagnostic disable-next-line: param-type-mismatch
+				keymaps.resolve("ui.does_not_exist")
+			end)
 		end)
 	end)
 

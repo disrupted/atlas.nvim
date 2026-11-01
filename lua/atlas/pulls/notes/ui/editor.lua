@@ -39,6 +39,7 @@ local function open_body_editor(value, key, on_save)
 		height_ratio = 0.5,
 		preview = context_preview(value),
 		actions = {
+			-- TODO: add to config
 			{
 				key = "!",
 				description = "type",

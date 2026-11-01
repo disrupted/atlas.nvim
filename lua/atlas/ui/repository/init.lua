@@ -210,6 +210,7 @@ end
 ---@param ctx table|nil
 local function show(repo, provider, pages, page_key, ctx)
 	vim.cmd("tabnew")
+	local help = resolver.resolve("ui.help")
 	local session = {
 		tab = vim.api.nvim_get_current_tabpage(),
 		closed = false,
@@ -217,7 +218,7 @@ local function show(repo, provider, pages, page_key, ctx)
 		provider = provider,
 		sidebar = { pages = pages, selected = 1 },
 		content = {},
-		statusline = statusline.new({ help_key = (resolver.resolve("ui.help") or {})[1] }),
+		statusline = statusline.new({ help_key = help and help.key[1] }),
 	}
 	---@cast session RepositoryBrowser
 

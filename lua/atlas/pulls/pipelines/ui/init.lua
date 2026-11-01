@@ -336,10 +336,11 @@ end
 function M.open(context, backend, opts)
 	opts = opts or {}
 	vim.cmd("tabnew")
+	local help = resolver.resolve("ui.help")
 	local session = {
 		tab = vim.api.nvim_get_current_tabpage(),
 		closed = false,
-		statusline = statusline.new({ help_key = (resolver.resolve("ui.help") or {})[1] }),
+		statusline = statusline.new({ help_key = help and help.key[1] }),
 		explorer = { context = context, backend = backend, pipelines = "loading", line_map = {} },
 		logs = { context = context, backend = backend, collapsed = {}, line_map = {}, entry_rows = {} },
 		overview = { line_map = {} },

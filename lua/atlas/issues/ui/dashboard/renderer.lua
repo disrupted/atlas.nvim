@@ -21,11 +21,11 @@ local function view_id(view)
 	return view.key or view.name or ""
 end
 
----@param action_id AtlasKeymapActionId|string
+---@param action_id AtlasKeymapActionId
 ---@return string|nil
 local function key_label(action_id)
-	local keys = resolver.resolve(action_id)
-	return keys and keys[1] or nil
+	local keymap = resolver.resolve(action_id)
+	return keymap and keymap.key[1] or nil
 end
 
 ---@param lines string[]

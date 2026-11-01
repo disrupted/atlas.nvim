@@ -436,8 +436,7 @@ local function open_editor(state)
 	if state.pr.state == "open" or state.pr.state == "draft" then
 		if state.provider.capabilities.repository and not is_stacked(state) then
 			form_keymaps[#form_keymaps + 1] = {
-				key = keymaps.resolve("editor.base"),
-				desc = "base",
+				keymap = keymaps.resolve("editor.base"),
 				action = function(editor)
 					select_base(state, editor)
 				end,
@@ -445,16 +444,14 @@ local function open_editor(state)
 		end
 		if write.fetch_reviewer_candidates then
 			form_keymaps[#form_keymaps + 1] = {
-				key = keymaps.resolve("editor.reviewers"),
-				desc = "reviewers",
+				keymap = keymaps.resolve("editor.reviewers"),
 				action = function(editor)
 					select_reviewers(state, editor)
 				end,
 			}
 		end
 		form_keymaps[#form_keymaps + 1] = {
-			key = keymaps.resolve("editor.draft"),
-			desc = "draft",
+			keymap = keymaps.resolve("editor.draft"),
 			action = function(editor)
 				if state.submitting then
 					return
@@ -466,8 +463,7 @@ local function open_editor(state)
 	end
 	if write.fetch_assignees then
 		form_keymaps[#form_keymaps + 1] = {
-			key = keymaps.resolve("editor.assignees"),
-			desc = "assignees",
+			keymap = keymaps.resolve("editor.assignees"),
 			action = function(editor)
 				select_assignees(state, editor)
 			end,
@@ -475,18 +471,16 @@ local function open_editor(state)
 	end
 	if write.fetch_labels then
 		form_keymaps[#form_keymaps + 1] = {
-			key = keymaps.resolve("editor.labels"),
-			desc = "labels",
+			keymap = keymaps.resolve("editor.labels"),
 			action = function(editor)
 				select_labels(state, editor)
 			end,
 		}
 	end
-	local diff_keys = keymaps.resolve("pulls.open_diff")
-	if diff_keys then
+	local diff_keymap = keymaps.resolve("pulls.open_diff")
+	if diff_keymap then
 		form_keymaps[#form_keymaps + 1] = {
-			key = diff_keys,
-			desc = "diff",
+			keymap = diff_keymap,
 			action = function(editor)
 				preview_diff(state, editor)
 			end,

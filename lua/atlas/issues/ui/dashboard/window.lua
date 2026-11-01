@@ -8,8 +8,8 @@ local utils = require("atlas.ui.shared.utils")
 
 M.statusline = statusline.new({
 	help_key = function()
-		local keys = resolver.resolve("ui.help")
-		return keys and keys[1]
+		local keymap = resolver.resolve("ui.help")
+		return keymap and keymap.key[1]
 	end,
 	show_version = true,
 })

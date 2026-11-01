@@ -671,40 +671,35 @@ local function open_editor(project_key, issue, details, on_done)
 
 	local editor_keys = {
 		{
-			key = keymaps.resolve("editor.assignees"),
-			desc = "assignee",
+			keymap = keymaps.resolve("editor.assignees"),
 			action = function(editor)
 				select_user(state, editor, "assignee")
 			end,
 		},
 		{
-			key = keymaps.resolve("editor.reporter"),
-			desc = "reporter",
+			keymap = keymaps.resolve("editor.reporter"),
 			action = function(editor)
 				select_user(state, editor, "reporter")
 			end,
 		},
 		{
-			key = keymaps.resolve("editor.issue_type"),
-			desc = "issue type",
+			keymap = keymaps.resolve("editor.issue_type"),
 			action = function(editor)
 				select_issue_type(state, editor)
 			end,
 		},
 		{
-			key = keymaps.resolve("editor.fields"),
-			desc = "fields",
+			keymap = keymaps.resolve("editor.fields"),
 			action = function(editor)
 				select_field(state, editor)
 			end,
 		},
 	}
 
-	local preview_keys = keymaps.resolve("ui.toggle_description_mode")
-	if preview_keys then
+	local preview_keymap = keymaps.resolve("ui.toggle_description_mode")
+	if preview_keymap then
 		table.insert(editor_keys, {
-			key = preview_keys,
-			desc = "raw preview",
+			keymap = preview_keymap,
 			action = function(editor)
 				preview_description(state, editor)
 			end,

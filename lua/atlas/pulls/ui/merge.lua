@@ -250,6 +250,7 @@ end
 
 ---@param state PullsMergeState
 local function setup_keymaps(state)
+	-- TODO: add to config
 	local bindings = {
 		{
 			keys = { "gm" },
@@ -267,9 +268,16 @@ local function setup_keymaps(state)
 			label = "Delete source branch:",
 			option = "delete_source_branch",
 		},
-		{ keys = keymaps.resolve("ui.submit") or {}, mode = { "n", "i" }, callback = submit, desc = "Merge" },
-		{ keys = keymaps.resolve("ui.close") or {}, mode = "n", callback = cancel, desc = "Cancel" },
 	}
+	local submit_keymap = keymaps.resolve("ui.submit")
+	if submit_keymap then
+		bindings[#bindings + 1] =
+			{ keys = submit_keymap.key, mode = { "n", "i" }, callback = submit, desc = submit_keymap.desc }
+	end
+	local close_keymap = keymaps.resolve("ui.close")
+	if close_keymap then
+		bindings[#bindings + 1] = { keys = close_keymap.key, mode = "n", callback = cancel, desc = close_keymap.desc }
+	end
 	state.footer = {
 		"",
 		"",

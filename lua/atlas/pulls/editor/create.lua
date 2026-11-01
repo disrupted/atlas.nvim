@@ -367,15 +367,13 @@ end
 local function open_editor(state, content)
 	local form_keymaps = {
 		{
-			key = keymaps.resolve("editor.base"),
-			desc = "base",
+			keymap = keymaps.resolve("editor.base"),
 			action = function(editor)
 				select_base(state, editor)
 			end,
 		},
 		{
-			key = keymaps.resolve("editor.draft"),
-			desc = "draft",
+			keymap = keymaps.resolve("editor.draft"),
 			action = function(editor)
 				if state.submitting then
 					return
@@ -387,18 +385,16 @@ local function open_editor(state, content)
 	}
 	if state.write.fetch_reviewer_candidates then
 		table.insert(form_keymaps, 2, {
-			key = keymaps.resolve("editor.reviewers"),
-			desc = "reviewers",
+			keymap = keymaps.resolve("editor.reviewers"),
 			action = function(editor)
 				select_reviewers(state, editor)
 			end,
 		})
 	end
-	local diff_keys = keymaps.resolve("pulls.open_diff")
-	if diff_keys then
+	local diff_keymap = keymaps.resolve("pulls.open_diff")
+	if diff_keymap then
 		form_keymaps[#form_keymaps + 1] = {
-			key = diff_keys,
-			desc = "diff",
+			keymap = diff_keymap,
 			action = function(editor)
 				preview_diff(state, editor)
 			end,

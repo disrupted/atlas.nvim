@@ -460,8 +460,8 @@ end
 
 M.default = M.new({
 	help_key = function()
-		local keys = keymaps.resolve("ui.help")
-		return keys and keys[1]
+		local keymap = keymaps.resolve("ui.help")
+		return keymap and keymap.key[1]
 	end,
 	show_version = true,
 })

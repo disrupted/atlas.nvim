@@ -261,6 +261,7 @@ local function edit_template(selected, on_done)
 		title = string.format(" Template: %s ", selected.name),
 		initial_text = content,
 		actions = {
+			-- TODO: add to config
 			{
 				key = "<C-d>",
 				description = "delete",
