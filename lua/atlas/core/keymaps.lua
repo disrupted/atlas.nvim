@@ -43,6 +43,7 @@ local config = require("atlas.config")
 ---@field reply? AtlasKeymapValue
 ---@field edit? AtlasKeymapValue
 ---@field react? AtlasKeymapValue
+---@field upvote? AtlasKeymapValue
 
 ---@class AtlasUINotificationKeymaps
 ---@field open? AtlasKeymapValue
@@ -80,7 +81,6 @@ local config = require("atlas.config")
 ---@field toggle_view_mode? AtlasKeymapValue
 ---@field next_hunk? AtlasKeymapValue
 ---@field prev_hunk? AtlasKeymapValue
----@field toggle_layout? AtlasKeymapValue
 ---@field toggle_compact? AtlasKeymapValue
 
 ---@class AtlasPullsReviewKeymaps
@@ -99,6 +99,7 @@ local config = require("atlas.config")
 ---@field add_suggestion? AtlasKeymapValue
 ---@field submit_suggestion? AtlasKeymapValue
 ---@field add_note? AtlasKeymapValue
+---@field note_type? AtlasKeymapValue
 ---@field toggle_resolved? AtlasKeymapValue
 ---@field approve? AtlasKeymapValue
 ---@field request_changes? AtlasKeymapValue
@@ -127,6 +128,10 @@ local config = require("atlas.config")
 ---@field next? AtlasKeymapValue
 ---@field prev? AtlasKeymapValue
 
+---@class AtlasPullsMergeKeymaps
+---@field method? AtlasKeymapValue
+---@field delete_branch? AtlasKeymapValue
+
 ---@class AtlasPullsCustomKeymap
 ---@field key string|string[]
 ---@field desc string
@@ -144,6 +149,7 @@ local config = require("atlas.config")
 ---@field pipelines? AtlasPullsPipelinesKeymaps
 ---@field review? AtlasPullsReviewKeymaps
 ---@field filters? AtlasPullsFilterKeymaps
+---@field merge? AtlasPullsMergeKeymaps
 
 ---@class AtlasIssuesCustomKeymap
 ---@field key string|string[]
@@ -171,6 +177,8 @@ local config = require("atlas.config")
 ---@field issue_type? AtlasKeymapValue
 ---@field fields? AtlasKeymapValue
 ---@field templates? AtlasKeymapValue
+---@field delete_template? AtlasKeymapValue
+---@field complete? AtlasKeymapValue
 
 ---@class AtlasKeymapsConfig
 ---@field ui? AtlasUIKeymaps
@@ -195,6 +203,7 @@ local config = require("atlas.config")
 ---| "ui.comments.reply"
 ---| "ui.comments.edit"
 ---| "ui.comments.react"
+---| "ui.comments.upvote"
 ---| "ui.toggle_panel"
 ---| "ui.cycle_layout"
 ---| "ui.toggle_fold"
@@ -253,7 +262,6 @@ local config = require("atlas.config")
 ---| "pulls.review.atlas.toggle_view_mode"
 ---| "pulls.review.atlas.next_hunk"
 ---| "pulls.review.atlas.prev_hunk"
----| "pulls.review.atlas.toggle_layout"
 ---| "pulls.review.atlas.toggle_compact"
 ---| "pulls.review.show_details"
 ---| "pulls.review.toggle_file_reviewed"
@@ -270,6 +278,7 @@ local config = require("atlas.config")
 ---| "pulls.review.add_suggestion"
 ---| "pulls.review.submit_suggestion"
 ---| "pulls.review.add_note"
+---| "pulls.review.note_type"
 ---| "pulls.review.toggle_resolved"
 ---| "pulls.review.approve"
 ---| "pulls.review.request_changes"
@@ -279,6 +288,8 @@ local config = require("atlas.config")
 ---| "pulls.filters.open"
 ---| "pulls.filters.merged"
 ---| "pulls.filters.declined"
+---| "pulls.merge.method"
+---| "pulls.merge.delete_branch"
 ---| "issues.transition_issue"
 ---| "issues.change_assignee"
 ---| "issues.change_reporter"
@@ -294,6 +305,8 @@ local config = require("atlas.config")
 ---| "editor.issue_type"
 ---| "editor.fields"
 ---| "editor.templates"
+---| "editor.delete_template"
+---| "editor.complete"
 
 ---@class AtlasKeymap
 ---@field key? string[]
@@ -318,6 +331,7 @@ local descriptions = {
 			reply = { desc = "Reply to comment", label = "reply" },
 			edit = { desc = "Edit comment", label = "edit" },
 			react = { desc = "Add reaction", label = "react" },
+			upvote = { desc = "Toggle upvote", label = "upvote" },
 		},
 		toggle_panel = { desc = "Toggle detail panel", label = "panel" },
 		cycle_layout = { desc = "Cycle layout", label = "layout" },
@@ -386,6 +400,7 @@ local descriptions = {
 			add_suggestion = { desc = "Add pending suggestion", label = "pending suggestion" },
 			submit_suggestion = { desc = "Post suggestion", label = "suggestion" },
 			add_note = { desc = "Add note", label = "note" },
+			note_type = { desc = "Cycle note type", label = "type" },
 			toggle_resolved = { desc = "Toggle resolved", label = "resolve" },
 			approve = { desc = "Approve", label = "approve" },
 			request_changes = { desc = "Request changes", label = "request changes" },
@@ -416,7 +431,6 @@ local descriptions = {
 				toggle_view_mode = { desc = "Toggle explorer mode", label = "tree" },
 				next_hunk = { desc = "Next hunk", label = "next hunk" },
 				prev_hunk = { desc = "Previous hunk", label = "previous hunk" },
-				toggle_layout = { desc = "Toggle diff layout", label = "layout" },
 				toggle_compact = { desc = "Toggle compact mode", label = "compact" },
 			},
 		},
@@ -424,6 +438,10 @@ local descriptions = {
 			open = { desc = "Toggle open filter", label = "open" },
 			merged = { desc = "Toggle merged filter", label = "merged" },
 			declined = { desc = "Toggle declined filter", label = "declined" },
+		},
+		merge = {
+			method = { desc = "Change merge method", label = "method" },
+			delete_branch = { desc = "Toggle source branch deletion", label = "delete branch" },
 		},
 	},
 	issues = {
@@ -444,6 +462,8 @@ local descriptions = {
 		issue_type = { desc = "Change issue type", label = "issue type" },
 		fields = { desc = "Edit fields", label = "fields" },
 		templates = { desc = "Insert template", label = "templates" },
+		delete_template = { desc = "Delete template", label = "delete" },
+		complete = { desc = "Complete Atlas references", label = "complete" },
 	},
 }
 
@@ -536,6 +556,7 @@ function M.validate()
 		{ "ui.comments.reply", "issues.create_issue" },
 		{ "ui.comments.react", "issues.change_reporter" },
 		{ "editor.reporter", "editor.reviewers" },
+		{ "pulls.open_diff", "pulls.merge.delete_branch" },
 	}
 
 	local function conflict_allowed(actions)
@@ -644,7 +665,7 @@ function M.validate()
 			"ui.refresh_view",
 			"ui.select",
 			"ui.open_in_browser",
-			"ui.close",
+			"picker.close",
 		}),
 	}
 

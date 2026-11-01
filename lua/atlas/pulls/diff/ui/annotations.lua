@@ -505,7 +505,7 @@ function M.open(owner, pr, path, items, on_action)
 	local can_react = comments and comments.reactions ~= nil
 
 	local action_ids = {
-		close = "ui.close",
+		close = "picker.close",
 		reply = "ui.comments.reply",
 		add_task = can_add_task and "pulls.review.add_task" or nil,
 		edit = "ui.comments.edit",
@@ -650,7 +650,6 @@ function M.open(owner, pr, path, items, on_action)
 	end
 
 	map(keys.close, close)
-	vim.keymap.set("n", "<Esc>", close, map_opts)
 	map(keys.reply, action("add_comment"))
 	map(keys.add_task, action("add_task"))
 	map(keys.edit, action("edit_comment"))

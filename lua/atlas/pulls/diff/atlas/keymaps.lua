@@ -41,7 +41,7 @@ function M.setup(renderer, viewer, groups)
 	end)
 
 	local layout_items = {}
-	add(layout_items, "pulls.review.atlas.toggle_layout", 60, function()
+	add(layout_items, "ui.cycle_layout", 60, function()
 		renderer:toggle_layout()
 	end)
 	add(layout_items, "pulls.review.atlas.toggle_compact", 61, function()

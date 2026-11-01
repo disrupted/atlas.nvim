@@ -250,33 +250,31 @@ end
 
 ---@param state PullsMergeState
 local function setup_keymaps(state)
-	-- TODO: add to config
-	local bindings = {
+	local bindings = {}
+	for _, binding in ipairs({
 		{
-			keys = { "gm" },
+			action = "pulls.merge.method",
 			mode = "n",
 			callback = change_method,
-			desc = "Change merge method",
 			label = "Method:",
 			option = "method",
 		},
 		{
-			keys = { "gd" },
+			action = "pulls.merge.delete_branch",
 			mode = "n",
 			callback = toggle_delete,
-			desc = "Toggle source branch deletion",
 			label = "Delete source branch:",
 			option = "delete_source_branch",
 		},
-	}
-	local submit_keymap = keymaps.resolve("ui.submit")
-	if submit_keymap then
-		bindings[#bindings + 1] =
-			{ keys = submit_keymap.key, mode = { "n", "i" }, callback = submit, desc = submit_keymap.desc }
-	end
-	local close_keymap = keymaps.resolve("ui.close")
-	if close_keymap then
-		bindings[#bindings + 1] = { keys = close_keymap.key, mode = "n", callback = cancel, desc = close_keymap.desc }
+		{ action = "ui.submit", mode = { "n", "i" }, callback = submit },
+		{ action = "ui.close", mode = "n", callback = cancel },
+	}) do
+		local keymap = keymaps.resolve(binding.action)
+		if keymap then
+			binding.keys = keymap.key
+			binding.desc = keymap.desc
+			bindings[#bindings + 1] = binding
+		end
 	end
 	state.footer = {
 		"",

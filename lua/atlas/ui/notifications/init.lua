@@ -14,7 +14,7 @@ local function popup_keys()
 		refresh = resolver.resolve("ui.refresh_view"),
 		open = resolver.resolve("ui.select"),
 		open_in_browser = resolver.resolve("ui.open_in_browser"),
-		close = resolver.resolve("ui.close"),
+		close = resolver.resolve("picker.close"),
 	}
 end
 
@@ -270,10 +270,6 @@ local function register_keymaps(target_buf, provider, on_update)
 	map(keys.close, function()
 		M.close()
 	end)
-	-- TODO: add to config
-	vim.keymap.set("n", "<Esc>", function()
-		M.close()
-	end, { buffer = target_buf, nowait = true, silent = true, desc = "Close notifications" })
 
 	map(keys.refresh, function()
 		load(provider, true)

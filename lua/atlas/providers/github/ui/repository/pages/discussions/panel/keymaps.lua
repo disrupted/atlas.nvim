@@ -76,8 +76,7 @@ function M.setup(panel, callbacks)
 			index = 24,
 		},
 		{
-			-- TODO: add to config
-			keymap = { key = { "gu" }, desc = "Toggle upvote", label = "upvote" },
+			keymap = resolver.resolve("ui.comments.upvote"),
 			callback = function()
 				actions.upvote(panel, callbacks.current(panel), redraw)
 			end,

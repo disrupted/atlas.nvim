@@ -253,6 +253,7 @@ local defaults = {
 				reply = "c",
 				edit = "e",
 				react = "gr",
+				upvote = "gu",
 			},
 			toggle_panel = "p",
 			cycle_layout = "t",
@@ -321,6 +322,7 @@ local defaults = {
 				add_suggestion = "s",
 				submit_suggestion = "S",
 				add_note = "<leader>n",
+				note_type = "!",
 				toggle_resolved = "x",
 				approve = "<leader>ga",
 				request_changes = "<leader>gr",
@@ -352,7 +354,6 @@ local defaults = {
 					toggle_view_mode = "i",
 					next_hunk = "]h",
 					prev_hunk = "[h",
-					toggle_layout = "t",
 					toggle_compact = "gc",
 				},
 			},
@@ -360,6 +361,10 @@ local defaults = {
 				open = "gpo",
 				merged = "gpm",
 				declined = "gpd",
+			},
+			merge = {
+				method = "gm",
+				delete_branch = "gd",
 			},
 		},
 		issues = {
@@ -380,6 +385,8 @@ local defaults = {
 			issue_type = "gt",
 			fields = "gf",
 			templates = "gT",
+			delete_template = "<C-d>",
+			complete = "<C-x><C-u>",
 		},
 	},
 }
