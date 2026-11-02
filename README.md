@@ -305,15 +305,8 @@ Save searches as bookmarks, or press `*` to star a pull request or issue. Both a
 ```lua
 {
   ui = {
-    statusline = {
-      -- false keeps your existing statusline. A function(buf, win, context) decides per window;
-      -- `context` is "atlas" for dashboards/details and "diff" for diff views.
-      enable = true,
-      -- For example, keep your statusline in Atlas detail views:
-      -- enable = function(buf, win, context)
-      --   return vim.bo[buf].filetype ~= "atlas-ui.detail"
-      -- end,
-    },
+    -- See Statusline below.
+    statusline = { ... },
     -- "auto", "default", "snacks", or "fzf-lua".
     picker = "auto",
     -- Make the main Atlas dashboard a listed buffer.
@@ -363,13 +356,55 @@ Save searches as bookmarks, or press `*` to star a pull request or issue. Both a
 }
 ```
 
+### Statusline
+
+Atlas shows its own statusline in its windows. You can turn it off or change what it shows.
+
+```lua
+local components = require("atlas.ui.statusline.components")
+
+-- ctx has win, buf, user, pr, issue, list, diff and pipeline.
+---@param ctx AtlasStatuslineContext
+local function title(ctx)
+  local pr = ctx.pr
+  if pr then
+    -- A list of parts. Plain text or one { text, hl_group } work too. nil hides it.
+    return {
+      { text = "#" .. pr.id, hl_group = "AtlasFooterInfo" },
+      { text = pr.title },
+    }
+  end
+end
+
+ui = {
+  statusline = {
+    enable = true, -- boolean|fun(buf, win): false keeps your own statusline
+    -- enable = function(buf, win)
+    --   return vim.bo[buf].filetype ~= "atlas-ui.detail"
+    -- end,
+
+    -- Returning nil, or leaving layout unset, keeps the default.
+    -- "%=" moves everything after it to the right.
+    -- Built-in: components.user, version, help
+    layout = function(buf, win, ctx)
+      if ctx.pr then -- PR list and details
+        return { components.user, title, "%=", components.version, components.help }
+      end
+    end,
+  },
+},
+```
+
 ### Highlights
 
-Atlas uses your colorscheme's standard highlight groups, so it adapts to light and dark backgrounds. Every `Atlas*` group is defined as a default, so you can override any of them after calling `setup()`:
+Atlas builds its `Atlas*` groups from your colorscheme, so it fits light and dark themes. Override any of them after `setup()`:
 
 ```lua
 vim.api.nvim_set_hl(0, "AtlasTextMuted", { link = "Comment" })
+vim.api.nvim_set_hl(0, "AtlasFooterInfo", { fg = "#7aa2f7", bold = true })
 ```
+
+See [all highlight groups](https://github.com/emrearmagan/atlas.nvim/blob/main/lua/atlas/ui/highlights.lua).
 
 ## Commands
 
