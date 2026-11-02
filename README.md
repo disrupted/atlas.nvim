@@ -22,7 +22,6 @@ Review pull requests and manage issues across GitHub, GitLab, Bitbucket and Jira
 **Quick links**
 
 - [Configuration](#configuration)
-- [Commands](#commands)
 - [Pull requests](#pulls)
   - [GitHub](#github)
   - [GitLab](#gitlab)
@@ -31,6 +30,7 @@ Review pull requests and manage issues across GitHub, GitLab, Bitbucket and Jira
   - [GitHub](#github-issues)
   - [GitLab](#gitlab-issues)
   - [Jira](#jira)
+- [Commands](#commands)
 
 ## Installation
 
@@ -394,35 +394,6 @@ ui = {
   },
 },
 ```
-
-### Highlights
-
-Atlas builds its `Atlas*` groups from your colorscheme, so it fits light and dark themes. Override any of them after `setup()`:
-
-```lua
-vim.api.nvim_set_hl(0, "AtlasTextMuted", { link = "Comment" })
-vim.api.nvim_set_hl(0, "AtlasFooterInfo", { fg = "#7aa2f7", bold = true })
-```
-
-See [all highlight groups](https://github.com/emrearmagan/atlas.nvim/blob/main/lua/atlas/ui/highlights.lua).
-
-## Commands
-
-- `:Atlas` - Pick a command
-- `:Atlas pulls [provider|.]` - Open a pull-request provider dashboard; `.` uses the current repository's provider
-- `:Atlas issues [provider|.]` - Open an issue provider dashboard; `.` uses the current repository's provider
-- `:Atlas review [pull-request-url|number|.]` - Review a pull request with the configured diff viewer; without an argument, pick one from the current repository; `.` reviews the current branch's pull request
-- `:Atlas diff <base...head>` - Open a Git range with the configured diff viewer
-- `:Atlas pipelines [target|.]` - Open pipelines by branch name, PR URL or number, or build URL; `.` uses the current branch
-- `:Atlas create pr` - Create a pull request from the current branch
-- `:Atlas create issue [provider|.]` - Create an issue; `.` uses the current repository's provider
-- `:Atlas search [provider|.]` - Search configured pull-request and issue providers; `.` uses the current repository's provider
-- `:Atlas open [target|.]` - Open a pull request or issue by URL, Jira key, or number; `.` opens the current branch's pull request
-- `:Atlas browse [repository URL|.|page] [page]` - Open the repository browser; `.` uses the current repository, a page name alone picks a repository first, and a URL to a repository page or item opens that page, e.g. `:Atlas browse . branches`, `:Atlas browse issues` or `:Atlas browse https://github.com/owner/repo/discussions`
-- `:Atlas notes [target|.]` - Inspect notes; `.` shows the current repository's notes
-- `:Atlas clear [cache|notes|reviewed|stars]` - Clear all Atlas data or only cached data and cloned repositories, notes, reviewed file marks, or starred items
-- `:Atlas logs` - Toggle Atlas logs
-- `:Atlas console` - Open the latest command output
 
 ## Pulls
 
@@ -899,6 +870,35 @@ issues = {
 <img alt="gitlab-issue" src="https://github.com/user-attachments/assets/65fedb30-dee0-442d-afa5-46a42aeae425" />
 
 </details>
+
+## Highlights
+
+Atlas builds its `Atlas*` groups from your colorscheme, so it fits light and dark themes. Override any of them after `setup()`:
+
+```lua
+vim.api.nvim_set_hl(0, "AtlasTextMuted", { link = "Comment" })
+vim.api.nvim_set_hl(0, "AtlasFooterInfo", { fg = "#7aa2f7", bold = true })
+```
+
+See [all highlight groups](https://github.com/emrearmagan/atlas.nvim/blob/main/lua/atlas/ui/highlights.lua).
+
+## Commands
+
+- `:Atlas` - Pick a command
+- `:Atlas pulls [provider|.]` - Open a pull-request provider dashboard; `.` uses the current repository's provider
+- `:Atlas issues [provider|.]` - Open an issue provider dashboard; `.` uses the current repository's provider
+- `:Atlas review [pull-request-url|number|.]` - Review a pull request with the configured diff viewer; without an argument, pick one from the current repository; `.` reviews the current branch's pull request
+- `:Atlas diff <base...head>` - Open a Git range with the configured diff viewer
+- `:Atlas pipelines [target|.]` - Open pipelines by branch name, PR URL or number, or build URL; `.` uses the current branch
+- `:Atlas create pr` - Create a pull request from the current branch
+- `:Atlas create issue [provider|.]` - Create an issue; `.` uses the current repository's provider
+- `:Atlas search [provider|.]` - Search configured pull-request and issue providers; `.` uses the current repository's provider
+- `:Atlas open [target|.]` - Open a pull request or issue by URL, Jira key, or number; `.` opens the current branch's pull request
+- `:Atlas browse [repository URL|.|page] [page]` - Open the repository browser; `.` uses the current repository, a page name alone picks a repository first, and a URL to a repository page or item opens that page, e.g. `:Atlas browse . branches`, `:Atlas browse issues` or `:Atlas browse https://github.com/owner/repo/discussions`
+- `:Atlas notes [target|.]` - Inspect notes; `.` shows the current repository's notes
+- `:Atlas clear [cache|notes|reviewed|stars]` - Clear all Atlas data or only cached data and cloned repositories, notes, reviewed file marks, or starred items
+- `:Atlas logs` - Toggle Atlas logs
+- `:Atlas console` - Open the latest command output
 
 ## Events
 
