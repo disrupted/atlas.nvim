@@ -136,11 +136,9 @@
 
 -- Config
 
----@alias AtlasStatuslineContext "atlas"|"diff"
----@alias AtlasStatuslineEnable fun(buf: integer, win: integer, context: AtlasStatuslineContext): boolean
-
 ---@class AtlasUIStatuslineConfig
----@field enable? boolean|AtlasStatuslineEnable Predicate for where Atlas's statusline is shown (default: true)
+---@field enable? boolean|fun(buf: integer, win: integer): boolean Predicate for where Atlas's statusline is shown (default: true)
+---@field layout? fun(buf: integer, win: integer, ctx: AtlasStatuslineContext): AtlasStatuslineLayout|nil
 
 ---@class AtlasUIConfig
 ---@field statusline AtlasUIStatuslineConfig|nil
@@ -159,7 +157,10 @@ local M = {}
 ---@type AtlasConfig
 local defaults = {
 	ui = {
-		statusline = { enable = true },
+		statusline = {
+			enable = true,
+			layout = nil,
+		},
 		picker = "auto",
 		listed_buffer = false,
 	},
@@ -394,16 +395,15 @@ local defaults = {
 ---@type AtlasConfig
 M.options = vim.deepcopy(defaults)
 
----@param context AtlasStatuslineContext
 ---@param buf integer
 ---@param win integer
 ---@return boolean
-function M.statusline_enabled(context, buf, win)
+function M.statusline_enabled(buf, win)
 	local enable = M.options.ui.statusline.enable
 	if type(enable) ~= "function" then
 		return enable ~= false
 	end
-	return enable(buf, win, context) == true
+	return enable(buf, win) == true
 end
 
 ---@return string
