@@ -40,6 +40,8 @@ local next_id = 0
 ---@field expression string
 ---@field notice { text: string, hl_group: string, token: integer }
 ---@field loading_spinner SpinnerInstance|nil
+---@field spinner_tick boolean|nil
+---@field parts { win: integer, left: string, right: string }|nil
 ---@field options AtlasStatuslineOptions
 ---@field disposed boolean
 local Statusline = {}
@@ -80,7 +82,10 @@ local function start_loading(statusline, token, message)
 			end
 
 			statusline.notice.text = string.format("%s %s", frame, message)
+
+			statusline.spinner_tick = true
 			statusline:redraw()
+			statusline.spinner_tick = false
 		end,
 	})
 	statusline.loading_spinner:start()
@@ -224,37 +229,36 @@ function Statusline:clear_notice()
 	self:redraw()
 end
 
+---@param text string
+---@param hl_group string|nil
+---@param space string
 ---@return string
-function Statusline:render()
-	if self.disposed then
+local function format_part(text, hl_group, space)
+	text = normalize(text):gsub("%%", "%%%%")
+	if text == "" then
 		return ""
 	end
+	return string.format("%%#%s#%s%s%%#%s#", hl_group or "AtlasFooterText", space, text, BACKGROUND_HL)
+end
 
-	local win = tonumber(vim.g.statusline_winid) or vim.api.nvim_get_current_win()
+---@param statusline AtlasStatusline
+---@param win integer
+---@return { win: integer, left: string, right: string }
+local function render_components(statusline, win)
 	local buf = vim.api.nvim_win_get_buf(win)
 	---@type AtlasStatuslineContext
 	local ctx = { win = win, buf = buf }
-	if self.options.context then
-		self.options.context(ctx)
+	if statusline.options.context then
+		statusline.options.context(ctx)
 	end
 
 	local left, right = {}, {}
 	local side = left
-
-	---@param segment AtlasStatuslineSegment
-	---@param first boolean
-	local function add(segment, first)
-		local text = normalize(segment.text):gsub("%%", "%%%%")
-		if text ~= "" then
-			local space = first and #side > 0 and "  " or " "
-			local hl_group = segment.hl_group or "AtlasFooterText"
-			side[#side + 1] = string.format("%%#%s#%s%s%%#%s#", hl_group, space, text, BACKGROUND_HL)
-		end
-	end
-
 	local custom = config.options.ui.statusline.layout
-	for _, component in ipairs(custom and custom(buf, win, ctx) or self.options.layout) do
-		if component ~= "%=" then
+	for _, component in ipairs(custom and custom(buf, win, ctx) or statusline.options.layout) do
+		if component == "%=" then
+			side = right
+		else
 			local result = component(ctx)
 			if type(result) == "string" then
 				result = { text = result }
@@ -265,20 +269,32 @@ function Statusline:render()
 
 			---@cast result AtlasStatuslineSegment[]|nil
 			for index, segment in ipairs(result or {}) do
-				add(segment, index == 1)
+				local gap = index == 1 and (side == right or #side > 0)
+				local part = format_part(segment.text, segment.hl_group, gap and "  " or " ")
+				if part ~= "" then
+					side[#side + 1] = part
+				end
 			end
-		elseif side == left then
-			-- Messages grow to the left, so the components after them keep their place.
-			side = right
-			add(self.notice, true)
 		end
 	end
 
-	if side == left then
-		side = right
-		add(self.notice, true)
+	return { win = win, left = table.concat(left), right = table.concat(right) }
+end
+
+---@return string
+function Statusline:render()
+	if self.disposed then
+		return ""
 	end
-	return "%#" .. BACKGROUND_HL .. "#" .. table.concat(left) .. "%=" .. table.concat(right) .. " "
+
+	local win = tonumber(vim.g.statusline_winid) or vim.api.nvim_get_current_win()
+	if not (self.spinner_tick and self.parts and self.parts.win == win) then
+		self.parts = render_components(self, win)
+	end
+
+	-- Messages come first on the right and grow to the left, so the components after them keep their place.
+	local notice = format_part(self.notice.text, self.notice.hl_group, " ")
+	return "%#" .. BACKGROUND_HL .. "#" .. self.parts.left .. "%=" .. notice .. self.parts.right .. " "
 end
 
 function Statusline:dispose()
