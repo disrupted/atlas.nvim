@@ -1,6 +1,7 @@
 local keymaps = require("atlas.core.keymaps")
 local spinner = require("atlas.ui.components.spinner")
 local statusline = require("atlas.ui.statusline")
+local components = require("atlas.ui.statusline.components")
 local utils = require("atlas.ui.shared.utils")
 
 local M = {}
@@ -50,9 +51,9 @@ end
 
 ---@param message string
 ---@param on_cancel fun()|nil
----@param context "atlas"|"diff"|nil
+---@param title string
 ---@return AtlasLoadingView
-function M.open(message, on_cancel, context)
+function M.open(message, on_cancel, title)
 	vim.cmd("tabnew")
 	local view = {
 		tabpage = vim.api.nvim_get_current_tabpage(),
@@ -82,8 +83,15 @@ function M.open(message, on_cancel, context)
 	end
 
 	local active = true
-	local footer = statusline.new({ show_version = true, context = context })
-	footer:set_items({ { text = message, hl_group = "AtlasFooterText" } })
+	local footer = statusline.new({
+		layout = {
+			function()
+				return title
+			end,
+			"%=",
+			components.version,
+		},
+	})
 	footer:attach(view.win)
 	local text = message
 	local highlight = "AtlasTextMuted"
