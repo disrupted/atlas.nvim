@@ -387,7 +387,7 @@ ui = {
     -- "%=" moves everything after it to the right.
     -- Built-in: components.user, version, help
     layout = function(buf, win, ctx)
-      if ctx.pr then -- PR list and details
+      if ctx.pr then
         return { components.user, title, "%=", components.version, components.help }
       end
     end,

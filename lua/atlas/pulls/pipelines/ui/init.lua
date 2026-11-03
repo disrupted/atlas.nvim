@@ -27,15 +27,15 @@ local M = {}
 ---@param session PullsPipelinesSession
 ---@return AtlasStatuslineLayout
 local function statusline_layout(session)
-	local function title()
+	local function title(ctx)
 		local context = session.explorer.context
 		local target = context.target
 		local text = context.repo_full_name
 
 		if type(target) == "string" then
 			text = text .. " - " .. target
-		elseif target.source then
-			text = string.format("#%s %s", target.id, target.title)
+		elseif ctx.pr then
+			text = string.format("#%s %s", ctx.pr.id, ctx.pr.title)
 		end
 
 		return text
@@ -331,7 +331,18 @@ function M.open(context, backend, opts)
 		config = { context = context, backend = backend },
 	}
 	---@cast session PullsPipelinesSession
-	session.statusline = statusline.new({ layout = statusline_layout(session) })
+	session.statusline = statusline.new({
+		layout = statusline_layout(session),
+		context = function(ctx)
+			local target = session.explorer.context.target
+			if type(target) == "table" and target.source then
+				---@cast target PullRequest
+				ctx.pr = target
+			end
+
+			ctx.pipeline = session.explorer.selection
+		end,
+	})
 	setup_buffers(session)
 	setup_windows(session)
 	setup_events(session)

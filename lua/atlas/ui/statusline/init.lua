@@ -20,7 +20,7 @@ local next_id = 0
 ---@field win integer Window of the statusline
 ---@field buf integer Buffer in that window
 ---@field user? AtlasUser Signed-in user in the lists and details
----@field pr? PullRequest Selected PR in the PR list and details
+---@field pr? PullRequest Selected PR in the PR list and details, or the PR of the pipelines view
 ---@field issue? Issue Selected issue in the issue list and details
 ---@field list? { items: PullRequest[]|Issue[], page?: { current: integer, total?: integer } } The PR or issue list, nil while loading
 ---@field diff? AtlasDiffSession The open diff, in the diff view
