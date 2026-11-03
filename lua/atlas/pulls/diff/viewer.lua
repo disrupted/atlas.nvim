@@ -30,7 +30,7 @@ local renderers = {
 
 ---@class AtlasDiffRenderer
 ---@field tabpage integer
----@field session AtlasDiffSession
+---@field session AtlasDiffSessionInternal
 ---@field options AtlasPullsDiffConfig
 ---@field on_file fun(file: AtlasDiffFile|nil)
 ---@field current_file AtlasDiffFile|nil
@@ -48,7 +48,7 @@ local renderers = {
 
 ---@class AtlasDiffViewer
 ---@field id string|nil
----@field session AtlasDiffSession
+---@field session AtlasDiffSessionInternal
 ---@field options AtlasPullsDiffConfig
 ---@field renderer AtlasDiffRenderer
 ---@field explorer AtlasDiffExplorer
@@ -87,7 +87,7 @@ local function close_tab(tabpage)
 	vim.cmd.tabclose({ range = { vim.api.nvim_tabpage_get_number(tabpage) } })
 end
 
----@param session AtlasDiffSession
+---@param session AtlasDiffSessionInternal
 ---@param command string
 ---@return boolean, string|nil
 local function open_command(session, command)
@@ -849,7 +849,7 @@ local function setup(viewer)
 	end
 end
 
----@param session AtlasDiffSession
+---@param session AtlasDiffSessionInternal
 ---@param options AtlasPullsDiffConfig
 function Viewer.open(session, options)
 	local module = renderers[options.open_cmd]
@@ -867,7 +867,15 @@ function Viewer.open(session, options)
 		session = session,
 		options = options,
 	}, Viewer)
-	viewer.statusline = statusline.new({ layout = diff_statusline.layout(viewer) })
+	viewer.statusline = statusline.new({
+		layout = diff_statusline.layout(viewer),
+		context = function(ctx)
+			ctx.diff = session
+			if session.source.kind == "pr" then
+				ctx.pr = session.source.pr
+			end
+		end,
+	})
 
 	open_renderer(viewer, module)
 

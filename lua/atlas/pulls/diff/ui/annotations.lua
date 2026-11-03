@@ -52,7 +52,7 @@ end
 -- Dim sign on lines that other commits change. Comments and notes on those lines are hidden here.
 ---@param ns integer
 ---@param buf integer
----@param session AtlasDiffSession
+---@param session AtlasDiffSessionInternal
 ---@param file AtlasDiffFile
 ---@param side "LEFT"|"RIGHT"
 function M.draw_changed_lines(ns, buf, session, file, side)
@@ -96,7 +96,7 @@ end
 -- Updates the item's lines to match the diff on screen.
 -- Returns false when they can't be found there, so the item isn't drawn.
 -- File comments have no lines, so they're always kept.
----@param session AtlasDiffSession
+---@param session AtlasDiffSessionInternal
 ---@param file AtlasDiffFile
 ---@param item AtlasDiffAnnotation
 ---@return boolean
@@ -116,7 +116,7 @@ local function place(session, file, item)
 	return true
 end
 
----@param session AtlasDiffSession
+---@param session AtlasDiffSessionInternal
 ---@param file AtlasDiffFile
 ---@return AtlasDiffAnnotation[]
 function M.for_file(session, file)
