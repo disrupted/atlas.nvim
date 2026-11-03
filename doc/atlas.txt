@@ -137,20 +137,6 @@ STATUSLINE                                                  *atlas-statusline*
 >lua
   local components = require("atlas.ui.statusline.components")
 
-  -- ctx has win, buf, user, pr, issue, list, diff and pipeline.
-  ---@param ctx AtlasStatuslineContext
-  local function title(ctx)
-    local pr = ctx.pr
-    if pr then
-      -- A list of parts. Plain text or one { text, hl_group } work too.
-      -- nil hides it.
-      return {
-        { text = "#" .. pr.id, hl_group = "AtlasFooterInfo" },
-        { text = pr.title },
-      }
-    end
-  end
-
   ui = {
     statusline = {
       enable = true, -- boolean|fun(buf, win): false keeps your own statusline
@@ -159,18 +145,25 @@ STATUSLINE                                                  *atlas-statusline*
       -- end,
 
       -- Returning nil, or leaving layout unset, keeps the default.
-      -- "%=" moves everything after it to the right.
-      -- Built-in: components.user, version, help
-      layout = function(buf, win, ctx)
-        if ctx.pr then
-          return {
-            components.user,
-            title,
-            "%=",
-            components.version,
-            components.help,
-          }
-        end
+      layout = function(buf, win)
+        return {
+          components.user,
+          -- ctx has win, buf, user, pr, issue, list, diff and pipeline.
+          ---@param ctx AtlasStatuslineContext
+          function(ctx)
+            if ctx.pr then
+              -- A list of parts. Plain text or one { text, hl_group }
+              -- work too. nil hides it.
+              return {
+                { text = "#" .. ctx.pr.id, hl_group = "AtlasFooterInfo" },
+                { text = ctx.pr.title },
+              }
+            end
+          end,
+          "%=", -- "%=" moves everything after it to the right.
+          components.version,
+          components.help,
+        }
       end,
     },
   },
