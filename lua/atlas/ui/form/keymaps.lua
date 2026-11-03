@@ -21,7 +21,7 @@ function M.statusline_items(opts)
 			items[#items + 1] = { text = "|", hl_group = "AtlasFooterText" }
 		end
 		items[#items + 1] = { text = table.concat(keymap.key, " / "), hl_group = "AtlasFooterBackground" }
-		items[#items + 1] = { text = keymap.label, hl_group = "AtlasFooterText", priority = 10 }
+		items[#items + 1] = { text = keymap.label, hl_group = "AtlasFooterText" }
 	end
 
 	add(keymaps.resolve("ui.submit"))
@@ -41,7 +41,6 @@ function M.setup(form, on_close, buffers)
 	local opts = form.opts
 	local buf = form.editor_buf
 	local help_keymap = keymaps.resolve("ui.help")
-	form.statusline.options.help_key = help_keymap and help_keymap.key[1]
 	local items = {}
 	---@param keymap AtlasKeymap|nil
 	local function add(keymap, callback, mode)
